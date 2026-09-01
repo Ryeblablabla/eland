@@ -214,6 +214,33 @@ export function executeAttend(
     const attendedStackId = action.target.stackId;
     const stack = person.inventory.find((candidate) => candidate.id === attendedStackId);
     if (!stack) return { status: 'blocked' as const, result: '观察对象已经不在背包中', diff: {} };
+    const requestedVerification = action.verification;
+    const sourceBoundTechnique = requestedVerification
+      ? person.knowledge.find((fact) => fact.id === requestedVerification.techniqueId
+        && fact.kind === 'technique'
+        && fact.sourceEventIds.includes(requestedVerification.sourceEventId))
+      : undefined;
+    if (requestedVerification
+      && sourceBoundTechnique
+      && stack.materialId === requestedVerification.expectedMaterialId
+      && stack.sourceEventIds.includes(requestedVerification.sourceEventId)) {
+      sourceBoundTechnique.confidence = clamp(Math.max(sourceBoundTechnique.confidence, 46) + 22);
+      sourceBoundTechnique.sourceEventIds = [...new Set([
+        ...sourceBoundTechnique.sourceEventIds,
+        eventId,
+      ])].slice(-24);
+      return {
+        status: 'completed' as const,
+        result: `核验了${sourceBoundTechnique.summary}`,
+        diff: {
+          factId: sourceBoundTechnique.id,
+          verifiedTechnique: true,
+          verifiedSourceEventId: requestedVerification.sourceEventId,
+          verifiedMaterialId: stack.materialId,
+          verifiedStackId: stack.id,
+        },
+      };
+    }
     const record = stack.recordPayloadId ? state.records.find((candidate) => candidate.id === stack.recordPayloadId) : undefined;
     if (record) {
       let codebook = person.knowledge.find((fact) => fact.id === record.codebookId
@@ -295,33 +322,6 @@ export function executeAttend(
             learnedCodebookId: codebook.id,
             learnedCodebookConfidence: codebook.confidence,
           } : {}),
-        },
-      };
-    }
-    const requestedVerification = action.verification;
-    const sourceBoundTechnique = requestedVerification
-      ? person.knowledge.find((fact) => fact.id === requestedVerification.techniqueId
-        && fact.kind === 'technique'
-        && fact.sourceEventIds.includes(requestedVerification.sourceEventId))
-      : undefined;
-    if (requestedVerification
-      && sourceBoundTechnique
-      && stack.materialId === requestedVerification.expectedMaterialId
-      && stack.sourceEventIds.includes(requestedVerification.sourceEventId)) {
-      sourceBoundTechnique.confidence = clamp(Math.max(sourceBoundTechnique.confidence, 46) + 22);
-      sourceBoundTechnique.sourceEventIds = [...new Set([
-        ...sourceBoundTechnique.sourceEventIds,
-        eventId,
-      ])].slice(-24);
-      return {
-        status: 'completed' as const,
-        result: `核验了${sourceBoundTechnique.summary}`,
-        diff: {
-          factId: sourceBoundTechnique.id,
-          verifiedTechnique: true,
-          verifiedSourceEventId: requestedVerification.sourceEventId,
-          verifiedMaterialId: stack.materialId,
-          verifiedStackId: stack.id,
         },
       };
     }

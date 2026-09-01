@@ -10,7 +10,7 @@ const bundlePath = path.join(temporaryDirectory, 'shared-living.mjs');
 
 try {
   const entry = `
-    export { createInitialState } from ${JSON.stringify(path.resolve('src/game/eland/application/monthly-simulation.ts'))};
+    export { createInitialState } from ${JSON.stringify(path.resolve('src/game/eland/simulation-runtime.ts'))};
     export { buildDecisionContext } from ${JSON.stringify(path.resolve('src/game/eland/application/action-options.ts'))};
     export { advanceAgreementLifecycle } from ${JSON.stringify(path.resolve('src/game/eland/domain/agreement.ts'))};
     export { advanceSharedRelationshipExperience } from ${JSON.stringify(path.resolve('src/game/eland/domain/monthly-processes.ts'))};

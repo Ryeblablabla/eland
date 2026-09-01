@@ -71,7 +71,7 @@ voxelIndex = z * cellCount + cellId
 - `transfer`：物质在人物、地面和容器之间按精确来源移动。
 - `act`：对真实目标执行 `exert / separate / combine / expose / ingest / reproduce / hunt / dehydrate / rehydrate`。
 - `attend`：观察、阅读或验证真实目标。
-- `communicate`：提交有来源的手势、口头或实体记录沟通。
+- `talk`：提交有来源的手势、口头或实体记录沟通。
 
 每个动作都在提交时重新检查位置、距离、材料、授权、身体与目标状态。人物的意图只表达持续目标；客观完成必须由真实动作和后果证明。
 

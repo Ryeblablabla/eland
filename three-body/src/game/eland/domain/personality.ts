@@ -36,6 +36,7 @@ const MIN_EVIDENCE_MONTHS = 3;
 const MIN_EVIDENCE_CONTEXTS = 2;
 const MIN_EVIDENCE_STRENGTH = 120;
 const MAX_CHANGES_PER_ROLLING_YEAR = 2;
+const FOUNDER_PROTOTYPE_PRIOR_WEIGHT = 0.76;
 
 type PersonalityOwner = Pick<PersonState, 'id' | 'personality'>;
 
@@ -132,10 +133,51 @@ export function createPersonality(
   return { baseline, learnedDelta: { ...ZERO_VECTOR }, evidence: [], changes: [] };
 }
 
+function blendFounderPrior(sampled: number, prior: number): number {
+  return Math.round(clamp(
+    prior * FOUNDER_PROTOTYPE_PRIOR_WEIGHT + sampled * (1 - FOUNDER_PROTOTYPE_PRIOR_WEIGHT),
+    15,
+    85,
+  ));
+}
+
+/**
+ * Founder-only initialization. The dossier supplies a bounded temperament
+ * center while the seed preserves individual variation. Descendants continue
+ * to use createPersonality with parent baselines and never read a prototype.
+ */
+export function createFounderPersonality(
+  seed: number,
+  personId: string,
+  prototypeCenter: HexacoVector,
+): PersonalityState {
+  const sampled = createPersonality(seed, personId);
+  return {
+    ...sampled,
+    baseline: Object.fromEntries(HEXACO_TRAITS.map((trait) => [
+      trait,
+      blendFounderPrior(sampled.baseline[trait], prototypeCenter[trait]),
+    ])) as unknown as HexacoVector,
+  };
+}
+
 export function createMotiveSensitivity(seed: number, personId: string): MotiveSensitivity {
   return {
     control: centeredSample(seed, `motive:${personId}:control`),
     status: centeredSample(seed, `motive:${personId}:status`),
+  };
+}
+
+/** Founder-only motive prior; it does not alter descendant motive sampling. */
+export function createFounderMotiveSensitivity(
+  seed: number,
+  personId: string,
+  prototypeCenter: MotiveSensitivity,
+): MotiveSensitivity {
+  const sampled = createMotiveSensitivity(seed, personId);
+  return {
+    control: blendFounderPrior(sampled.control, prototypeCenter.control),
+    status: blendFounderPrior(sampled.status, prototypeCenter.status),
   };
 }
 
@@ -281,12 +323,11 @@ export function recordPersonalityEvidence(state: SimulationState, fact: ActionFa
     addEvidence(person, evidence(person, fact, 'conscientiousness', 1, 52, `fulfilled-transfer:${action.authorizationRef}`));
   }
 
-  if (action.kind === 'communicate') {
-    const content = action.content;
+  if (action.kind === 'talk') {
+    const content = action.speakerMeaning;
     const initiating = content.kind === 'claim' || content.kind === 'prediction' || content.kind === 'request' || content.kind === 'offer';
-    if (initiating && action.channel !== 'record') {
-      const audience = [...action.audience].sort().join(',') || 'public';
-      addEvidence(person, evidence(person, fact, 'extraversion', 1, 38, `social-initiation:${audience}`));
+    if (initiating) {
+      addEvidence(person, evidence(person, fact, 'extraversion', 1, 38, 'social-initiation:talk'));
     }
     if (content.kind === 'accept') {
       addEvidence(person, evidence(person, fact, 'agreeableness', 1, 32, `accepted-proposal:${content.referenceId}`));

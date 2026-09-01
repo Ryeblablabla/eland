@@ -12,14 +12,10 @@ import {
   communicationByRepresentationId,
   completedActionFactsForPerson,
   completedCommunications,
-  liveAgreementHistoryLeaseKey,
-  worldEventByIdWithRetainedLease,
+  worldEventById,
 } from './event-index';
 
 export function completedCommunicationFacts(state: SimulationState): ActionFact[] {
-  if ((state.world.historyCursor?.hotStartIndex ?? 0) > 0) {
-    throw new Error('有界历史状态不能把热窗口冒充完整 communication history');
-  }
   return [...completedCommunications(state)];
 }
 
@@ -32,19 +28,19 @@ export function communicationById(
 
 export function acceptanceOf(state: SimulationState, representationId: string, byPersonId?: PersonId): ActionFact | undefined {
   const visible = (byPersonId ? completedActionFactsForPerson(state, byPersonId) : completedCommunications(state))
-    .find((event) => event.action.kind === 'communicate'
-      && event.action.content.kind === 'accept'
-      && event.action.content.referenceId === representationId
+    .find((event) => event.action.kind === 'talk'
+      && event.action.speakerMeaning.kind === 'accept'
+      && event.action.speakerMeaning.referenceId === representationId
       && (!byPersonId || event.who === byPersonId));
   if (visible) return visible;
   const agreement = agreementById(state, representationId);
   if (agreement && (agreement.status === 'active' || agreement.status === 'proposed')) {
     const fact = agreement.responseEventId
-      ? communicationFact(state, agreement.responseEventId, agreement.id)
+      ? communicationFact(state, agreement.responseEventId)
       : undefined;
-    return fact?.action.kind === 'communicate'
-      && fact.action.content.kind === 'accept'
-      && fact.action.content.referenceId === representationId
+    return fact?.action.kind === 'talk'
+      && fact.action.speakerMeaning.kind === 'accept'
+      && fact.action.speakerMeaning.referenceId === representationId
       && (!byPersonId || fact.who === byPersonId)
       ? fact
       : undefined;
@@ -54,19 +50,19 @@ export function acceptanceOf(state: SimulationState, representationId: string, b
 
 export function rejectionOf(state: SimulationState, representationId: string, byPersonId?: PersonId): ActionFact | undefined {
   const visible = (byPersonId ? completedActionFactsForPerson(state, byPersonId) : completedCommunications(state))
-    .find((event) => event.action.kind === 'communicate'
-      && event.action.content.kind === 'reject'
-      && event.action.content.referenceId === representationId
+    .find((event) => event.action.kind === 'talk'
+      && event.action.speakerMeaning.kind === 'reject'
+      && event.action.speakerMeaning.referenceId === representationId
       && (!byPersonId || event.who === byPersonId));
   if (visible) return visible;
   const agreement = agreementById(state, representationId);
   if (agreement?.status === 'proposed') {
     const fact = agreement.responseEventId
-      ? communicationFact(state, agreement.responseEventId, agreement.id)
+      ? communicationFact(state, agreement.responseEventId)
       : undefined;
-    return fact?.action.kind === 'communicate'
-      && fact.action.content.kind === 'reject'
-      && fact.action.content.referenceId === representationId
+    return fact?.action.kind === 'talk'
+      && fact.action.speakerMeaning.kind === 'reject'
+      && fact.action.speakerMeaning.referenceId === representationId
       && (!byPersonId || fact.who === byPersonId)
       ? fact
       : undefined;
@@ -77,21 +73,16 @@ export function rejectionOf(state: SimulationState, representationId: string, by
 function communicationFact(
   state: SimulationState,
   eventId: string,
-  agreementId: string,
 ): ActionFact | undefined {
-  const fact = worldEventByIdWithRetainedLease(
-    state,
-    eventId,
-    liveAgreementHistoryLeaseKey(agreementId),
-  );
-  return fact?.kind === 'action' && fact.action.kind === 'communicate' ? fact : undefined;
+  const fact = worldEventById(state, eventId);
+  return fact?.kind === 'action' && fact.action.kind === 'talk' ? fact : undefined;
 }
 
 function agreementFacts(state: SimulationState, agreement: Agreement): { proposalFact: ActionFact; responseFact?: ActionFact } | null {
-  const proposalFact = communicationFact(state, agreement.proposalEventId, agreement.id);
+  const proposalFact = communicationFact(state, agreement.proposalEventId);
   if (!proposalFact) return null;
   const responseFact = agreement.responseEventId
-    ? communicationFact(state, agreement.responseEventId, agreement.id)
+    ? communicationFact(state, agreement.responseEventId)
     : undefined;
   return { proposalFact, responseFact };
 }
@@ -100,8 +91,8 @@ export function openReproductionOfferFor(state: SimulationState, personId: Perso
   const agreement = [...agreementsForPerson(state, personId)].reverse().find((item) => item.status === 'proposed' && item.proposal.kind === 'reproduce' && item.responderId === personId && agreementResponseDeadline(item, personId) >= state.clock.elapsedMonths);
   if (!agreement) return null;
   const facts = agreementFacts(state, agreement);
-  if (!facts || facts.proposalFact.action.kind !== 'communicate' || facts.proposalFact.action.content.kind !== 'offer') return null;
-  return { fact: facts.proposalFact, content: facts.proposalFact.action.content };
+  if (!facts || facts.proposalFact.action.kind !== 'talk' || facts.proposalFact.action.speakerMeaning.kind !== 'offer') return null;
+  return { fact: facts.proposalFact, content: facts.proposalFact.action.speakerMeaning };
 }
 
 export function acceptedReproductionBetween(state: SimulationState, a: PersonId, b: PersonId, atMonth: number): { offer: ActionFact; acceptance: ActionFact } | null {
@@ -115,8 +106,8 @@ export function openExchangeOfferFor(state: SimulationState, personId: PersonId)
   const agreement = [...agreementsForPerson(state, personId)].reverse().find((item) => item.status === 'proposed' && item.proposal.kind === 'exchange' && item.responderId === personId && agreementResponseDeadline(item, personId) >= state.clock.elapsedMonths);
   if (!agreement) return null;
   const facts = agreementFacts(state, agreement);
-  if (!facts || facts.proposalFact.action.kind !== 'communicate' || facts.proposalFact.action.content.kind !== 'offer') return null;
-  return { fact: facts.proposalFact, content: facts.proposalFact.action.content };
+  if (!facts || facts.proposalFact.action.kind !== 'talk' || facts.proposalFact.action.speakerMeaning.kind !== 'offer') return null;
+  return { fact: facts.proposalFact, content: facts.proposalFact.action.speakerMeaning };
 }
 
 export function acceptedExchangeFor(state: SimulationState, personId: PersonId, atMonth: number): { offer: ActionFact; acceptance: ActionFact; proposal: Extract<NonNullable<Extract<RepresentationInput, { kind: 'offer' }>['proposal']>, { kind: 'exchange' }> } | null {
@@ -137,32 +128,32 @@ export function openAssistRequestFor(state: SimulationState, personId: PersonId)
   const agreement = [...agreementsForPerson(state, personId)].reverse().find((item) => item.status === 'proposed' && item.proposal.kind === 'assist' && item.responderId === personId && agreementResponseDeadline(item, personId) >= state.clock.elapsedMonths);
   if (!agreement) return null;
   const facts = agreementFacts(state, agreement);
-  if (!facts || facts.proposalFact.action.kind !== 'communicate' || facts.proposalFact.action.content.kind !== 'request') return null;
-  return { fact: facts.proposalFact, content: facts.proposalFact.action.content };
+  if (!facts || facts.proposalFact.action.kind !== 'talk' || facts.proposalFact.action.speakerMeaning.kind !== 'request') return null;
+  return { fact: facts.proposalFact, content: facts.proposalFact.action.speakerMeaning };
 }
 
 export function openCompanionOfferFor(state: SimulationState, personId: PersonId): { fact: ActionFact; content: Extract<RepresentationInput, { kind: 'offer' }> } | null {
   const agreement = [...agreementsForPerson(state, personId)].reverse().find((item) => item.status === 'proposed' && item.proposal.kind === 'companion' && item.responderId === personId && agreementResponseDeadline(item, personId) >= state.clock.elapsedMonths);
   if (!agreement) return null;
   const facts = agreementFacts(state, agreement);
-  if (!facts || facts.proposalFact.action.kind !== 'communicate' || facts.proposalFact.action.content.kind !== 'offer') return null;
-  return { fact: facts.proposalFact, content: facts.proposalFact.action.content };
+  if (!facts || facts.proposalFact.action.kind !== 'talk' || facts.proposalFact.action.speakerMeaning.kind !== 'offer') return null;
+  return { fact: facts.proposalFact, content: facts.proposalFact.action.speakerMeaning };
 }
 
 export function openCollectiveOfferFor(state: SimulationState, personId: PersonId): { fact: ActionFact; content: Extract<RepresentationInput, { kind: 'offer' }> } | null {
   const agreement = [...agreementsForPerson(state, personId)].reverse().find((item) => item.status === 'proposed' && item.proposal.kind === 'collective' && item.responderId === personId && agreementResponseDeadline(item, personId) >= state.clock.elapsedMonths);
   if (!agreement) return null;
   const facts = agreementFacts(state, agreement);
-  if (!facts || facts.proposalFact.action.kind !== 'communicate' || facts.proposalFact.action.content.kind !== 'offer') return null;
-  return { fact: facts.proposalFact, content: facts.proposalFact.action.content };
+  if (!facts || facts.proposalFact.action.kind !== 'talk' || facts.proposalFact.action.speakerMeaning.kind !== 'offer') return null;
+  return { fact: facts.proposalFact, content: facts.proposalFact.action.speakerMeaning };
 }
 
 export function openPermissionOfferFor(state: SimulationState, personId: PersonId): { fact: ActionFact; content: Extract<RepresentationInput, { kind: 'offer' }> } | null {
   const agreement = [...agreementsForPerson(state, personId)].reverse().find((item) => item.status === 'proposed' && item.proposal.kind === 'permission' && item.responderId === personId && agreementResponseDeadline(item, personId) >= state.clock.elapsedMonths);
   if (!agreement) return null;
   const facts = agreementFacts(state, agreement);
-  if (!facts || facts.proposalFact.action.kind !== 'communicate' || facts.proposalFact.action.content.kind !== 'offer') return null;
-  return { fact: facts.proposalFact, content: facts.proposalFact.action.content };
+  if (!facts || facts.proposalFact.action.kind !== 'talk' || facts.proposalFact.action.speakerMeaning.kind !== 'offer') return null;
+  return { fact: facts.proposalFact, content: facts.proposalFact.action.speakerMeaning };
 }
 
 export function openMembershipOfferFor(state: SimulationState, personId: PersonId): { fact: ActionFact; content: Extract<RepresentationInput, { kind: 'offer' }> } | null {
@@ -174,8 +165,8 @@ export function openMembershipOfferFor(state: SimulationState, personId: PersonI
     && agreementResponseDeadline(item, personId) >= state.clock.elapsedMonths);
   if (!agreement) return null;
   const facts = agreementFacts(state, agreement);
-  if (!facts || facts.proposalFact.action.kind !== 'communicate' || facts.proposalFact.action.content.kind !== 'offer') return null;
-  return { fact: facts.proposalFact, content: facts.proposalFact.action.content };
+  if (!facts || facts.proposalFact.action.kind !== 'talk' || facts.proposalFact.action.speakerMeaning.kind !== 'offer') return null;
+  return { fact: facts.proposalFact, content: facts.proposalFact.action.speakerMeaning };
 }
 
 function openMultiMemberProposalFor(
@@ -191,8 +182,8 @@ function openMultiMemberProposalFor(
     && agreementResponseDeadline(item, personId) >= state.clock.elapsedMonths);
   if (!agreement) return null;
   const facts = agreementFacts(state, agreement);
-  if (!facts || facts.proposalFact.action.kind !== 'communicate' || facts.proposalFact.action.content.kind !== 'offer') return null;
-  return { fact: facts.proposalFact, content: facts.proposalFact.action.content };
+  if (!facts || facts.proposalFact.action.kind !== 'talk' || facts.proposalFact.action.speakerMeaning.kind !== 'offer') return null;
+  return { fact: facts.proposalFact, content: facts.proposalFact.action.speakerMeaning };
 }
 
 export function openDecisionRuleOfferFor(state: SimulationState, personId: PersonId) {
@@ -203,11 +194,22 @@ export function openMandateOfferFor(state: SimulationState, personId: PersonId) 
   return openMultiMemberProposalFor(state, personId, 'mandate');
 }
 
-export function hasOpenAssistRequestBetween(state: SimulationState, requesterId: PersonId, helperId: PersonId): boolean {
-  return agreementsForPerson(state, requesterId).some((agreement) => agreement.status === 'proposed'
+export function hasOpenAssistRequestBetween(
+  state: SimulationState,
+  requesterId: PersonId,
+  helperId: PersonId,
+  need?: 'water' | 'food' | 'shelter' | 'company',
+  atMonth = state.clock.elapsedMonths,
+): boolean {
+  return agreementsForPerson(state, requesterId).some((agreement) => (
+    agreement.status === 'proposed'
+      || agreement.status === 'active'
+      || agreement.proposedAtMonth === atMonth
+  )
     && agreement.proposal.kind === 'assist'
     && agreement.proposal.requesterId === requesterId
     && agreement.proposal.helperId === helperId
+    && (need === undefined || agreement.proposal.need === need)
     && agreementResponseDeadline(agreement, helperId) >= state.clock.elapsedMonths);
 }
 

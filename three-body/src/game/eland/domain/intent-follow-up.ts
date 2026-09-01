@@ -7,9 +7,9 @@ function targetPersonId(option: ActionOption): string | undefined {
 /** Only a grounded conversational opening may borrow a later physical action as its goal. */
 export function isGroundedConversationOpening(option: ActionOption): boolean {
   const action = option.nextAction;
-  return action.kind === 'communicate'
-    && action.content.kind === 'claim'
-    && action.content.conversation?.turn === 'opening';
+  return action.kind === 'talk'
+    && action.speakerMeaning.kind === 'claim'
+    && action.speakerMeaning.conversation?.turn === 'opening';
 }
 
 /**
@@ -20,8 +20,8 @@ export function isGroundedConversationOpening(option: ActionOption): boolean {
 export function followUpSemanticallyMatches(opening: ActionOption, followUp: ActionOption): boolean {
   if (!isGroundedConversationOpening(opening)) return false;
   const openingAction = opening.nextAction;
-  const conversation = openingAction.kind === 'communicate' && openingAction.content.kind === 'claim'
-    ? openingAction.content.conversation
+  const conversation = openingAction.kind === 'talk' && openingAction.speakerMeaning.kind === 'claim'
+    ? openingAction.speakerMeaning.conversation
     : undefined;
   // An ordinary social turn is complete in itself. Treating small talk as a
   // prelude to whichever physical option shares a broad founding source made
@@ -31,7 +31,7 @@ export function followUpSemanticallyMatches(opening: ActionOption, followUp: Act
   // at nextAction used to pair one conversation with an unrelated proposal in
   // completionAction (for example, "chat now, propose reproduction later").
   const finalAction = followUp.completionAction ?? followUp.nextAction;
-  if (finalAction.kind === 'communicate') return false;
+  if (finalAction.kind === 'talk') return false;
   if (opening.projectId && opening.projectId === followUp.projectId) return true;
   const openingTarget = targetPersonId(opening);
   if (openingTarget && openingTarget === targetPersonId(followUp)) return true;

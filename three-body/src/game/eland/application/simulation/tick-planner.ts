@@ -67,6 +67,42 @@ export function buildDecisionContextForPerson(
   const stage = lifePlanningStage(person, atMonth);
   return {
     ...context,
+    decisionMonth: atMonth,
+    planningTick: 1,
+    options: context.options.filter((option) => optionAllowedForLifeStage(stage, option)),
+    followUpOptions: context.followUpOptions.filter((option) => optionAllowedForLifeStage(stage, option)),
+  };
+}
+
+/** Compile a model/local review against facts already realized earlier this month. */
+export function buildCurrentMonthDecisionContext(
+  state: SimulationState,
+  person: PersonState,
+  atMonth: number,
+  planningTick: number,
+  events: WorldEvent[],
+): DecisionContext {
+  const planningState: SimulationState = {
+    ...state,
+    world: { ...state.world, past: [...state.world.past, ...events] },
+  };
+  registerPlanningEventOverlay(planningState, events, state.world.past);
+  const planningPerson = personById(planningState, person.id) ?? person;
+  const stage = lifePlanningStage(planningPerson, atMonth);
+  const context = buildDecisionContext(planningState, planningPerson, atMonth);
+  if (!personCanDecide(planningState, planningPerson, atMonth)) return {
+    ...context,
+    decisionMonth: atMonth,
+    planningTick,
+    currentMonthEvents: [...events],
+    options: [],
+    followUpOptions: [],
+  };
+  return {
+    ...context,
+    decisionMonth: atMonth,
+    planningTick,
+    currentMonthEvents: [...events],
     options: context.options.filter((option) => optionAllowedForLifeStage(stage, option)),
     followUpOptions: context.followUpOptions.filter((option) => optionAllowedForLifeStage(stage, option)),
   };
@@ -118,15 +154,15 @@ function currentMonthPlanningIndex(events: WorldEvent[], atMonth: number): Curre
       reviews.push(event);
       index.lifeReviewsByPerson.set(event.who, reviews);
     }
-    if (event.kind !== 'action' || event.status !== 'completed' || event.action.kind !== 'communicate') continue;
-    const content = event.action.content;
+    if (event.kind !== 'action' || event.status !== 'completed' || event.action.kind !== 'talk') continue;
+    const content = event.action.speakerMeaning;
     if (content.kind === 'claim' && content.conversation?.turn === 'opening') {
       const openings = index.groundedOpeningsByListener.get(content.conversation.listenerId) ?? [];
       openings.push(event);
       index.groundedOpeningsByListener.set(content.conversation.listenerId, openings);
     }
     if ((content.kind === 'request' || content.kind === 'offer') && content.proposal) {
-      for (const audienceId of event.action.audience) {
+      for (const audienceId of ((event.diff.understoodByPersonIds as string[] | undefined) ?? [])) {
         const proposals = index.socialProposalsByAudience.get(audienceId) ?? [];
         proposals.push(event);
         index.socialProposalsByAudience.set(audienceId, proposals);
@@ -320,13 +356,14 @@ export function planLocallyForTick(
   const currentMonthGroundedOpenings = planningIndex.groundedOpeningsByListener.get(person.id) ?? [];
   const currentMonthSocialProposals = planningIndex.socialProposalsByAudience.get(person.id) ?? [];
   const planningEvidence = planningIndex.events;
-  const planningState = planningEvidence.length ? { ...state } : state;
-  if (planningState !== state) registerPlanningEventOverlay(planningState, planningEvidence);
-  const planningPerson = personById(planningState, person.id) ?? person;
+  const planningContext = planningEvidence.length
+    ? buildCurrentMonthDecisionContext(state, person, atMonth, planningTick, planningEvidence)
+    : undefined;
   const hasCurrentMonthOpening = currentMonthGroundedOpenings.length > 0;
   const localOwnsVoluntarySocialChoices = planner.defersVoluntarySocialChoicesToModel !== true;
   let compiledContext: DecisionContext | undefined;
-  const contextForPlanning = (): DecisionContext => compiledContext ??= buildDecisionContext(planningState, planningPerson, atMonth);
+  const contextForPlanning = (): DecisionContext => compiledContext ??= planningContext
+    ?? buildDecisionContext(state, person, atMonth);
   const checkGroundedConversationResponse = localOwnsVoluntarySocialChoices
     && (!current || isResumableIntent(current))
     && (hasCurrentMonthOpening
@@ -383,7 +420,10 @@ export function planLocallyForTick(
   reviewedPeople.add(person.id);
   // Stable plans and genuinely empty affordance sets do not produce repetitive
   // "continue living" facts. The active intent is simply executed below.
-  if (decision.kind === 'idle' && !decision.characterAgendaUpdate) return;
+  if (decision.kind === 'idle' && !decision.characterAgendaUpdate) {
+    person.currentActionText = decision.reason;
+    return;
+  }
   events.push(applyDecision(
     state,
     person,

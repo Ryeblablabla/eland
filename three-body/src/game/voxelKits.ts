@@ -8,6 +8,7 @@
  * 纯数据模块，不依赖 three.js。
  */
 import type { EraKey, SocietyState } from './societyContract';
+import type { PixelWorldView } from './societyContract';
 import { biomeAt, treeSpeciesAt, type BiomeKey, type TreeSpeciesKey } from './eland/world/biome';
 import {
   WORLD_CELL_HEIGHT,
@@ -883,64 +884,6 @@ function kitTemplePreview(k: Kit, active = true): void {
   }
 }
 
-/**
- * 合并后的现代文明卡片：小型发电、导线与负载连成一条可读链路，旁侧保留
- * 中性天平和记录架。它只是一枚观察层象征印章；实际世界中的电网、测量和
- * 记录使用仍分别由权威网络、动作与项目事实投影，不能由这张卡片反推生成。
- */
-function kitElectricalKnowledgeStationPreview(k: Kit): void {
-  // 成熟聚落底座与开放式站棚。
-  k.m('stone', 0, 0, 0, 27, 1, 19, 0x77746e);
-  for (const [x, z] of [[-11, -7], [-11, 7], [11, -7], [11, 7]] as const)
-    k.m('stone', x, 1, z, 1.5, 9, 1.5, jit(0x85827c, hash01(x * 17 + z, 156)));
-  k.m('roofTile', 0, 10, 0, 25, 1, 17, 0x4a4f58);
-  k.m('plaster', 0, 9.3, 0, 23, 0.45, 15, 0xd5d0c4);
-
-  // 左侧微型发电机：静态飞轮、轴与铜色绕组，不使用世界设施动画。
-  k.m('dark', -7.2, 1, 0, 7.5, 1, 6, 0x41484b);
-  k.m('dark', -7.2, 2, 0, 5.2, 4, 4.4, 0x59666a);
-  for (let index = 0; index < 12; index += 1) {
-    const angle = index * Math.PI / 6;
-    k.m('dark', -10.1, 4.5 + Math.cos(angle) * 2.25, Math.sin(angle) * 2.25,
-      0.72, 0.72, 0.72, jit(0x596164, hash01(index, 157)));
-  }
-  k.m('dark', -10.1, 2.25, 0, 0.65, 4.5, 0.65, 0x596164);
-  k.m('dark', -10.1, 4.2, -2, 0.65, 0.65, 4, 0x596164);
-  for (const x of [-8.8, -7.8, -6.8, -5.8])
-    k.m('accent', x, 2.5, 2.28, 0.48, 3, 0.28, jit(0xc26e3f, hash01(Math.round(x * 10), 158)));
-
-  // 一条清晰的铜导线把发电机接到右侧小型有用负载。
-  k.m('organicDark', 0, 7, -3.2, 18, 0.75, 0.75, 0x584b43);
-  k.m('accent', 0, 7.15, -3.2, 20, 0.32, 0.32, 0xb76439);
-  for (const x of [-8, 0, 8]) {
-    k.m('plaster', x, 5.8, -3.2, 1.2, 1.2, 1.2, 0xd7cdb7);
-    k.m('dark', x, 4.1, -3.2, 0.55, 3.6, 0.55, 0x55595b);
-  }
-  k.m('stone', 7.6, 1, 0, 6.5, 1, 5.5, 0x69655e);
-  k.m('dark', 7.6, 2, 0, 4.6, 3.5, 3.7, 0x555b5e);
-  k.m('glowWarm', 7.6, 5.5, 0, 2.1, 2.1, 2.1, 0xffb85c);
-  k.m('plaster', 7.6, 7.6, 0, 1.15, 1.1, 1.15, 0xe5dcc8);
-
-  // 前方是中性测量台；两侧秤盘等高，不虚构任何具体读数。
-  k.m('wood', -4, 1, 6, 9, 1, 4.2, 0x765038);
-  k.m('organicDark', -4, 2, 6, 1, 3.8, 1, 0x563c2a);
-  k.m('wood', -4, 5.8, 6, 8.5, 0.55, 0.55, 0x92704a);
-  for (const x of [-7.5, -0.5]) {
-    k.m('dark', x, 4.3, 6, 0.25, 1.8, 0.25, 0x6a6d6e);
-    k.m('dark', x, 3.9, 6, 2.5, 0.3, 2.2, 0x777a7b);
-  }
-
-  // 右前方的记录架只表达信息可以被保存和再利用，不代表世界中新增了记录。
-  k.m('wood', 5.3, 1, 6.2, 7.5, 1, 3.6, 0x67482f);
-  for (const x of [2.5, 8.1]) k.m('organicDark', x, 2, 6.2, 0.8, 5.8, 0.8, 0x4e3822);
-  for (const y of [2.1, 4.2, 6.3]) k.m('wood', 5.3, y, 6.2, 6.4, 0.55, 3, 0x765038);
-  const recordColors = [0xb9894f, 0x9d6847, 0xc4a46a, 0x8e6d53, 0xb77b55];
-  recordColors.forEach((color, index) => k.m(
-    index % 2 === 0 ? 'accent' : 'plaster',
-    3.4 + index * 0.95, 4.75, 6.15, 0.65, 1.5 + (index % 2) * 0.4, 2.35, color,
-  ));
-}
-
 /** 西方中世纪城堡原型：并入古代文明后的铁器与防御建筑语汇。 */
 function kitCastlePreview(k: Kit, active = true): void {
   const width = 7;
@@ -982,7 +925,8 @@ const CIVILIZATION_STAGE_PREVIEWS: Record<string, { label: string; build: (k: Ki
   '农耕定居': { label: '风车磨坊', build: kitWindmillPreview },
   '古代文明': { label: '阶梯神庙', build: kitTemplePreview },
   '中世纪': { label: '城堡', build: kitCastlePreview },
-  '现代文明（含信息能力）': { label: '电力与知识站', build: kitElectricalKnowledgeStationPreview },
+  // Retired v7 stage labels render with the current highest-stage symbol.
+  '现代文明（含信息能力）': { label: '阶梯神庙', build: kitTemplePreview },
 };
 
 /**
@@ -1874,15 +1818,24 @@ function structureBounds(cellIds: number[], worldWidth: number): StructureBounds
   })[0];
 }
 
-/** 将房屋印章居中拟合进权威占地；已完工建筑可用少量挑檐扩展视觉轮廓，不额外生成地基。 */
+/** 房屋串联记录：完工住宅的占地、屋顶高与地面高，供相邻检测与连廊生成。 */
+interface HouseStampRecord {
+  bounds: StructureBounds;
+  topY: number;
+  groundY: number;
+  material: StructureMaterialKind;
+}
+
+/** 将房屋印章居中拟合进权威占地；已完工建筑可用少量挑檐扩展视觉轮廓，不额外生成地基。
+ *  返回放置后的世界包围盒（顶部高度供连廊檐口对齐），空印章返回 null。 */
 function placeStructureStamp(
   out: DecorInstance[], build: KitBuilder, bounds: StructureBounds,
   worldWidth: number, worldHeight: number, groundY: number, rot: number, r: number,
   decorativeOverhang = 0,
-): void {
+): { topY: number } | null {
   const stamp: DecorInstance[] = [];
   build(new Kit(stamp, 0, 0, 0, 1, rot), r);
-  if (!stamp.length) return;
+  if (!stamp.length) return null;
   const minX = Math.min(...stamp.map((inst) => inst.x - inst.sx / 2));
   const maxX = Math.max(...stamp.map((inst) => inst.x + inst.sx / 2));
   const minY = Math.min(...stamp.map((inst) => inst.y - inst.sy / 2));
@@ -1900,17 +1853,116 @@ function placeStructureStamp(
   // 水平可按真实矩形成为长屋；高度跟随较窄方向等比收缩，避免小占地房屋被拉成塔楼。
   // 仍限制为最多原始高度，较大的权威占地只会让住宅变宽、不会凭空增加楼层。
   const scaleY = Math.min(1, scaleX, scaleZ);
+  let topY = groundY;
   for (const inst of stamp) {
+    const placedY = groundY + (inst.y - minY) * scaleY;
     out.push({
       ...inst,
       x: targetCenterX + (inst.x - modelCenterX) * scaleX,
-      y: groundY + (inst.y - minY) * scaleY,
+      y: placedY,
       z: targetCenterZ + (inst.z - modelCenterZ) * scaleZ,
       sx: inst.sx * scaleX,
       sy: inst.sy * scaleY,
       sz: inst.sz * scaleZ,
     });
+    topY = Math.max(topY, placedY + (inst.sy * scaleY) / 2);
   }
+  return { topY };
+}
+
+/**
+ * 房屋串联连廊：两栋直接相邻（占地边线相贴）的完工住宅之间生成门槛压条、
+ * 端柱与共用檐口，把两家的材质在视觉上连成一体——与道路八向邻接同源的装饰层读法，
+ * 只读取已完工结构事实，不改变通行、领域状态或观察器。
+ */
+function emitHouseLink(
+  out: DecorInstance[],
+  A: HouseStampRecord,
+  B: HouseStampRecord,
+  axis: 'x' | 'z',
+  overlapMin: number,
+  overlapMax: number,
+  w: PixelWorldView,
+): void {
+  const along = axis === 'z'; // 纵向接缝（A 左 B 右），连廊沿 z 延伸
+  const seamPos = along ? A.bounds.maxX + 1 - w.width / 2 : A.bounds.maxY + 1 - w.height / 2;
+  const spanStart = overlapMin - (along ? w.height / 2 : w.width / 2);
+  const spanLen = overlapMax - overlapMin + 1;
+  const spanCenter = spanStart + spanLen / 2;
+  const groundY = Math.min(A.groundY, B.groundY);
+  const eaveY = Math.min(A.topY, B.topY) - 0.42;
+  const stoneBoth = A.material === 'stone' && B.material === 'stone';
+  const wallBucket: DecorBucket = stoneBoth ? 'stone' : 'wood';
+  const wallColor = stoneBoth ? 0x777872 : 0x6b4a2e;
+  const postColor = stoneBoth ? 0x5f5f5a : 0x4e3822;
+  const roofColor = stoneBoth ? 0x5a5560 : 0x5a4030;
+  // 门槛压条：两家之间一条连续的地面连接带
+  out.push({
+    b: wallBucket,
+    x: along ? seamPos : spanCenter,
+    y: groundY + 0.06,
+    z: along ? spanCenter : seamPos,
+    sx: along ? 0.9 : spanLen,
+    sy: 0.12,
+    sz: along ? spanLen : 0.9,
+    c: wallColor,
+  });
+  // 端柱：连廊两端的支撑，视觉上把檐口"挂"在两栋房子之间
+  for (const end of [spanStart + 0.15, spanStart + spanLen - 0.15]) {
+    out.push({
+      b: 'wood',
+      x: along ? seamPos : end,
+      y: groundY + 1.05,
+      z: along ? end : seamPos,
+      sx: 0.22,
+      sy: 2.1,
+      sz: 0.22,
+      c: postColor,
+    });
+  }
+  // 共用檐口：把两家的屋顶下沿连成一条，与道路接缝同理读作"连在一起"
+  out.push({
+    b: 'roofTile',
+    x: along ? seamPos : spanCenter,
+    y: eaveY,
+    z: along ? spanCenter : seamPos,
+    sx: along ? 1.15 : spanLen + 0.4,
+    sy: 0.24,
+    sz: along ? spanLen + 0.4 : 1.15,
+    c: roofColor,
+  });
+}
+
+/** 两栋完工住宅的串联检测：正交边线相贴且重叠至少一格。 */
+function collectHouseLinks(
+  out: DecorInstance[],
+  houses: readonly HouseStampRecord[],
+  w: PixelWorldView,
+): void {
+  const linkStart = out.length;
+  for (let a = 0; a < houses.length; a++) {
+    for (let b = a + 1; b < houses.length; b++) {
+      const A = houses[a];
+      const B = houses[b];
+      // 纵向接缝：一家在左一家在右
+      if (A.bounds.maxX + 1 === B.bounds.minX || B.bounds.maxX + 1 === A.bounds.minX) {
+        const left = A.bounds.maxX < B.bounds.minX ? A : B;
+        const right = left === A ? B : A;
+        const overlapMin = Math.max(left.bounds.minY, right.bounds.minY);
+        const overlapMax = Math.min(left.bounds.maxY, right.bounds.maxY);
+        if (overlapMax >= overlapMin) emitHouseLink(out, left, right, 'z', overlapMin, overlapMax, w);
+      }
+      // 横向接缝：一家在上一家在下
+      if (A.bounds.maxY + 1 === B.bounds.minY || B.bounds.maxY + 1 === A.bounds.minY) {
+        const up = A.bounds.maxY < B.bounds.minY ? A : B;
+        const down = up === A ? B : A;
+        const overlapMin = Math.max(up.bounds.minX, down.bounds.minX);
+        const overlapMax = Math.min(up.bounds.maxX, down.bounds.maxX);
+        if (overlapMax >= overlapMin) emitHouseLink(out, up, down, 'x', overlapMin, overlapMax, w);
+      }
+    }
+  }
+  if (out.length > linkStart) markSettlementEraLayer(out, linkStart);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2595,6 +2647,7 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
   }
 
   // 建筑 → 文明印章（规模决定形制）
+  const completedHouses: HouseStampRecord[] = [];
   for (const st of renderedStructures) {
     if (!st.occupiedCells.length) continue;
     const settlementStart = out.length;
@@ -2660,9 +2713,12 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
     const depth = bounds.maxY - bounds.minY + 1;
     const flip = r < 0.5 ? 0 : 2;
     const rot = ((depth > width ? 1 : 0) + flip) % 4;
-    placeStructureStamp(out, build, bounds, w.width, w.height, groundY, rot, r, 0.16);
+    const placed = placeStructureStamp(out, build, bounds, w.width, w.height, groundY, rot, r, 0.16);
+    if (placed) completedHouses.push({ bounds, topY: placed.topY, groundY, material });
     markSettlementEraLayer(out, settlementStart);
   }
+  // 房屋串联：直接相邻的完工住宅生成共用檐廊，材质在装饰层连为一体。
+  collectHouseLinks(out, completedHouses, w);
 
   // 动物
   for (const a of society.animals) {

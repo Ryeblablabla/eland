@@ -11,7 +11,8 @@ export interface MonthlyDecisionUsage {
   ordinaryChargedTokens?: number;
 }
 
-export const ORDINARY_DECISION_PERSON_MONTHS = 3;
+/** One slow cognitive turn per living person-month before rolling deductions. */
+export const ORDINARY_DECISION_PERSON_MONTHS = 1;
 
 /** Local rule planning is cheap, but bounded so short intents cannot churn through all 15 ticks. */
 export const ORDINARY_LOCAL_DELIBERATIONS_PER_PERSON_MONTH = 2;

@@ -58,6 +58,40 @@ export async function completeLongEvolution(
 }
 
 /**
+ * Publish a failed evolution path from the last state root that SQLite
+ * actually committed. `stepOwned` mutates its controller-owned object in
+ * place, so the object visible to a catch block may contain a partial next
+ * month even though its clock/checkpoint never committed. Never persist that
+ * object from the failure path.
+ */
+export async function persistLongEvolutionFailure(
+  store: EvolutionExecutionStore,
+  id: string,
+  previous: EvolutionPath,
+  initialPath: EvolutionPath,
+  requestedEndMonth: number,
+  inputTokens: number,
+  outputTokens: number,
+  error: unknown,
+): Promise<EvolutionPath> {
+  const authoritative = await store.load(id);
+  const state = authoritative.state;
+  const failed = evolvePath(state, {
+    runId: id,
+    provider: 'local',
+    model: previous.model,
+    fromMonth: initialPath.fromMonth,
+    requestedEndMonth,
+    previous,
+    checkpoint: checkpointFor(state, { inputTokens, outputTokens }, previous.checkpoints.at(-1)),
+    status: 'failed',
+    failure: error instanceof Error ? error.message : String(error),
+  });
+  await store.saveEvolutionPath(id, failed);
+  return failed;
+}
+
+/**
  * Executes one authoritative run inside the process that owns `store`.
  * The HTTP backend calls this through a Worker so CPU work, projections, and
  * synchronous SQLite encoding cannot block request handling.
@@ -130,18 +164,15 @@ export async function executeLongEvolutionFromOwnedState(
     }
     await completeLongEvolution(store, id, persisted, path, requestedEndMonth);
   } catch (error) {
-    await store.save(id, persisted, undefined, { historyMode: 'append' });
-    path = evolvePath(persisted, {
-      runId: id,
-      provider: 'local',
-      model: path.model,
-      fromMonth: initialPath.fromMonth,
+    path = await persistLongEvolutionFailure(
+      store,
+      id,
+      path,
+      initialPath,
       requestedEndMonth,
-      previous: path,
-      checkpoint: checkpointFor(persisted, { inputTokens, outputTokens }, path.checkpoints.at(-1)),
-      status: 'failed',
-      failure: error instanceof Error ? error.message : String(error),
-    });
-    await store.saveEvolutionPath(id, path);
+      inputTokens,
+      outputTokens,
+      error,
+    );
   }
 }

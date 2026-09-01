@@ -1,12 +1,5 @@
 import { type CSSProperties, type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Check, ChevronRight, Pencil, Plus, Trash2, X } from 'lucide-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import type {
   EvolutionMode,
   ModelAuth,
@@ -23,7 +16,6 @@ import type {
   CivilizationIndexHistoryPoint,
   CivilizationIndexView,
   ElandSaveSummary,
-  ModernCivilizationAchievementView,
 } from '@/game/societyContract';
 import { STAR_STYLES } from '@/lib/threebody';
 import { civilizationStagePreview } from '@/game/voxelKits';
@@ -322,63 +314,6 @@ function niceChartCeiling(value: number): number {
   return step * magnitude;
 }
 
-export function ModernCivilizationAchievement({
-  achievement,
-}: {
-  achievement: ModernCivilizationAchievementView;
-}) {
-  const statusLabel = achievement.status === 'candidate'
-    ? '现代事实已汇合'
-    : achievement.status === 'historical-achievement'
-      ? '历史最高成就'
-      : '现代文明已达成';
-  const disclosureLabel = achievement.status === 'candidate'
-    ? `${achievement.observedFactCount} / ${achievement.requiredFactCount} 项`
-    : achievement.status === 'historical-achievement'
-      ? '曾达成'
-      : '已达成';
-  return (
-    <details className="civilization-index__achievement">
-      <summary aria-label={`展开现代文明成就，${statusLabel}`}>
-        <span>
-          <small>现代文明成就</small>
-          <strong>{statusLabel}</strong>
-        </span>
-        <span className="civilization-index__achievement-disclosure">
-          {disclosureLabel}
-          <ChevronRight aria-hidden="true" size={14} strokeWidth={1.7} />
-        </span>
-      </summary>
-      <div className="civilization-index__achievement-body">
-        <p>这不是待办清单，而是这支文明已经留下的事实。</p>
-        <ul aria-label="现代文明历史事实">
-          {achievement.facts.map((fact) => (
-            <li className={fact.observed ? 'is-observed' : undefined} key={fact.key}>
-              <i aria-hidden="true">{fact.observed ? '✓' : '·'}</i>
-              <span>{fact.label}</span>
-              <small>{fact.observed ? '已见证' : '本次观察未保留'}</small>
-            </li>
-          ))}
-        </ul>
-        <div className="civilization-index__achievement-progress">
-          <span>事实闭环</span>
-          <strong>{achievement.observedFactCount} / {achievement.requiredFactCount} 项</strong>
-          <span
-            aria-label={`现代文明事实闭环 ${achievement.observedFactCount} / ${achievement.requiredFactCount} 项`}
-            aria-valuemax={achievement.requiredFactCount}
-            aria-valuemin={0}
-            aria-valuenow={achievement.observedFactCount}
-            className="civilization-index__achievement-track"
-            role="progressbar"
-          >
-            <i style={{ width: `${achievement.progress * 100}%` }} />
-          </span>
-        </div>
-      </div>
-    </details>
-  );
-}
-
 function CivilizationIndexChart({
   index,
   history,
@@ -577,9 +512,6 @@ function CivilizationIndexChart({
             );
           })}
         </dl>
-        {index.modernAchievement && (
-          <ModernCivilizationAchievement achievement={index.modernAchievement} />
-        )}
       </div>
     </aside>
   );
@@ -1395,30 +1327,19 @@ export default function ImmersiveInterface({
                           <div className="model-field" key={purpose}>
                             <span id={labelId}>{MODEL_PURPOSE_LABELS[purpose]}</span>
                             <span>
-                              <Select
+                              <select
+                                aria-labelledby={labelId}
+                                className="model-select__trigger"
                                 disabled={!modelSettings.editable || modelSettingsStatus === 'saving'}
-                                onValueChange={(endpointId) => onModelRouteChange(purpose, endpointId)}
+                                onChange={(event) => onModelRouteChange(purpose, event.currentTarget.value)}
                                 value={modelRouteDraft[purpose]}
                               >
-                                <SelectTrigger
-                                  aria-labelledby={labelId}
-                                  className="model-select__trigger"
-                                >
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent
-                                  align="start"
-                                  className="model-select__content"
-                                  position="popper"
-                                  sideOffset={4}
-                                >
-                                  {modelSettings.endpoints.filter((endpoint) => endpoint.configured && endpoint.verified).map((endpoint) => (
-                                    <SelectItem className="model-select__item" key={endpoint.id} value={endpoint.id}>
-                                      {endpoint.id} · {endpoint.model}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                {modelSettings.endpoints.filter((endpoint) => endpoint.configured && endpoint.verified).map((endpoint) => (
+                                  <option key={endpoint.id} value={endpoint.id}>
+                                    {endpoint.id} · {endpoint.model}
+                                  </option>
+                                ))}
+                              </select>
                             </span>
                           </div>
                         );

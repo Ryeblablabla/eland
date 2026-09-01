@@ -27,8 +27,12 @@ import {
   recurringDutyProjectMatchesSubject,
   type DecisionRule,
 } from '../domain/governance';
-import { activePermissionsFor } from '../domain/permission';
-import { findReachableWater } from '../domain/water-access';
+import {
+  activePermissionsFor,
+  inferPermissionUseBasis,
+  PERSONAL_RESERVE_UNITS,
+} from '../domain/permission';
+import { findReachableWater, moveTowardWaterAccess } from '../domain/water-access';
 import {
   buildRelationshipCausalBasis,
   canOfferRelationshipProposal,
@@ -40,7 +44,10 @@ import { personalityScore } from '../domain/personality';
 import {
   liveSocialEvidenceForPersonSource,
 } from '../domain/event-index';
-import { agreementById, agreementsForPerson } from '../domain/agreement';
+import {
+  agreementById,
+  agreementsForPerson,
+} from '../domain/agreement';
 import { intentsOwnedBy, personById } from '../domain/state-index';
 import {
   companionReturnRequired,
@@ -229,9 +236,9 @@ function assistAlreadyPerformedBy(
 
 function responseOption(state: SimulationState, person: PersonState, referenceId: string, other: PersonState, accept: boolean, kind: 'assist' | 'companion' | 'collective' | 'permission' | 'decision-rule' | 'mandate'): ActionOption {
   const representationId = `${accept ? 'accept' : 'reject'}:${referenceId}:${person.id}`;
-  const response = { kind: 'communicate' as const, content: accept
+  const response = { kind: 'talk' as const, speakerMeaning: accept
     ? { id: representationId, kind: 'accept' as const, referenceId }
-    : { id: representationId, kind: 'reject' as const, referenceId }, audience: [other.id], channel: 'voice' as const };
+    : { id: representationId, kind: 'reject' as const, referenceId } };
   const together = positionsWithinVoiceRange(person.position, other.position);
   const rendezvous = conversationalRendezvous(state, person, other);
   const target = rendezvous?.position ?? other.position;
@@ -297,20 +304,17 @@ function membershipResponseOption(state: SimulationState, person: PersonState, r
     reason: '共同体成员扩张需要候选人与所有现有成员分别作出有来源的回应',
     goal: { kind: 'representation-made', representationId },
     nextAction: together ? {
-      kind: 'communicate',
-      content: accept
+      kind: 'talk',
+      speakerMeaning: accept
         ? { id: representationId, kind: 'accept', referenceId, summary }
         : { id: representationId, kind: 'reject', referenceId, summary },
-      audience: [proposer.id],
-      channel: 'voice',
     } : { kind: 'move', toCellId: target.cellId, toZ: target.z },
     ...(!together ? {
       completionAction: {
-        kind: 'communicate' as const,
-        content: accept
+        kind: 'talk' as const,
+        speakerMeaning: accept
           ? { id: representationId, kind: 'accept' as const, referenceId, summary }
           : { id: representationId, kind: 'reject' as const, referenceId, summary },
-        audience: [proposer.id], channel: 'voice' as const,
       },
     } : {}),
     target: { kind: 'person', personId: proposer.id },
@@ -402,8 +406,8 @@ export function buildSocialOptions(
   const acceptedAssist = acceptedAssistFor(state, person.id, atMonth);
   if (acceptedAssist) {
     const requester = personById(state, acceptedAssist.proposal.requesterId);
-    const agreementId = acceptedAssist.request.action.kind === 'communicate'
-      ? acceptedAssist.request.action.content.id
+    const agreementId = acceptedAssist.request.action.kind === 'talk'
+      ? acceptedAssist.request.action.speakerMeaning.id
       : undefined;
     const alreadyHelped = agreementId
       ? assistAlreadyPerformedBy(state, agreementId, person.id)
@@ -434,7 +438,7 @@ export function buildSocialOptions(
         summary: `履行承诺，把食物交给${requester.name}`,
         reason: '自己已经在对话中接受对方的求助',
         goal: { kind: 'inventory-at-least', materialId: food.materialId, quantity: inventoryQuantity(requester, food.materialId) + 1, personId: requester.id },
-        nextAction: { kind: 'transfer', materialId: food.materialId, quantity: 1, from: { kind: 'person', personId: person.id }, to: { kind: 'person', personId: requester.id }, stackId: food.id, authorizationRef: acceptedAssist.request.action.kind === 'communicate' ? acceptedAssist.request.action.content.id : undefined },
+        nextAction: { kind: 'transfer', materialId: food.materialId, quantity: 1, from: { kind: 'person', personId: person.id }, to: { kind: 'person', personId: requester.id }, stackId: food.id, authorizationRef: acceptedAssist.request.action.kind === 'talk' ? acceptedAssist.request.action.speakerMeaning.id : undefined },
         target: { kind: 'person', personId: requester.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
         risks: [], domain: 'social', sourceFactIds: [acceptedAssist.request.id, acceptedAssist.acceptance.id],
         semantics: commitmentActionSemantics('adolescent', ['commitment', 'care', 'reserve'], {
@@ -462,8 +466,8 @@ export function buildSocialOptions(
           reason: '已经接受寻找水的求助，附近存在可达水源',
           goal: alreadyAtWater ? { kind: 'representation-made', representationId } : { kind: 'at-cell', cellId: water.bankPosition.cellId },
           nextAction: alreadyAtWater
-            ? { kind: 'communicate', content: { id: representationId, kind: 'claim', summary: '水就在我们身边，可以在这里饮用' }, audience: [requester.id], channel: 'voice' }
-            : { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z },
+            ? { kind: 'talk', speakerMeaning: { id: representationId, kind: 'claim', summary: '水就在我们身边，可以在这里饮用' } }
+            : moveTowardWaterAccess(water, atMonth),
           target: { kind: 'person', personId: requester.id },
           estimatedDuration: water.pathLength <= RULE_ACTION_TICKS_PER_MONTH ? 'one-month' : 'several-months',
           estimatedMonths: Math.max(1, Math.ceil((water.pathLength - 1) / RULE_ACTION_TICKS_PER_MONTH)),
@@ -479,7 +483,7 @@ export function buildSocialOptions(
           id: representationId,
           summary: `回应${requester.name}并共同判断下一步`, reason: '已经接受求助，但当前没有可直接交付的物质',
           goal: { kind: 'representation-made', representationId },
-          nextAction: { kind: 'communicate', content: { id: representationId, kind: 'claim', summary: acceptedAssist.proposal.need === 'water' ? '我会和你一起寻找附近的水' : '我会陪你一起设法解决眼前困难' }, audience: [requester.id], channel: 'voice' },
+          nextAction: { kind: 'talk', speakerMeaning: { id: representationId, kind: 'claim', summary: acceptedAssist.proposal.need === 'water' ? '我会和你一起寻找附近的水' : '我会陪你一起设法解决眼前困难' } },
           target: { kind: 'person', personId: requester.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
           risks: [], domain: 'social', sourceFactIds: [acceptedAssist.request.id, acceptedAssist.acceptance.id],
           semantics: commitmentActionSemantics('adolescent', ['commitment', 'care'], {
@@ -504,9 +508,8 @@ export function buildSocialOptions(
         reason: '共同生活关系持续有效但不剥夺任何一方退出的能力；退出必须由本人当面表达',
         goal: { kind: 'representation-made', representationId },
         nextAction: {
-          kind: 'communicate',
-          content: { id: representationId, kind: 'revoke-agreement', referenceId: companionship.id, summary: '我决定结束我们的共同生活关系' },
-          audience: [partner.id], channel: 'voice',
+          kind: 'talk',
+          speakerMeaning: { id: representationId, kind: 'revoke-agreement', referenceId: companionship.id, summary: '我决定结束我们的共同生活关系' },
         },
         target: { kind: 'person', personId: partner.id },
         estimatedDuration: 'one-month', estimatedMonths: 1,
@@ -529,6 +532,7 @@ export function buildSocialOptions(
       target: { kind: 'voxel', position: { x: cellX(target.cellId), y: cellY(target.cellId), z: target.z } },
       estimatedDuration: 'several-months',
       estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)),
+      completionPolicy: { kind: 'maintain-state', durationMonths: 2 },
       risks: [], domain: 'social', sourceFactIds: [...companionship.sourceEventIds],
       semantics: commitmentActionSemantics('adolescent', ['commitment', 'belonging'], {
         cooperationKind: 'companion', phase: 'continuation', counterpartIds: partnerId ? [partnerId] : [],
@@ -562,9 +566,15 @@ export function buildSocialOptions(
     if (proposer) {
       const responseBasis = buildRelationshipCausalBasis(state, person, proposer, 'companion', atMonth);
       if (hasCultivatedCompanionRelationship(state, person, proposer, responseBasis)) {
-        options.push(responseOption(state, person, incomingCompanion.content.id, proposer, true, 'companion'));
+        options.push({
+          ...responseOption(state, person, incomingCompanion.content.id, proposer, true, 'companion'),
+          relationshipBasis: responseBasis,
+        });
       }
-      options.push(responseOption(state, person, incomingCompanion.content.id, proposer, false, 'companion'));
+      options.push({
+        ...responseOption(state, person, incomingCompanion.content.id, proposer, false, 'companion'),
+        relationshipBasis: responseBasis,
+      });
     }
   }
   const incomingCollective = openCollectiveOfferFor(state, person.id);
@@ -637,8 +647,8 @@ export function buildSocialOptions(
     const representationId = `offer-collective:${atMonth}:${person.id}:${visibleJointPartner.id}`;
     const purposeSummary = `继续协作完成${sharedProject.kind === 'construction' ? '共同住所与环境改造' : '共同生产目标'}`;
     const offer = {
-      kind: 'communicate' as const,
-      content: {
+      kind: 'talk' as const,
+      speakerMeaning: {
         id: representationId,
         kind: 'offer' as const,
         summary: `我们已经一起完成过“${sharedProject.summary}”，愿不愿意以后继续${purposeSummary}？`,
@@ -650,7 +660,6 @@ export function buildSocialOptions(
           expiresAtMonth: atMonth + 6,
         },
       },
-      audience: [visibleJointPartner.id], channel: 'voice' as const,
     };
     const path = findStandingPath(state.world.grid, person.position, visibleJointPartner.position);
     if (path.length) options.push({
@@ -687,42 +696,72 @@ export function buildSocialOptions(
         summary: `向${localMember.name}声明退出共同体`,
         reason: '共同体内部的低信任或恐惧已经超过继续维持成员关系的收益',
         goal: { kind: 'representation-made', representationId },
-        nextAction: { kind: 'communicate', content: { id: representationId, kind: 'withdraw', collectiveId: collective.id, summary: '我不再作为这个共同体的成员继续行动' }, audience: [localMember.id], channel: 'voice' },
+        nextAction: { kind: 'talk', speakerMeaning: { id: representationId, kind: 'withdraw', collectiveId: collective.id, summary: '我不再作为这个共同体的成员继续行动' } },
         target: { kind: 'person', personId: localMember.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
         risks: [], domain: 'social', sourceFactIds: [...collective.sourceEventIds, ...(relationTo(person, localMember.id)?.sourceEventIds ?? [])],
       });
     }
     for (const permissionMember of localMembers) {
-      const ownShareable = person.inventory.find((stack) => stack.quantity >= 2
-        && !state.permissions.some((permission) => permission.status === 'active'
-          && permission.collectiveId === collective.id
-          && permission.grantorId === person.id
-          && permission.granteeId === permissionMember.id
-          && permission.materialId === stack.materialId)
-        && !agreementsForPerson(state, person.id).some((agreement) => agreement.status === 'proposed'
-          && agreement.proposal.kind === 'permission'
-          && agreement.proposal.grantorId === person.id
-          && agreement.proposal.granteeId === permissionMember.id
-          && agreement.proposal.materialId === stack.materialId));
-      if (ownShareable) {
-        const representationId = `offer-permission:${atMonth}:${collective.id}:${person.id}:${permissionMember.id}:${ownShareable.materialId}`;
+      const accessOpportunity = person.inventory
+        .filter((stack) => stack.quantity >= 2
+          && !state.permissions.some((permission) => permission.status === 'active'
+            && permission.collectiveId === collective.id
+            && permission.grantorId === person.id
+            && permission.granteeId === permissionMember.id
+            && permission.materialId === stack.materialId)
+          && !agreementsForPerson(state, person.id).some((agreement) => agreement.status === 'proposed'
+            && agreement.proposal.kind === 'permission'
+            && agreement.proposal.grantorId === person.id
+            && agreement.proposal.granteeId === permissionMember.id
+            && agreement.proposal.materialId === stack.materialId))
+        .flatMap((stack) => {
+          const representationId = `offer-permission:${atMonth}:${collective.id}:${person.id}:${permissionMember.id}:${stack.materialId}`;
+          const sourceEventIds = [...new Set([
+            ...collective.sourceEventIds,
+            ...stack.sourceEventIds,
+          ])];
+          const permissionId = `permission:${representationId}`;
+          const useBasis = inferPermissionUseBasis(state, {
+            id: permissionId,
+            collectiveId: collective.id,
+            grantorId: person.id,
+            granteeId: permissionMember.id,
+            materialId: stack.materialId,
+            maxQuantityPerTransfer: 1,
+            validFromMonth: atMonth,
+            validUntilMonth: atMonth + 24,
+            status: 'active',
+            proposalAgreementId: representationId,
+            sourceEventIds,
+            useEventIds: [],
+          }, permissionMember, person);
+          return useBasis ? [{ stack, representationId, sourceEventIds, useBasis }] : [];
+        })
+        .sort((left, right) => Number(right.useBasis.kind === 'project-demand')
+          - Number(left.useBasis.kind === 'project-demand')
+          || (right.useBasis.requiredQuantity - right.useBasis.receiverQuantity)
+            - (left.useBasis.requiredQuantity - left.useBasis.receiverQuantity)
+          || left.stack.materialId - right.stack.materialId)[0];
+      if (accessOpportunity) {
+        const { stack: ownShareable, representationId, sourceEventIds, useBasis } = accessOpportunity;
         options.push({
           id: representationId,
           summary: `允许${permissionMember.name}在需要时取用自己的${materialDefinition(ownShareable.materialId).name}`,
-          reason: '彼此已有持续成员身份，可以明确协商具体物质的取用边界',
+          reason: useBasis.kind === 'project-demand'
+            ? '彼此已有持续成员身份；对方正在承担的项目存在精确材料缺口，而本人扣除自身需求后仍有剩余，可以协商持续取用边界'
+            : '彼此已有持续成员身份；对方储备低于个人缓冲而本人高于缓冲，可以协商持续取用边界',
           goal: { kind: 'representation-made', representationId },
           nextAction: {
-            kind: 'communicate',
-            content: { id: representationId, kind: 'offer', summary: `你可以在需要时每次取用我的一份${materialDefinition(ownShareable.materialId).name}`, proposal: {
+            kind: 'talk',
+            speakerMeaning: { id: representationId, kind: 'offer', summary: `你可以在需要时每次取用我的一份${materialDefinition(ownShareable.materialId).name}`, proposal: {
               kind: 'permission', proposerId: person.id, partnerId: permissionMember.id,
               collectiveId: collective.id, grantorId: person.id, granteeId: permissionMember.id,
               materialId: ownShareable.materialId, maxQuantityPerTransfer: 1,
               validUntilMonth: atMonth + 24, expiresAtMonth: atMonth + 6,
             } },
-            audience: [permissionMember.id], channel: 'voice',
           },
           target: { kind: 'person', personId: permissionMember.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
-          risks: [], domain: 'social', sourceFactIds: [...collective.sourceEventIds, ...ownShareable.sourceEventIds],
+          risks: [], domain: 'social', sourceFactIds: [...new Set([...sourceEventIds, ...useBasis.sourceFactIds])],
         });
       }
     }
@@ -761,8 +800,8 @@ export function buildSocialOptions(
         reason: '本人在不同月份亲历同一成员两次完成相同项目职责，且现在已有第三个同类项目需要继续承担；规则只约定如何限期授权',
         goal: { kind: 'representation-made', representationId },
         nextAction: {
-          kind: 'communicate',
-          content: {
+          kind: 'talk',
+          speakerMeaning: {
             id: representationId,
             kind: 'offer',
             summary: `今后为${practice.projectDuty.desiredFunction}项目限期指定承担者，必须每位成员都明确同意`,
@@ -779,8 +818,6 @@ export function buildSocialOptions(
               expiresAtMonth: atMonth + 6,
             },
           },
-          audience: requiredMemberApprovals,
-          channel: 'voice',
         },
         target: { kind: 'person', personId: practice.targetPersonId },
         estimatedDuration: 'one-month',
@@ -833,14 +870,13 @@ export function buildSocialOptions(
           reason: '共同体成员对同一种必需物的持有明显不均，且已经出现身体或项目需求；需要先共同接受如何选择临时协调者',
           goal: { kind: 'representation-made', representationId },
           nextAction: {
-            kind: 'communicate',
-            content: { id: representationId, kind: 'offer', summary: `以后由谁临时协调${materialDefinition(materialId).name}，必须每位成员都明确同意`, proposal: {
+            kind: 'talk',
+            speakerMeaning: { id: representationId, kind: 'offer', summary: `以后由谁临时协调${materialDefinition(materialId).name}，必须每位成员都明确同意`, proposal: {
               kind: 'decision-rule', proposerId: person.id, partnerId: requiredMemberApprovals[0]!,
               collectiveId: collective.id, requiredApproverIds: requiredMemberApprovals,
               method: 'unanimous', scope: 'coordinate-material', materialId,
               mandateDurationMonths: 12, expiresAtMonth: atMonth + 6,
             } },
-            audience: requiredMemberApprovals, channel: 'voice',
           },
           estimatedDuration: 'one-month', estimatedMonths: 1,
           risks: ['任何一名成员拒绝都会使规则提议终止'], domain: 'social', sourceFactIds: [...new Set([
@@ -883,8 +919,8 @@ export function buildSocialOptions(
         reason: '成员已经全体接受职责授权规则；本人对候选人有两个不同月份、不同项目的真实履约证据，且候选人已在当前同类项目中',
         goal: { kind: 'representation-made', representationId },
         nextAction: {
-          kind: 'communicate',
-          content: {
+          kind: 'talk',
+          speakerMeaning: {
             id: representationId,
             kind: 'offer',
             summary: `我提议由${holder.name}在未来${dutyRule.mandateDurationMonths}个月承担当前${project.summary}的同类职责`,
@@ -900,8 +936,6 @@ export function buildSocialOptions(
               expiresAtMonth: atMonth + 6,
             },
           },
-          audience: requiredMemberApprovals,
-          channel: 'voice',
         },
         target: { kind: 'person', personId: holder.id },
         estimatedDuration: 'one-month',
@@ -960,13 +994,12 @@ export function buildSocialOptions(
           reason: '成员已经共同接受选择规则，现在可以分别判断由谁承担有限职责',
           goal: { kind: 'representation-made', representationId },
           nextAction: {
-            kind: 'communicate',
-            content: { id: representationId, kind: 'offer', summary: `我提议由${holder.name}在未来${rule.mandateDurationMonths}个月协调${materialDefinition(rule.materialId).name}`, proposal: {
+            kind: 'talk',
+            speakerMeaning: { id: representationId, kind: 'offer', summary: `我提议由${holder.name}在未来${rule.mandateDurationMonths}个月协调${materialDefinition(rule.materialId).name}`, proposal: {
               kind: 'mandate', proposerId: person.id, partnerId: requiredMemberApprovals[0]!,
               collectiveId: collective.id, decisionRuleId: rule.id, holderId: holder.id,
               requiredApproverIds: requiredMemberApprovals, expiresAtMonth: atMonth + 6,
             } },
-            audience: requiredMemberApprovals, channel: 'voice',
           },
           target: { kind: 'person', personId: holder.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
           risks: ['授权有期限，且协调者不能强取任何成员的私人背包'], domain: 'social', sourceFactIds: [...new Set([
@@ -991,14 +1024,12 @@ export function buildSocialOptions(
         reason: '候选人与发起者已有真实合作；候选人和每位现有成员都在场，可以分别表达同意或反对',
         goal: { kind: 'representation-made', representationId },
         nextAction: {
-          kind: 'communicate',
-          content: { id: representationId, kind: 'offer', summary: `我提议让${candidate.name}加入我们的共同体`, proposal: {
+          kind: 'talk',
+          speakerMeaning: { id: representationId, kind: 'offer', summary: `我提议让${candidate.name}加入我们的共同体`, proposal: {
             kind: 'membership', proposerId: person.id, partnerId: candidate.id,
             collectiveId: collective.id, candidateId: candidate.id, requiredApproverIds,
             expiresAtMonth: atMonth + 6,
           } },
-          audience: requiredApproverIds,
-          channel: 'voice',
         },
         target: { kind: 'person', personId: candidate.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
         risks: ['任一现有成员或候选人拒绝，提议都会终止'], domain: 'social', sourceFactIds: [...new Set([
@@ -1058,31 +1089,75 @@ export function buildSocialOptions(
     const grantor = personById(state, permission.grantorId);
     const grantee = personById(state, permission.granteeId);
     if (person.id === permission.granteeId && grantor && sameLocation(grantor, person)) {
+      const useBasis = inferPermissionUseBasis(state, permission, person, grantor);
       const stack = grantor.inventory.find((item) => item.materialId === permission.materialId && item.quantity > 0);
-      if (stack) options.push({
+      if (stack && useBasis) options.push({
         id: `use-permission:${permission.id}:${stack.id}`,
         summary: `依据许可从${grantor.name}处取用${materialDefinition(permission.materialId).name}`,
-        reason: '授权人、被授权人、物质、单次数量与有效期都有可追溯许可',
-        goal: { kind: 'inventory-at-least', materialId: permission.materialId, quantity: inventoryQuantity(person, permission.materialId) + 1 },
-        nextAction: { kind: 'transfer', materialId: permission.materialId, quantity: 1, from: { kind: 'person', personId: grantor.id }, to: { kind: 'person', personId: person.id }, stackId: stack.id, authorizationRef: permission.id },
+        reason: useBasis.kind === 'project-demand'
+          ? '本人正在承担的项目存在精确材料缺口；授权人拥有扣除自身需求后的剩余物质，现有许可使本次取用合法'
+          : '本人可感知的随身储备低于既有个人缓冲，而授权人的同类储备高于缓冲；现有许可使一次再分配同时有需要与剩余依据',
+        goal: {
+          kind: 'inventory-at-least',
+          materialId: permission.materialId,
+          quantity: useBasis.kind === 'project-demand'
+            ? useBasis.requiredQuantity
+            : inventoryQuantity(person, permission.materialId) + 1,
+        },
+        nextAction: {
+          kind: 'transfer', materialId: permission.materialId, quantity: 1,
+          from: { kind: 'person', personId: grantor.id },
+          to: { kind: 'person', personId: person.id },
+          stackId: stack.id,
+          authorizationRef: permission.id,
+          permissionUseBasis: useBasis,
+        },
         target: { kind: 'person', personId: grantor.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
-        risks: [], domain: 'social', sourceFactIds: [...permission.sourceEventIds],
-        semantics: commitmentActionSemantics('adult', ['commitment', 'autonomy'], {
-          cooperationKind: 'material-coordination', phase: 'fulfillment', counterpartIds: [grantor.id],
-          referenceId: permission.id, materialId: permission.materialId,
+        risks: [], domain: 'strategic', sourceFactIds: [...useBasis.sourceFactIds],
+        ...(useBasis.projectId ? { projectId: useBasis.projectId } : {}),
+        semantics: defineActionOptionSemantics({
+          obligation: 'optional',
+          planningChannel: 'ordinary',
+          purpose: useBasis.kind === 'project-demand' ? 'project' : 'resource',
+          minimumLifeStage: 'adult',
+          needKinds: useBasis.kind === 'project-demand'
+            ? ['capability', 'commitment']
+            : ['reserve', 'autonomy'],
+          socialContext: {
+            cooperationKind: useBasis.kind === 'project-demand'
+              ? 'joint-project'
+              : 'material-coordination',
+            phase: 'fulfillment',
+            counterpartIds: [grantor.id],
+            referenceId: permission.id,
+            materialId: permission.materialId,
+            ...(useBasis.projectId ? { projectId: useBasis.projectId } : {}),
+          },
         }),
       });
     }
     if (person.id === permission.grantorId && grantee && positionsWithinVoiceRange(grantee.position, person.position)) {
+      const granteeRelation = relationTo(person, grantee.id);
+      const adverseRelationship = Boolean(granteeRelation?.sourceEventIds.length
+        && granteeRelation.fear > Math.max(granteeRelation.trust, granteeRelation.bond));
+      const reservePressureAfterUse = permission.useEventIds.length > 0
+        && inventoryQuantity(person, permission.materialId) <= PERSONAL_RESERVE_UNITS;
+      if (!adverseRelationship && !reservePressureAfterUse) continue;
       const representationId = `revoke-permission:${atMonth}:${permission.id}`;
       options.push({
         id: representationId,
         summary: `向${grantee.name}撤回${materialDefinition(permission.materialId).name}取用许可`,
-        reason: '持有者对未来取用授权保留明确撤回能力',
+        reason: adverseRelationship
+          ? '许可生效后出现了有来源的关系危险，持有者明确收回未来取用权'
+          : '许可已被实际使用，而持有者的同类物质降到个人缓冲线，需要先保留自身储备',
         goal: { kind: 'representation-made', representationId },
-        nextAction: { kind: 'communicate', content: { id: representationId, kind: 'revoke', permissionId: permission.id, summary: `我撤回你对我的${materialDefinition(permission.materialId).name}的取用许可` }, audience: [grantee.id], channel: 'voice' },
+        nextAction: { kind: 'talk', speakerMeaning: { id: representationId, kind: 'revoke', permissionId: permission.id, summary: `我撤回你对我的${materialDefinition(permission.materialId).name}的取用许可` } },
         target: { kind: 'person', personId: grantee.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
-        risks: [], domain: 'social', sourceFactIds: [...permission.sourceEventIds],
+        risks: [], domain: 'social', sourceFactIds: [...new Set([
+          ...permission.sourceEventIds,
+          ...(granteeRelation?.sourceEventIds ?? []),
+          ...permission.useEventIds,
+        ])],
       });
     }
   }
@@ -1110,9 +1185,8 @@ export function buildSocialOptions(
         : '本人正经历严重身体状态，可以明确撤回尚未履行的陪伴承诺',
       goal: { kind: 'representation-made', representationId },
       nextAction: {
-        kind: 'communicate',
-        content: { id: representationId, kind: 'revoke-agreement', referenceId: agreement.id, summary: '我现在无法继续这次陪伴约定' },
-        audience: [other.id], channel: 'voice',
+        kind: 'talk',
+        speakerMeaning: { id: representationId, kind: 'revoke-agreement', referenceId: agreement.id, summary: '我现在无法继续这次陪伴约定' },
       },
       target: { kind: 'person', personId: other.id },
       estimatedDuration: 'one-month', estimatedMonths: 1,
@@ -1130,14 +1204,14 @@ export function buildSocialOptions(
     const relationshipSourceFactIds = substantiveRelationshipEvidenceIds(state, person, other);
     const companionBasis = buildRelationshipCausalBasis(state, person, other, 'companion', atMonth);
     const need: 'water' | 'food' | null = person.body.hydration < 45 ? 'water' : person.body.nutrition < 45 ? 'food' : null;
-    if (need && !hasOpenAssistRequestBetween(state, person.id, other.id)) {
+    if (need && !hasOpenAssistRequestBetween(state, person.id, other.id, need, atMonth)) {
       const representationId = `request-assist:${atMonth}:${person.id}:${other.id}:${need}`;
       options.push({
         id: representationId,
         summary: `向${other.name}请求${need === 'water' ? '协助寻找水' : '食物帮助'}`,
         reason: '自己的生存储备下降，而身边存在可以沟通的人',
         goal: { kind: 'representation-made', representationId },
-        nextAction: { kind: 'communicate', content: { id: representationId, kind: 'request', summary: need === 'water' ? '请帮助我找到水' : '请帮助我取得食物', proposal: { kind: 'assist', requesterId: person.id, helperId: other.id, need, expiresAtMonth: atMonth + 4 } }, audience: [other.id], channel: 'voice' },
+        nextAction: { kind: 'talk', speakerMeaning: { id: representationId, kind: 'request', summary: need === 'water' ? '请帮助我找到水' : '请帮助我取得食物', proposal: { kind: 'assist', requesterId: person.id, helperId: other.id, need, expiresAtMonth: atMonth + 4 } } },
         target: { kind: 'person', personId: other.id }, estimatedDuration: 'one-month', estimatedMonths: 1, risks: [], domain: 'social', sourceFactIds: [],
       });
     }
@@ -1160,14 +1234,13 @@ export function buildSocialOptions(
         reason: '双方此刻同地，且本人记得彼此真实发生过的关系经历；可以请求而不能预设对方同意',
         goal: { kind: 'representation-made', representationId },
         nextAction: {
-          kind: 'communicate',
-          content: {
+          kind: 'talk',
+          speakerMeaning: {
             id: representationId,
             kind: 'request',
             summary: '愿不愿意留在这里陪我一段时间？',
             proposal: { kind: 'assist', requesterId: person.id, helperId: other.id, need: 'company', expiresAtMonth: atMonth + 4 },
           },
-          audience: [other.id], channel: 'voice',
         },
         target: { kind: 'person', personId: other.id },
         estimatedDuration: 'one-month', estimatedMonths: 1,
@@ -1185,7 +1258,7 @@ export function buildSocialOptions(
         summary: `邀请${other.name}结伴行动`,
         reason: '彼此的信任与羁绊已达到结伴门槛，结伴可能降低长期风险',
         goal: { kind: 'representation-made', representationId },
-        nextAction: { kind: 'communicate', content: { id: representationId, kind: 'offer', summary: '希望以这里为稳定生活地点，各自行动但持续共同生活', proposal: { kind: 'companion', proposerId: person.id, partnerId: other.id, expiresAtMonth: atMonth + 6, basis: companionBasis, sharedLivingAnchor: { version: 'shared-living-anchor-v1', cellId: person.position.cellId, z: person.position.z, radius: SHARED_LIVING_RADIUS } } }, audience: [other.id], channel: 'voice' },
+        nextAction: { kind: 'talk', speakerMeaning: { id: representationId, kind: 'offer', summary: '希望以这里为稳定生活地点，各自行动但持续共同生活', proposal: { kind: 'companion', proposerId: person.id, partnerId: other.id, expiresAtMonth: atMonth + 6, basis: companionBasis, sharedLivingAnchor: { version: 'shared-living-anchor-v1', cellId: person.position.cellId, z: person.position.z, radius: SHARED_LIVING_RADIUS } } } },
         target: { kind: 'person', personId: other.id }, estimatedDuration: 'one-month', estimatedMonths: 1, risks: [], domain: 'social', sourceFactIds: companionBasis.sourceFactIds,
         relationshipBasis: companionBasis,
       });
@@ -1229,7 +1302,7 @@ export function buildSocialOptions(
           ? '双方已经在同一项目中留下实质贡献与完成证据，可以自愿把协作延续为成员关系'
           : '双方已有真实履约与信任来源，可以自愿形成跨协议持续的成员关系',
         goal: { kind: 'representation-made', representationId },
-        nextAction: { kind: 'communicate', content: { id: representationId, kind: 'offer', summary: `我们已经一起做成过事情，愿不愿意以后继续${purposeSummary}？`, proposal: { kind: 'collective', proposerId: person.id, partnerId: other.id, purposeSummary, expiresAtMonth: atMonth + 6 } }, audience: [other.id], channel: 'voice' },
+        nextAction: { kind: 'talk', speakerMeaning: { id: representationId, kind: 'offer', summary: `我们已经一起做成过事情，愿不愿意以后继续${purposeSummary}？`, proposal: { kind: 'collective', proposerId: person.id, partnerId: other.id, purposeSummary, expiresAtMonth: atMonth + 6 } } },
         target: { kind: 'person', personId: other.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
         risks: [], domain: 'social', sourceFactIds: [...new Set([
           ...sourceFactIds,

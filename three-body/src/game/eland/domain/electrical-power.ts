@@ -97,56 +97,6 @@ export interface ElectricalPowerWorldState {
   dispatchWindows: ElectricalPowerDispatchWindow[];
 }
 
-/**
- * Stable, exact leases for living gameplay evidence. Retention owns which
- * events are pinned; domain/application readers may only resolve a cold fact
- * through the matching lease.
- */
-export function livingPersonElectricalOperationKnowledgeLeaseKey(personId: string): string {
-  return `electrical-knowledge:${encodeURIComponent(personId)}:operation`;
-}
-
-export function livingPersonElectricalLoadTechniqueKnowledgeLeaseKey(
-  personId: string,
-  techniqueId: string,
-): string {
-  return `electrical-knowledge:${encodeURIComponent(personId)}:load:${encodeURIComponent(techniqueId)}`;
-}
-
-export function livingPersonElectricalMechanicalServiceLeaseKey(personId: string): string {
-  return `electrical-source-service:${encodeURIComponent(personId)}:mechanical`;
-}
-
-export function currentElectricalNetworkFaultLeaseKey(networkId: string): string {
-  return `electrical-network:${encodeURIComponent(networkId)}:current-fault`;
-}
-
-export function currentElectricalNetworkRepairLeaseKey(networkId: string): string {
-  return `electrical-network:${encodeURIComponent(networkId)}:current-repair`;
-}
-
-export function livingPersonElectricalFaultObservationLeaseKey(
-  personId: string,
-  networkId: string,
-): string {
-  return `electrical-fault-observation:${encodeURIComponent(personId)}:${encodeURIComponent(networkId)}`;
-}
-
-export function livingPersonElectricalComponentTechniqueLeaseKey(
-  personId: string,
-  techniqueId: string,
-): string {
-  return `electrical-component-technique:${encodeURIComponent(personId)}:${encodeURIComponent(techniqueId)}`;
-}
-
-export function activeElectricalMaintenanceProjectLeaseKey(projectId: string): string {
-  return `electrical-maintenance-project:${encodeURIComponent(projectId)}:basis`;
-}
-
-export function activeElectricalMaintenanceReplacementLeaseKey(projectId: string): string {
-  return `electrical-maintenance-project:${encodeURIComponent(projectId)}:replacement`;
-}
-
 export function electricalPowerFaultObservationFactId(networkId: string, faultEventId: string): string {
   return `observation:electrical-power-fault:${networkId}:${faultEventId}`;
 }

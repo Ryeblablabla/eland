@@ -13,7 +13,7 @@ import {
 import { isInfant } from './dependent-care';
 import { lifePlanningStage } from './life-stage';
 import { RULE_ACTION_TICKS_PER_MONTH } from './calendar';
-import { compileBoundedWaterSearchMove, findReachableWater } from './water-access';
+import { compileBoundedWaterSearchMove, findReachableWater, moveTowardWaterAccess } from './water-access';
 import { findReachableShelter } from './shelter-access';
 import { shelterGeometryAt } from './structure';
 import { observedHibernationEntryEvidence } from './hibernation-entry';
@@ -48,6 +48,17 @@ function reachableFoodPlant(state: SimulationState, person: PersonState): { plan
 
 function visibleCaregiverRendezvous(state: SimulationState, person: PersonState): PrimitiveAction | null {
   if (lifePlanningStage(person, state.clock.elapsedMonths) !== 'learning-child') return null;
+  if (state.people.some((candidate) => person.geneticParents.includes(candidate.id)
+    && isAlive(candidate)
+    && sameLocation(candidate, person))) return null;
+  // A child already under real cover must not chase an adult who chose to work
+  // outside during the same thermal episode. Hydration/food reflexes are
+  // evaluated separately below, while a caregiver whose child's crisis is
+  // genuinely more urgent still owns the return trip.
+  if (shelterGeometryAt(state.world.grid, person.position)
+    && person.conditions.some((condition) => condition.kind === 'cold' || condition.kind === 'heat')) {
+    return null;
+  }
   const underSurvivalPressure = person.body.hydration < 32
     || person.body.nutrition < 34
     || person.body.health < 45
@@ -110,7 +121,11 @@ export function chooseHibernationRecoveryReflex(
   const restorativeFoodHealth = restorativeFood
     ? materialDefinition(restorativeFood.materialId).consume?.health ?? 0
     : 0;
-  if (lifePlanningStage(person, state.clock.elapsedMonths + 1) === 'dependent-child') {
+  // The ordinary survival reflex already treats children under three as
+  // unable to travel alone. Recovery must use the same physical boundary:
+  // they may consume what they carry, while a caregiver owns any trip to a
+  // remote water or food source.
+  if (isInfant(state, person, state.clock.elapsedMonths + 1)) {
     const carriedDrink = person.inventory.find((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'drinkable'));
     if (carriedDrink && (person.body.hydration < stableRecoveryReserve || lacksPhysicalRecoverySource)) {
       return { kind: 'act', operation: 'ingest', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: carriedDrink.id }] };
@@ -122,13 +137,18 @@ export function chooseHibernationRecoveryReflex(
     }
     return null;
   }
+  const carriedDrink = person.inventory.find((stack) => stack.quantity > 0
+    && materialHas(stack.materialId, 'drinkable'));
+  if (carriedDrink && (person.body.hydration < stableRecoveryReserve || lacksPhysicalRecoverySource)) {
+    return { kind: 'act', operation: 'ingest', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: carriedDrink.id }] };
+  }
   const visible = cellsInRadius(person.position.cellId, visibleRadius(person));
   const water = findReachableWater(state, person, visible);
   if (water && (person.body.hydration < stableRecoveryReserve || lacksPhysicalRecoverySource)) {
     const atBank = person.position.cellId === water.bankPosition.cellId && person.position.z === water.bankPosition.z;
     return atBank
       ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: water.waterPosition }] }
-      : { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z };
+      : moveTowardWaterAccess(water, state.clock.elapsedMonths + 1);
   }
   if (!water && person.body.hydration < HIBERNATION_RECOVERY_SAFE_RESERVE) {
     const search = compileBoundedWaterSearchMove(state, person, person.id, visible, currentMonthEvents);
@@ -219,7 +239,7 @@ export function chooseSurvivalReflex(
     if (water && (atBank || (!cannotTravelAlone && (waterTravelMonths <= dehydrationMonths || person.body.hydration < 32)))) {
       return atBank
         ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: water.waterPosition }] }
-        : failedShelterHibernation ?? caregiverRendezvous ?? { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z };
+        : failedShelterHibernation ?? caregiverRendezvous ?? moveTowardWaterAccess(water, state.clock.elapsedMonths + 1);
     }
     if (!water && !cannotTravelAlone) {
       const search = compileBoundedWaterSearchMove(
@@ -272,8 +292,21 @@ export function chooseSurvivalReflex(
 }
 
 /** Staying under real cover is state maintenance, not a repeated decision or synthetic action. */
-export function shouldRemainSheltered(state: SimulationState, person: PersonState): boolean {
+export function shouldRemainSheltered(
+  state: SimulationState,
+  person: PersonState,
+  groundedSurvivalAction: PrimitiveAction | null = null,
+): boolean {
   if (!shelterGeometryAt(state.world.grid, person.position)) return false;
-  if (person.body.hydration < 45 || person.body.nutrition < 40) return false;
-  return person.conditions.some((condition) => (condition.kind === 'cold' || condition.kind === 'heat') && condition.stage >= 1);
+  const thermalPressure = person.conditions.some((condition) => (
+    (condition.kind === 'cold' || condition.kind === 'heat') && condition.stage >= 1
+  ));
+  if (!thermalPressure) return false;
+  // Low reserves justify leaving only when local perception has already
+  // compiled a real water, food, care or hibernation action. Otherwise the
+  // old intent would step outside and the thermal reflex would immediately
+  // return through the same doorway without improving either need.
+  if (groundedSurvivalAction
+    && (person.body.hydration < 45 || person.body.nutrition < 40)) return false;
+  return true;
 }

@@ -19,7 +19,7 @@ function isVerifiedModelSpeechLine(
     event
       && event.kind === 'action'
       && event.status === 'completed'
-      && event.action.kind === 'communicate'
+      && event.action.kind === 'talk'
       && event.action.channel === 'voice'
       && (line.source === 'decision-model' || line.source === 'speech-model')
       && line.authority === 'projection-only'
@@ -29,9 +29,9 @@ function isVerifiedModelSpeechLine(
       && line.month === event.atMonth
       && line.planningTick === (event.planningTick ?? event.actionTick)
       && line.speakerId === event.who
-      && sameIds(line.audienceIds, event.action.audience)
-      && line.communicationKind === event.action.content.kind
-      && line.speechAct?.kind === event.action.content.kind,
+      && sameIds(line.audienceIds, ((event.diff.understoodByPersonIds as string[] | undefined) ?? []))
+      && line.communicationKind === event.action.speakerMeaning.kind
+      && line.speechAct?.kind === event.action.speakerMeaning.kind,
   );
 }
 
@@ -84,7 +84,7 @@ export function projectSpeechHistoryEntry(
   const sourceEventId = entry.sourceEventIds[0];
   if (entry.id !== `narrative:${sourceEventId}`) return entry;
   const event = events.get(sourceEventId);
-  if (!event || event.kind !== 'action' || event.action.kind !== 'communicate') return entry;
+  if (!event || event.kind !== 'action' || event.action.kind !== 'talk') return entry;
   const text = speechHistoryTextForEvent(event, speechLinesBySourceEventId);
   return text ? { ...entry, text } : entry;
 }

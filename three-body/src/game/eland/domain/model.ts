@@ -15,6 +15,8 @@ import type { ElectricalPowerWorldState } from './electrical-power';
 import type { HumanRemainsState, MemorialMarkerState } from './mortuary';
 import type { CharacterAgendaDecisionEvidence } from './character-agenda';
 import type { AgentMemoryStoreState } from './agent-memory';
+import type { PersonMindView } from './person-mind';
+import type { LanguageBroadcast } from './language-perception';
 
 export * from './action';
 export * from './material';
@@ -22,6 +24,8 @@ export * from './person';
 export * from './mechanical-power';
 export * from './electrical-power';
 export * from './mortuary';
+export * from './mental-act';
+export * from './person-mind';
 
 export type EpochKind = 'stable' | 'chaotic';
 export type ClimateKind = 'temperate' | 'cold' | 'heat' | 'fire';
@@ -86,6 +90,13 @@ export interface DecisionContext {
   options: ActionOption[];
   followUpOptions: ActionOption[];
   activeIntent?: Intent;
+  /** Month/tick at which this read-only context was compiled. */
+  decisionMonth?: number;
+  planningTick?: number;
+  /** Already-realized facts from the current uncommitted month. */
+  currentMonthEvents?: WorldEvent[];
+  /** Unified subjective read view; optional only for old fixtures/adapters. */
+  mind?: PersonMindView;
 }
 
 export type Decision = IntentDecision;
@@ -199,6 +210,8 @@ export interface DecisionFact extends BaseEvent {
   foresightEvidence?: ForesightDecisionEvidence;
   /** Accepted subjective concerns and their locally compiled disposition. */
   characterAgendaEvidence?: CharacterAgendaDecisionEvidence[];
+  /** Every model-authored decision exposes one transparent thought-language signal. */
+  thoughtBroadcast?: LanguageBroadcast;
   result: string;
 }
 
@@ -235,6 +248,7 @@ export interface AgreementFact extends BaseEvent {
   partyIds: PersonId[];
   responderId?: PersonId;
   hibernationConditionId?: string;
+  deadlineScope?: 'response' | 'fulfillment';
   effectiveFromMonth?: number;
   sourceEventIds?: string[];
   result: string;
@@ -460,7 +474,7 @@ export interface FunctionalBuildingObservation {
 }
 
 export interface CivilizationDevelopmentObservation {
-  /** v1-v6 remain readable for persisted snapshots; new observations are emitted as v7. */
+  /** v1-v7 remain readable for persisted snapshots; new observations are emitted as v8. */
   observerVersion:
     | 'material-institution-era-v1'
     | 'material-institution-era-v2'
@@ -468,7 +482,8 @@ export interface CivilizationDevelopmentObservation {
     | 'material-institution-era-v4'
     | 'material-institution-era-v5'
     | 'material-institution-era-v6'
-    | 'material-institution-era-v7';
+    | 'material-institution-era-v7'
+    | 'material-institution-era-v8';
   currentEra: DevelopmentEraKey;
   historicalPeakEra: DevelopmentEraKey;
   candidateEra: DevelopmentEraKey;

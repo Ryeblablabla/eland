@@ -3,6 +3,7 @@ import { worldEventById } from '../../domain/event-index';
 import type { DecisionContext } from '../../simulation';
 import { verifiedSpeechLinesBySourceEventId } from '../../projection/speech-history';
 import type { DialogueDisposition, DialogueMove, SpeechLineView } from '../../../societyContract';
+import { actionOptionSemantics } from '../../domain/action-option-semantics';
 
 export interface RecentDialogueContextLine {
   month: number;
@@ -18,10 +19,7 @@ export function decisionCounterpartIds(context: Pick<DecisionContext, 'options'>
   const result = new Set<string>();
   for (const option of context.options) {
     if (option.target?.kind === 'person') result.add(option.target.personId);
-    for (const action of [option.nextAction, option.completionAction]) {
-      if (action?.kind !== 'communicate') continue;
-      for (const personId of action.audience) result.add(personId);
-    }
+    for (const personId of actionOptionSemantics(option).socialContext?.counterpartIds ?? []) result.add(personId);
   }
   return result;
 }

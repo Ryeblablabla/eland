@@ -187,7 +187,7 @@ export function createFigureLayer({
       if (distance > 1) continue;
       const kind: IncomingInteraction['kind'] | undefined = view.actionKind === 'transfer'
         ? 'handoff'
-        : view.actionKind === 'communicate'
+        : view.actionKind === 'talk'
           ? 'listen'
           : view.operation === 'combine' || view.operation === 'rehydrate' || view.operation === 'dehydrate'
             ? 'care'
@@ -423,7 +423,7 @@ export function createFigureLayer({
             && actionView?.measurementMode
             && toolKey === 'beam_balance');
           const hasTablet = !hasBalance && (toolKey === 'wood_tablet' || materialKey === 'wood_tablet'
-            || actionView?.channel === 'record');
+            || actionView?.actionKind === 'inscribe');
           f.balance.visible = hasBalance;
           if (hasBalance) f.balanceBeam.rotation.z = Math.sin(cycle * 0.45) * 0.045;
           f.tablet.visible = hasTablet;
@@ -431,7 +431,7 @@ export function createFigureLayer({
           f.armR.rotation.x = hasBalance ? -1.18 : hasTablet ? -0.72 : -1.48;
           f.armR.rotation.z = hasTablet ? 0.08 : -0.42;
           f.upperBody.rotation.x = hasBalance ? 0.08 : hasTablet ? 0.12 : -0.03;
-        } else if (action === 'communicate') {
+        } else if (action === 'talk') {
           const gesture = Math.sin(cycle * 0.52);
           f.armL.rotation.x = -0.45 - gesture * 0.32;
           f.armL.rotation.z = 0.42;
@@ -459,6 +459,15 @@ export function createFigureLayer({
           f.upperBody.rotation.x = 0.22;
           f.armL.rotation.x = -0.25;
           f.armR.rotation.x = -0.18;
+        } else {
+          // Idle is still a real living state. Keep motion inside the occupied
+          // cell so presentation never invents authoritative travel.
+          const breath = Math.sin(cycle * 0.22);
+          const glance = Math.sin(cycle * 0.09 + phase);
+          f.upperBody.position.y = 0.3 + breath * 0.008;
+          f.upperBody.rotation.y = glance * 0.055;
+          f.armL.rotation.x = -0.08 + breath * 0.025;
+          f.armR.rotation.x = -0.1 - breath * 0.025;
         }
         if (incomingInteraction?.kind === 'handoff') {
           f.upperBody.rotation.x = 0.08;

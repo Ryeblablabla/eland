@@ -3,6 +3,7 @@ import { isAlive, type MemoryRecord, type PersonState } from './person';
 import { causalMemoryTraceForAction, isMeaningfulCognitiveOutcome } from './cognition';
 import { memoryCapacityMultiplier, memoryDurationMultiplier } from './trait';
 import { personById } from './state-index';
+import { rememberGroundedConversationBasis } from './agent-memory';
 
 const MAX_MEMORIES = 24;
 const MAX_PROJECTED_MEMORIES = 8;
@@ -79,6 +80,10 @@ function clamp(value: number, min = 0, max = 100): number {
 }
 
 export function remember(person: PersonState, memory: MemoryRecord): void {
+  // Autobiographical memory must retain at least one replayable source. A
+  // planner state, compiler diagnostic, or free-form explanation without an
+  // event is not something the person experienced.
+  if (!memory.sourceEventIds.length) return;
   const existing = person.memories.find((item) => item.id === memory.id);
   if (existing) {
     existing.summary = memory.summary;
@@ -366,8 +371,8 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
   const causal = isMeaningfulCognitiveOutcome(fact)
     ? causalMemoryTraceForAction(state, fact)
     : undefined;
-  const participantIds = fact.action.kind === 'communicate'
-    ? fact.action.audience
+  const participantIds = fact.action.kind === 'talk'
+    ? ((fact.diff.understoodByPersonIds as string[] | undefined) ?? [])
     : fact.action.kind === 'transfer'
       ? [
           ...(fact.action.from.kind === 'person' ? [fact.action.from.personId] : []),
@@ -390,27 +395,30 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
     && Number.isFinite(Number(fact.diff.expiresAtMonth))
     ? Number(fact.diff.expiresAtMonth)
     : undefined;
-  const groundedCommunication = fact.action.kind === 'communicate'
-    && fact.action.content.kind === 'claim'
-    && Boolean(fact.action.content.conversation);
-  const structuredCommunication = fact.action.kind === 'communicate'
-    && (['request', 'offer', 'accept'].includes(fact.action.content.kind)
-      || (fact.action.content.kind === 'claim' && Boolean(fact.action.content.factId)));
+  const groundedCommunication = fact.action.kind === 'talk'
+    && fact.action.speakerMeaning.kind === 'claim'
+    && Boolean(fact.action.speakerMeaning.conversation);
+  const structuredCommunication = fact.action.kind === 'talk'
+    && (['request', 'offer', 'accept'].includes(fact.action.speakerMeaning.kind)
+      || (fact.action.speakerMeaning.kind === 'claim' && Boolean(fact.action.speakerMeaning.factId)));
   remember(actor, {
     id: `memory:${fact.id}:${actor.id}`,
-    kind: failed ? 'failure' : fact.action.kind === 'communicate' && ['request', 'offer', 'accept'].includes(fact.action.content.kind) ? 'commitment' : fact.action.kind === 'communicate' ? 'dialogue' : 'episode',
+    kind: failed ? 'failure' : fact.action.kind === 'talk' && ['request', 'offer', 'accept'].includes(fact.action.speakerMeaning.kind) ? 'commitment' : fact.action.kind === 'talk' ? 'dialogue' : 'episode',
     summary: fact.result,
-    importance: failed ? 72 : groundedCommunication ? 62 : structuredCommunication ? 64 : fact.action.kind === 'communicate' ? 42 : 38,
+    importance: failed ? 72 : groundedCommunication ? 62 : structuredCommunication ? 64 : fact.action.kind === 'talk' ? 42 : 38,
     createdAtMonth: fact.atMonth,
     lastRecalledAtMonth: fact.atMonth,
     personIds: others.map((person) => person.id),
     sourceEventIds: [fact.id],
     ...(causal ? { causal } : {}),
     ...(boundedFailureExpiresAt !== undefined ? { expiresAtMonth: boundedFailureExpiresAt } : {}),
-    ...(fact.action.kind === 'communicate' && (fact.action.content.kind === 'request' || fact.action.content.kind === 'offer')
-      ? { expiresAtMonth: fact.action.content.proposal?.expiresAtMonth ?? fact.atMonth + 6 }
+    ...(fact.action.kind === 'talk' && (fact.action.speakerMeaning.kind === 'request' || fact.action.speakerMeaning.kind === 'offer')
+      ? { expiresAtMonth: fact.action.speakerMeaning.proposal?.expiresAtMonth ?? fact.atMonth + 6 }
       : {}),
   });
+  if (groundedCommunication && fact.status === 'completed') {
+    rememberGroundedConversationBasis(state, fact);
+  }
   if (fact.action.kind === 'act' && fact.action.operation === 'exert' && typeof fact.diff.victimId === 'string') {
     const victimId = fact.diff.victimId;
     const observerIds = Array.isArray(fact.diff.witnessedBy) ? fact.diff.witnessedBy.filter((id): id is string => typeof id === 'string') : [];
@@ -491,8 +499,8 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
       });
     }
   }
-  if (fact.action.kind !== 'communicate') return;
-  const content = fact.action.content;
+  if (fact.action.kind !== 'talk') return;
+  const content = fact.action.speakerMeaning;
   const commitment = content.kind === 'request' || content.kind === 'offer' || content.kind === 'accept';
   for (const listener of others) {
     remember(listener, {

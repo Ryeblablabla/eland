@@ -197,7 +197,7 @@ function refreshStoredCommunicationEntries(
     const sourceEventId = entry.sourceEventIds[0];
     if (entry.id !== `narrative:${sourceEventId}`) return entry;
     const event = eventsById.get(sourceEventId);
-    if (!event || event.kind !== 'action' || event.action.kind !== 'communicate') return entry;
+    if (!event || event.kind !== 'action' || event.action.kind !== 'talk') return entry;
     const currentProjection = entriesFor(state, [event], eventsById)
       .find((candidate) => candidate.id === entry.id
         && candidate.kind === 'action'

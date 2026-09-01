@@ -1,5 +1,5 @@
 import type { ActionOption, Intent, PrimitiveAction } from '../domain/action';
-import { Material, materialDefinition, materialHas } from '../domain/material';
+import { Material, materialDefinition, materialHas, type MaterialId } from '../domain/material';
 import {
   canEnterDehydratedHibernation,
   HIBERNATION_ENTRY_LEGAL_RESERVE,
@@ -12,6 +12,7 @@ import {
 } from '../domain/person';
 import { ageMonths, MIN_TEACHING_AGE_MONTHS } from '../domain/person';
 import type {
+  ActionFact,
   DecisionAuthorityState,
   DecisionContext,
   DropState,
@@ -43,9 +44,9 @@ import { buildSocialOptions } from './social-options';
 import { PLANNING_TICKS_PER_MONTH } from '../domain/calendar';
 import { compileAgreementContinuations } from './agreement-continuation';
 import { relationTo } from '../domain/relation';
-import { permissionById } from '../domain/permission';
+import { inferPermissionUseBasis, permissionById } from '../domain/permission';
 import { buildConstructionOptions } from './construction-options';
-import { findReachableWater } from '../domain/water-access';
+import { findReachableWater, moveTowardWaterAccess } from '../domain/water-access';
 import { findReachableShelter } from '../domain/shelter-access';
 import { mandateById } from '../domain/governance';
 import { buildMaterialSeparationOptions } from './separation-options';
@@ -132,6 +133,7 @@ import {
   type FailureRetryContext,
 } from './action-failure-retry';
 import { buildReproductionOptions } from './reproduction-options';
+import { buildPersonMindView } from '../domain/person-mind';
 
 export {
   isCurrentlyBodyBlockedPlacement,
@@ -308,43 +310,9 @@ function withPlanning(
 ): ActionOption | null {
   if (isFailureRetryCoolingDown(state, person, option, atMonth, failureRetryContext)) return null;
   let plannedOption = option;
-  if (option.nextAction.kind === 'communicate'
-    && option.nextAction.channel === 'voice'
-    && option.nextAction.content.kind !== 'prediction'
-    && option.target?.kind === 'person') {
+  if (option.nextAction.kind === 'talk' && option.target?.kind === 'person') {
     const target = personById(state, option.target.personId);
     if (!target || !isAlive(target)) return null;
-    if (!positionsWithinVoiceRange(person.position, target.position)) {
-      const rendezvous = conversationalRendezvous(state, person, target);
-      if (!rendezvous) return null;
-      plannedOption = {
-        ...option,
-        nextAction: {
-          kind: 'move',
-          toCellId: rendezvous.position.cellId,
-          toZ: rendezvous.position.z,
-        },
-        completionAction: option.nextAction,
-      };
-    }
-  } else if (option.nextAction.kind === 'move'
-    && option.completionAction?.kind === 'communicate'
-    && option.target?.kind === 'person') {
-    const target = personById(state, option.target.personId);
-    if (!target || !isAlive(target)) return null;
-    const rendezvous = conversationalRendezvous(state, person, target);
-    if (!rendezvous) return null;
-    if (positionsWithinVoiceRange(person.position, target.position)) {
-      const { completionAction, ...withoutCompletion } = option;
-      plannedOption = { ...withoutCompletion, nextAction: completionAction };
-    } else plannedOption = {
-      ...option,
-      nextAction: {
-        kind: 'move',
-        toCellId: rendezvous.position.cellId,
-        toZ: rendezvous.position.z,
-      },
-    };
   }
   if (optionHasCurrentlyBodyBlockedPlacement(state, person, plannedOption)) return null;
   let estimatedMonths = 1;
@@ -364,7 +332,7 @@ function withPlanning(
   const risks: string[] = [];
   if (person.body.hydration - estimatedMonths * 1.6 < 18) risks.push('途中可能脱水');
   if (person.body.nutrition - estimatedMonths * 1.5 < 18) risks.push('途中可能饥饿');
-  const inferredDomain = option.nextAction.kind === 'communicate' || option.target?.kind === 'person' || option.goal.kind === 'near-person'
+  const inferredDomain = option.nextAction.kind === 'talk' || option.target?.kind === 'person' || option.goal.kind === 'near-person'
     ? 'social'
     : 'strategic';
   return {
@@ -431,8 +399,8 @@ function betterGroundProductionTool(
 
 function acceptedExchangeAt(state: SimulationState, person: PersonState, atMonth: number) {
   const exchange = acceptedExchangeFor(state, person.id, atMonth);
-  const agreementId = exchange?.offer.action.kind === 'communicate'
-    ? exchange.offer.action.content.id
+  const agreementId = exchange?.offer.action.kind === 'talk'
+    ? exchange.offer.action.speakerMeaning.id
     : undefined;
   const agreement = agreementId ? agreementById(state, agreementId) : undefined;
   return exchange
@@ -528,7 +496,7 @@ function buildOptions(
       goal: { kind: 'body-at-least', field: 'hydration', value: Math.min(100, person.body.hydration + 45) },
       nextAction: atBank
         ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: water.waterPosition }] }
-        : { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z },
+        : moveTowardWaterAccess(water, atMonth),
       estimatedDuration: atBank ? 'one-month' : 'several-months',
       sourceFactIds: water.sourceEventIds,
     });
@@ -662,8 +630,8 @@ function buildOptions(
       reason: '对天象、气温和过去纪元节律的观察可以形成一项有误差的预测',
       goal: { kind: 'representation-made', representationId },
       nextAction: {
-        kind: 'communicate',
-        content: {
+        kind: 'talk',
+        speakerMeaning: {
           id: representationId,
           kind: 'prediction',
           summary: `预言第 ${predictedStartMonth} 月前后将进入${targetEpoch === 'chaotic' ? '乱纪元' : '恒纪元'}`,
@@ -674,8 +642,6 @@ function buildOptions(
             expiresAtMonth: predictedStartMonth + 3,
           },
         },
-        audience: predictionAudience.map((listener) => listener.id),
-        channel: 'voice',
       },
       estimatedDuration: 'one-month',
       sourceFactIds: recentEraForecastEnvironmentFacts(state, 8)
@@ -690,14 +656,18 @@ function buildOptions(
   const hostileClimate = state.civilization.climate.kind === 'cold'
     || state.civilization.climate.kind === 'heat'
     || state.civilization.climate.kind === 'fire';
-  if (thermalPressure || hostileClimate) {
+  const severeStorm = state.civilization.weather.kind === 'storm'
+    && state.civilization.weather.intensity >= 2;
+  if (thermalPressure || hostileClimate || severeStorm) {
     const shelter = findReachableShelter(state, person, visible);
     if (shelter) options.push({
       id: `shelter:${shelter.structureId}:${shelter.position.cellId}:${shelter.position.z}`,
       summary: '进入可用住所躲避环境压力',
       reason: thermalPressure
         ? `${thermalPressure.kind === 'cold' ? '寒冷' : '炎热'}状态已经影响身体`
-        : `当前${state.civilization.climate.kind === 'cold' ? '寒冷' : state.civilization.climate.kind === 'heat' ? '炎热' : '烈火'}环境会持续消耗身体`,
+        : severeStorm
+          ? '当前风暴已经足以造成持续环境压力'
+          : `当前${state.civilization.climate.kind === 'cold' ? '寒冷' : state.civilization.climate.kind === 'heat' ? '炎热' : '烈火'}环境会持续消耗身体`,
       goal: { kind: 'sheltered' },
       nextAction: { kind: 'move', toCellId: shelter.position.cellId, toZ: shelter.position.z },
       estimatedDuration: shelter.pathLength <= 2 ? 'one-month' : 'several-months',
@@ -862,8 +832,8 @@ function buildOptions(
     const trialId = `${known ? 'repeat-inventory-combine' : 'try-inventory-combine'}:${first.id}:${second.id}`;
     options.push({
       id: trialId,
-      summary: known ? `尝试复现“${known.summary}”` : `尝试结合${materialDefinition(first.materialId).name}与${materialDefinition(second.materialId).name}`,
-      reason: known ? '自己已有这项物质经验' : '背包中的两种物质可以尝试局部结合，但结果未知',
+      summary: known ? `尝试复现“${known.summary}”` : `尝试用${materialDefinition(first.materialId).name}和${materialDefinition(second.materialId).name}制作东西`,
+      reason: known ? '自己已有这项制作经验' : '背包中的两种材料可以用于一次小规模试作，但结果未知',
       goal: { kind: 'knowledge', factId: `attempt:${trialId}:${atMonth}` },
       nextAction: {
         kind: 'act', operation: 'combine',
@@ -927,7 +897,7 @@ function buildOptions(
       summary: `把已核验知识刻写到木制记录板`,
       reason: '持有空白实体载体，可以让个人知识在记忆之外持续存在',
       goal: { kind: 'representation-made', representationId },
-      nextAction: { kind: 'communicate', content: { id: representationId, kind: 'claim', summary: recordableKnowledge.summary, factId: recordableKnowledge.id }, audience: [], channel: 'record', carrierStackId: blankRecord.id },
+      nextAction: { kind: 'inscribe', inscriptionMeaning: { id: representationId, kind: 'claim', summary: recordableKnowledge.summary, factId: recordableKnowledge.id }, carrierStackId: blankRecord.id },
       target: { kind: 'inventory-stack', personId: person.id, stackId: blankRecord.id },
       estimatedDuration: 'one-month', sourceFactIds: [...recordableKnowledge.sourceEventIds, ...blankRecord.sourceEventIds],
       domain: 'strategic',
@@ -996,7 +966,7 @@ function buildOptions(
         id: `${technique ? 'repeat-combine' : 'try-combine'}:${Material.Seed}:${targetMaterial}:${soilCell}:${seed.id}`,
         summary: technique
           ? `尝试复现“${technique.summary}”`
-          : `尝试让种子接触${materialDefinition(targetMaterial).name}`,
+          : `尝试把种子播进${materialDefinition(targetMaterial).name}`,
         reason: technique
           ? `自己${technique.confidence >= 55 ? '已经核验' : '听说或初步见过'}这项物质经验`
           : '持有种子，可以对一种眼前物质作局部尝试，但结果未知',
@@ -1045,7 +1015,7 @@ function buildOptions(
     if (proposal?.kind === 'exchange' && offerer) {
       const representationId = `accept:${incomingExchange.content.id}:${person.id}`;
       const together = sameLocation(offerer, person);
-      const acceptAction = { kind: 'communicate' as const, content: { id: representationId, kind: 'accept' as const, referenceId: incomingExchange.content.id }, audience: [offerer.id], channel: 'voice' as const };
+      const acceptAction = { kind: 'talk' as const, speakerMeaning: { id: representationId, kind: 'accept' as const, referenceId: incomingExchange.content.id } };
       if (inventoryQuantity(person, proposal.partnerMaterialId) >= proposal.partnerQuantity) options.push({
         id: `accept-exchange:${incomingExchange.content.id}`,
         summary: `接受以${materialDefinition(proposal.partnerMaterialId).name}换取${materialDefinition(proposal.offererMaterialId).name}`,
@@ -1067,7 +1037,7 @@ function buildOptions(
         }),
       });
       const rejectId = `reject:${incomingExchange.content.id}:${person.id}`;
-      const rejectAction = { kind: 'communicate' as const, content: { id: rejectId, kind: 'reject' as const, referenceId: incomingExchange.content.id }, audience: [offerer.id], channel: 'voice' as const };
+      const rejectAction = { kind: 'talk' as const, speakerMeaning: { id: rejectId, kind: 'reject' as const, referenceId: incomingExchange.content.id } };
       options.push({
         id: `reject-exchange:${incomingExchange.content.id}`,
         summary: `拒绝这项物质交换`,
@@ -1090,7 +1060,7 @@ function buildOptions(
   }
 
   const acceptedExchange = acceptedExchangeAt(state, person, atMonth);
-  if (acceptedExchange && !exchangeTermFulfilled(state, acceptedExchange.offer.action.kind === 'communicate' ? acceptedExchange.offer.action.content.id : '', person.id)) {
+  if (acceptedExchange && !exchangeTermFulfilled(state, acceptedExchange.offer.action.kind === 'talk' ? acceptedExchange.offer.action.speakerMeaning.id : '', person.id)) {
     const proposal = acceptedExchange.proposal;
     const materialId = proposal.offererId === person.id ? proposal.offererMaterialId : proposal.partnerMaterialId;
     const quantity = proposal.offererId === person.id ? proposal.offererQuantity : proposal.partnerQuantity;
@@ -1103,7 +1073,7 @@ function buildOptions(
       reason: '双方已经接受报价，本人尚未履行自己的交付',
       goal: { kind: 'inventory-at-least', materialId, quantity: inventoryQuantity(personById(state, receiverId) ?? person, materialId) + quantity, personId: receiverId },
       nextAction: sameLocation(receiver, person)
-        ? { kind: 'transfer', materialId, quantity, from: { kind: 'person', personId: person.id }, to: { kind: 'person', personId: receiverId }, stackId: stack.id, authorizationRef: acceptedExchange.offer.action.kind === 'communicate' ? acceptedExchange.offer.action.content.id : undefined }
+        ? { kind: 'transfer', materialId, quantity, from: { kind: 'person', personId: person.id }, to: { kind: 'person', personId: receiverId }, stackId: stack.id, authorizationRef: acceptedExchange.offer.action.kind === 'talk' ? acceptedExchange.offer.action.speakerMeaning.id : undefined }
         : { kind: 'move', toCellId: receiver.position.cellId, toZ: receiver.position.z },
       target: { kind: 'person', personId: receiverId },
       estimatedDuration: 'one-month',
@@ -1136,8 +1106,8 @@ function buildOptions(
       reason: `本人近期完成过真实生产劳动；对方可保留另一件生产工具，并持有更高效的${requestedTool.name}`,
       goal: { kind: 'representation-made', representationId },
       nextAction: {
-        kind: 'communicate',
-        content: {
+        kind: 'talk',
+        speakerMeaning: {
           id: representationId,
           kind: 'offer',
           summary: `用${offeredMaterial.name}换取${requestedTool.name}`,
@@ -1152,8 +1122,6 @@ function buildOptions(
             expiresAtMonth: atMonth + 12,
           },
         },
-        audience: [toolUpgradeTrade.person.id],
-        channel: 'voice',
       },
       target: { kind: 'person', personId: toolUpgradeTrade.person.id },
       estimatedDuration: 'one-month',
@@ -1178,9 +1146,8 @@ function buildOptions(
       reason: `双方分别持有${materialDefinition(tradePartner.own.materialId).name}与${materialDefinition(tradePartner.their.materialId).name}`,
       goal: { kind: 'representation-made', representationId },
       nextAction: {
-        kind: 'communicate',
-        content: { id: representationId, kind: 'offer', summary: `用${materialDefinition(tradePartner.own.materialId).name}换取${materialDefinition(tradePartner.their.materialId).name}`, proposal: { kind: 'exchange', offererId: person.id, partnerId: tradePartner.person.id, offererMaterialId: tradePartner.own.materialId, offererQuantity: 1, partnerMaterialId: tradePartner.their.materialId, partnerQuantity: 1, expiresAtMonth: atMonth + 12 } },
-        audience: [tradePartner.person.id], channel: 'voice',
+        kind: 'talk',
+        speakerMeaning: { id: representationId, kind: 'offer', summary: `用${materialDefinition(tradePartner.own.materialId).name}换取${materialDefinition(tradePartner.their.materialId).name}`, proposal: { kind: 'exchange', offererId: person.id, partnerId: tradePartner.person.id, offererMaterialId: tradePartner.own.materialId, offererQuantity: 1, partnerMaterialId: tradePartner.their.materialId, partnerQuantity: 1, expiresAtMonth: atMonth + 12 } },
       },
       target: { kind: 'person', personId: tradePartner.person.id },
       estimatedDuration: 'one-month',
@@ -1323,8 +1290,8 @@ function buildOptions(
       ? `teach:${atMonth}:${person.id}:${teachable.id}:${learner.id}:${prioritizedProjectTeaching.request.requestEventId}`
       : `teach:${atMonth}:${person.id}:${teachable.id}:${learner.id}`;
     const communicate = {
-      kind: 'communicate' as const,
-      content: {
+      kind: 'talk' as const,
+      speakerMeaning: {
         id: representationId,
         kind: 'claim' as const,
         summary: teachable.summary,
@@ -1339,8 +1306,6 @@ function buildOptions(
           },
         } : {}),
       },
-      audience: [learner.id],
-      channel: 'voice' as const,
     };
     options.push({
       id: representationId,
@@ -1365,40 +1330,78 @@ function buildOptions(
     });
   }
 
-  const tentativeTechnique = person.knowledge.find((fact) => fact.kind === 'technique' && fact.confidence < 55 && fact.sourceEventIds.some((sourceId) => {
-    const source = worldEventById(state, sourceId);
-    if (source?.kind !== 'action'
-      || source.action.kind !== 'act'
-      || source.action.techniqueDemonstration
-      || !['combine', 'exert', 'expose'].includes(source.action.operation)) return false;
-    const outputStackId = typeof source.diff.outputStackId === 'string' ? source.diff.outputStackId : undefined;
-    if (outputStackId && person.inventory.some((stack) => stack.id === outputStackId && stack.materialId === Number(source.diff.outputMaterialId))) return true;
-    const position = source.diff.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
-    if (![position?.x, position?.y, position?.z].every((value) => Number.isInteger(value))) return false;
-    const cell = Number(position?.x) + Number(position?.y) * state.world.grid.width;
-    return visible.has(cell) && voxelAt(state.world.grid, Number(position?.x), Number(position?.y), Number(position?.z)) === Number(source.diff.outputMaterialId);
-  }));
-  if (tentativeTechnique) {
-    const source = tentativeTechnique.sourceEventIds.map((eventId) => worldEventById(state, eventId)).find((event) => event?.kind === 'action'
-      && event.action.kind === 'act'
-      && !event.action.techniqueDemonstration
-      && ['combine', 'exert', 'expose'].includes(event.action.operation));
-    const rawPosition = source?.kind === 'action' ? source.diff.position as { x: number; y: number; z: number } | undefined : undefined;
-    const outputStackId = source?.kind === 'action' && typeof source.diff.outputStackId === 'string' ? source.diff.outputStackId : undefined;
-    const verificationTarget = rawPosition
-      ? { kind: 'voxel' as const, position: rawPosition }
-      : outputStackId && person.inventory.some((stack) => stack.id === outputStackId)
-        ? { kind: 'inventory-stack' as const, personId: person.id, stackId: outputStackId }
+  const tentativeVerificationCandidates: Array<{
+    technique: PersonState['knowledge'][number];
+    source: ActionFact;
+    expectedMaterialId: MaterialId;
+    target: Extract<PrimitiveAction, { kind: 'attend' }>['target'];
+    priority: number;
+  }> = [];
+  for (const technique of person.knowledge.filter((fact) => fact.kind === 'technique' && fact.confidence < 55)) {
+    for (const sourceId of technique.sourceEventIds) {
+      const source = worldEventById(state, sourceId);
+      if (source?.kind !== 'action'
+        || source.action.kind !== 'act'
+        || source.action.techniqueDemonstration
+        || !['combine', 'exert', 'expose'].includes(source.action.operation)) continue;
+      const rawExpectedMaterialId = Number(source.diff.outputMaterialId);
+      if (!Number.isInteger(rawExpectedMaterialId)) continue;
+      const expectedMaterialId = rawExpectedMaterialId as MaterialId;
+      const outputStackId = typeof source.diff.outputStackId === 'string'
+        ? source.diff.outputStackId
         : undefined;
-    if (verificationTarget) options.push({
-      id: `verify-technique:${tentativeTechnique.id}:${source?.id}`,
-      summary: `复查${tentativeTechnique.summary}的结果`,
-      reason: '一次成功结合只形成暂定经验，需要再次观察产物才能可靠传授',
-      goal: { kind: 'knowledge', factId: tentativeTechnique.id, minConfidence: 55 },
-      nextAction: { kind: 'attend', target: verificationTarget },
+      const carriedOutput = outputStackId
+        ? person.inventory.find((stack) => stack.id === outputStackId
+          && stack.materialId === expectedMaterialId)
+        : undefined;
+      if (carriedOutput) {
+        tentativeVerificationCandidates.push({
+          technique,
+          source,
+          expectedMaterialId,
+          target: { kind: 'inventory-stack', personId: person.id, stackId: carriedOutput.id },
+          priority: 0,
+        });
+        continue;
+      }
+      const rawPosition = source.diff.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
+      if (![rawPosition?.x, rawPosition?.y, rawPosition?.z].every((value) => Number.isInteger(value))) continue;
+      const position = { x: Number(rawPosition!.x), y: Number(rawPosition!.y), z: Number(rawPosition!.z) };
+      const cell = position.x + position.y * state.world.grid.width;
+      if (!visible.has(cell)
+        || voxelAt(state.world.grid, position.x, position.y, position.z) !== expectedMaterialId) continue;
+      tentativeVerificationCandidates.push({
+        technique,
+        source,
+        expectedMaterialId,
+        target: { kind: 'voxel', position },
+        priority: 1,
+      });
+    }
+  }
+  const tentativeVerification = tentativeVerificationCandidates
+    .sort((left, right) => left.priority - right.priority
+      || right.source.atMonth - left.source.atMonth
+      || left.source.id.localeCompare(right.source.id))[0];
+  if (tentativeVerification) {
+    const { technique, source, expectedMaterialId, target: verificationTarget } = tentativeVerification;
+    options.push({
+      id: `verify-technique:${technique.id}:${source.id}`,
+      summary: `复查${technique.summary}的结果`,
+      reason: '一次成功制作只形成暂定经验，需要再次观察产物才能可靠传授',
+      goal: { kind: 'knowledge', factId: technique.id, minConfidence: 55 },
+      nextAction: {
+        kind: 'attend',
+        target: verificationTarget,
+        verification: {
+          techniqueId: technique.id,
+          sourceEventId: source.id,
+          expectedMaterialId,
+        },
+      },
       target: verificationTarget,
       estimatedDuration: 'one-month',
-      sourceFactIds: [...tentativeTechnique.sourceEventIds],
+      sourceFactIds: [...technique.sourceEventIds],
     });
   }
 
@@ -1483,7 +1486,7 @@ export function buildDecisionContext(
     .filter((option) => stage !== 'learning-child' || optionAllowedForLearningChildCareRadius(state, person, option))
     .sort((a, b) => decisionOptionPriority(a) - decisionOptionPriority(b) || a.id.localeCompare(b.id));
   const followUpOptions = allOptions.filter((option) => !option.recordUseBasis
-    && option.nextAction.kind !== 'communicate');
+    && option.nextAction.kind !== 'talk');
   const options = allOptions
     .map((option) => isGroundedConversationOpening(option)
       && followUpOptions.some((followUp) => followUpSemanticallyMatches(option, followUp))
@@ -1508,6 +1511,7 @@ export function buildDecisionContext(
     activeIntent: person.activeIntentId && intentById(state, person.activeIntentId)?.status === 'active'
       ? intentById(state, person.activeIntentId)
       : undefined,
+    mind: buildPersonMindView(state, person, atMonth),
   };
 }
 
@@ -1537,9 +1541,9 @@ export function recompileNextAction(
   if (intent.goal.kind === 'death-mourned'
     || intent.goal.kind === 'remains-interred'
     || intent.goal.kind === 'memorial-marked') return recompileMortuaryNextAction(state, person, intent);
-  if ((intent.nextAction.kind === 'communicate'
-      && intent.nextAction.content.kind === 'request'
-      && intent.nextAction.content.techniqueDemonstration)
+  if ((intent.nextAction.kind === 'talk'
+      && intent.nextAction.speakerMeaning.kind === 'request'
+      && intent.nextAction.speakerMeaning.techniqueDemonstration)
     || (intent.nextAction.kind === 'act'
       && (intent.nextAction.techniqueDemonstration || intent.nextAction.techniqueImitation))) return null;
   const physicalServiceCompletion = intent.completionAction?.kind === 'act'
@@ -1559,11 +1563,47 @@ export function recompileNextAction(
       ? physicalServiceCompletion
       : intent.nextAction;
   }
+  if (intent.nextAction.kind === 'transfer' && intent.nextAction.authorizationRef) {
+    const permission = permissionById(state, intent.nextAction.authorizationRef);
+    if (permission?.status === 'active'
+      && permission.granteeId === person.id
+      && atMonth >= permission.validFromMonth
+      && atMonth <= permission.validUntilMonth) {
+      const grantorCandidate = personById(state, permission.grantorId);
+      const grantor = grantorCandidate && isAlive(grantorCandidate) ? grantorCandidate : undefined;
+      const stack = grantor?.inventory.find((candidate) => candidate.materialId === permission.materialId && candidate.quantity > 0);
+      const useBasis = grantor ? inferPermissionUseBasis(state, permission, person, grantor) : undefined;
+      if (!grantor || !stack || !useBasis) return null;
+      return sameLocation(grantor, person)
+        ? {
+            kind: 'transfer', materialId: permission.materialId, quantity: 1,
+            from: { kind: 'person', personId: grantor.id },
+            to: { kind: 'person', personId: person.id },
+            stackId: stack.id,
+            authorizationRef: permission.id,
+            permissionUseBasis: useBasis,
+          }
+        : { kind: 'move', toCellId: grantor.position.cellId, toZ: grantor.position.z };
+    }
+  }
   if (intent.projectId) return recompileProjectNextAction(state, person, intent.projectId);
   const agreementContinuation = intent.agreementId
     ? compileAgreementContinuations(state, intent.agreementId, atMonth).find((continuation) => continuation.personId === person.id)
     : undefined;
   if (agreementContinuation) return agreementContinuation.nextAction;
+  const continuationAgreement = intent.agreementId
+    ? agreementById(state, intent.agreementId)
+    : undefined;
+  if (continuationAgreement?.status === 'active'
+    && continuationAgreement.proposal.kind === 'assist'
+    && continuationAgreement.proposal.need === 'company'
+    && continuationAgreement.proposal.helperId === person.id) {
+    // A company promise is deliberately local and must not turn into pursuit
+    // of a live person's changing coordinates. Once the pair separates there
+    // is no current primitive action; the intent executor parks this attempt
+    // until natural co-location exposes a fresh continuation.
+    return null;
+  }
   if (intent.nextAction.kind === 'transfer' && intent.nextAction.authorizationRef) {
     const mandate = mandateById(state, intent.nextAction.authorizationRef);
     const mandateAction = intent.nextAction;
@@ -1582,26 +1622,13 @@ export function recompileNextAction(
         ? { ...mandateAction, stackId: stack.id }
         : { kind: 'move', toCellId: receiver.position.cellId, toZ: receiver.position.z };
     }
-    const permission = permissionById(state, intent.nextAction.authorizationRef);
-    if (permission?.status === 'active'
-      && permission.granteeId === person.id
-      && atMonth >= permission.validFromMonth
-      && atMonth <= permission.validUntilMonth) {
-      const grantorCandidate = personById(state, permission.grantorId);
-      const grantor = grantorCandidate && isAlive(grantorCandidate) ? grantorCandidate : undefined;
-      const stack = grantor?.inventory.find((candidate) => candidate.materialId === permission.materialId && candidate.quantity > 0);
-      if (!grantor || !stack) return null;
-      return sameLocation(grantor, person)
-        ? { kind: 'transfer', materialId: permission.materialId, quantity: 1, from: { kind: 'person', personId: grantor.id }, to: { kind: 'person', personId: person.id }, stackId: stack.id, authorizationRef: permission.id }
-        : { kind: 'move', toCellId: grantor.position.cellId, toZ: grantor.position.z };
-    }
     return null;
   }
   if (intent.completionAction && intent.target?.kind === 'person') {
     const targetPersonId = intent.target.personId;
     const target = personById(state, targetPersonId);
     if (!target || !isAlive(target)) return null;
-    if (intent.completionAction.kind === 'communicate') {
+    if (intent.completionAction.kind === 'talk') {
       if (positionsWithinVoiceRange(target.position, person.position)) return intent.completionAction;
       const rendezvous = conversationalRendezvous(state, person, target);
       return rendezvous
@@ -1623,7 +1650,7 @@ export function recompileNextAction(
     const receiver = personById(state, receiverId);
     const exchange = acceptedExchangeAt(state, person, atMonth);
     const stack = person.inventory.find((candidate) => candidate.materialId === goal.materialId && candidate.quantity > 0);
-    const offerId = exchange?.offer.action.kind === 'communicate' ? exchange.offer.action.content.id : undefined;
+    const offerId = exchange?.offer.action.kind === 'talk' ? exchange.offer.action.speakerMeaning.id : undefined;
     if (receiver && exchange && offerId && intent.sourceFactIds?.includes(exchange.offer.id) && stack) {
       if (!sameLocation(receiver, person)) return { kind: 'move', toCellId: receiver.position.cellId, toZ: receiver.position.z };
       return {
@@ -1763,7 +1790,7 @@ export function recompileNextAction(
     if (!water) return null;
     return person.position.cellId === water.bankPosition.cellId && person.position.z === water.bankPosition.z
       ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: water.waterPosition }] }
-      : { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z };
+      : moveTowardWaterAccess(water, atMonth);
   }
   if (intent.goal.kind === 'voxel-is' && intent.nextAction.kind === 'move') {
     const targetCell = intent.goal.position.x + intent.goal.position.y * state.world.grid.width;

@@ -143,16 +143,16 @@ export function projectKnowledgeRequestHasAuthoritativeSource(
     || event.status !== 'completed'
     || event.who !== request.requesterId
     || event.atMonth !== request.atMonth
-    || event.action.kind !== 'communicate'
-    || event.action.content.kind !== 'request') return false;
-  const payload = event.action.content.projectKnowledgeRequest;
+    || event.action.kind !== 'talk'
+    || event.action.speakerMeaning.kind !== 'request') return false;
+  const payload = event.action.speakerMeaning.projectKnowledgeRequest;
   return Boolean(payload
     && request.version === 'project-knowledge-request-v1'
     && request.projectId === project.id
     && projectEventHasEventTimeLead(project, event)
     && project.actionEventIds.includes(request.requestEventId)
     && request.listenerIds.length > 0
-    && samePersonIds(request.listenerIds, event.action.audience)
+    && samePersonIds(request.listenerIds, ((event.diff.understoodByPersonIds as string[] | undefined) ?? []))
     && payload.version === request.version
     && payload.projectId === request.projectId
     && payload.requesterId === request.requesterId

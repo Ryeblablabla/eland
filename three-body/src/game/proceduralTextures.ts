@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 /**
  * 程序化表面纹理：周期化值噪声 + 分形叠加（fbm），零外部资源。
- * 供宇宙场景（ThreeBodyCanvas）与行星材质调试页（DebugPlanet）共用。
+ * 供宇宙场景（ThreeBodyCanvas）使用。
  */
 
 export function mulberry32(seed: number) {

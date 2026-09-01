@@ -77,7 +77,7 @@ interface RecalledMemory {
 
 ### 4.2 真实对话
 
-模型台词只有在对应 `completed voice communicate` ActionFact 已存在且参与者可核验后，才写入双方的 dialogue memory：
+模型台词只有在对应 `completed voice talk` ActionFact 已存在且参与者可核验后，才写入双方的 dialogue memory：
 
 - 说话者记得“我说过什么”；
 - 听者记得“我亲耳听见什么”；

@@ -800,10 +800,15 @@ export default function ThreeBodyCanvas(props: Props) {
         let steps: number;
         if (p.targetT !== undefined) {
           const gap = p.targetT - w.t;
-          const rate = frozen
-            ? Math.min(Math.max(gap * 1.2, 0), 1.2)
-            : Math.min(Math.max(gap * 0.7, 0.05), 1.6); // t.u./s：追平后 0.05 慢漂
-          steps = Math.min(Math.max(0, Math.round(rate * frameDt / DT)), 120);
+          if (gap <= DT * 0.5) {
+            steps = 0;
+          } else {
+            const rate = frozen
+              ? Math.min(Math.max(gap * 1.2, 0), 1.2)
+              : Math.min(Math.max(gap * 0.7, 0.05), 1.6);
+            const targetSteps = Math.max(0, Math.floor((gap + 1e-9) / DT));
+            steps = Math.min(targetSteps, Math.max(1, Math.round(rate * frameDt / DT)), 120);
+          }
         } else {
           steps = Math.max(1, Math.round(p.speed * 6));
         }

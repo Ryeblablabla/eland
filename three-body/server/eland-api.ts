@@ -14,6 +14,8 @@ import { ModelRequestError } from './model-client';
 import type { CosmosSnapshot, EraKey, GameFrame, SkySample } from '../src/game/societyContract';
 import { createStepPayload } from '../src/game/eland/society-patch';
 import { logPerf, perfElapsed, perfJsonBytes, perfNow } from './perf';
+import { advanceAuthoritativeCosmosMonth, createInitialAuthoritativeCosmos } from './authoritative-cosmos';
+import { liveObserverRunner } from './live-observer-runner';
 
 const INITIAL_HISTORY_LIMIT = 240;
 const INITIAL_CIVILIZATION_INDEX_HISTORY_LIMIT = 2_400;
@@ -157,6 +159,7 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
 
   if (route === 'end' && method === 'POST') {
     try {
+      liveObserverRunner.forget(runId);
       return { status: 200, body: { ended: elandSessions.end(runId, leaseId), activeSessions: elandSessions.size() } };
     } catch (error) {
       if (error instanceof ElandSessionBusyError) return { status: 409, body: { error: error.message } };
@@ -171,9 +174,14 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
       ? randomInt(1, 0x1_0000_0000)
       : Math.min(0xffff_ffff, Math.max(1, Math.floor(finite(body.worldSeed, randomInt(1, 0x1_0000_0000)))));
     const characterIds = Array.isArray(body.characterIds) ? body.characterIds.filter((id): id is string => typeof id === 'string') : undefined;
-    const sky = skySample(body.skySample);
-    const cosmos = cosmosSnapshot(body.cosmosSnapshot);
+    let sky = skySample(body.skySample);
+    let cosmos = cosmosSnapshot(body.cosmosSnapshot);
     if (body.cosmosSnapshot !== undefined && !cosmos) return { status: 400, body: { error: '宇宙快照无效' } };
+    if (!cosmos) {
+      const initialCosmos = createInitialAuthoritativeCosmos(worldSeed);
+      cosmos = initialCosmos.cosmosSnapshot;
+      sky = initialCosmos.skySample;
+    }
     if (cosmos && cosmos.t !== sky.toTime) return { status: 400, body: { error: '宇宙快照与天象时刻不一致' } };
     try {
       return {
@@ -226,13 +234,59 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
       : 'read',
   );
   if (!session) return { status: 404, body: { error: `运行 ${runId} 不存在` } };
+  if (route === 'observe' && method === 'POST') {
+    const observerId = String(body.observerId ?? '').trim();
+    if (!observerId || observerId.length > 160) {
+      return { status: 400, body: { error: '观察租约标识无效' } };
+    }
+    const active = body.active === true;
+    const playbackIntervalMs = finite(body.playbackIntervalMs, 4_000);
+    const runner = liveObserverRunner.observe(runId, observerId, active, playbackIntervalMs);
+    const frame = session.latest();
+    const knownAuthorityRevision = typeof body.knownAuthorityRevision === 'string'
+      ? body.knownAuthorityRevision.trim()
+      : '';
+    const knownBranchId = typeof body.knownBranchId === 'string' ? body.knownBranchId.trim() : '';
+    const knownCivilizationId = Number(body.knownCivilizationId);
+    const knownElapsedMonths = Number(body.knownElapsedMonths);
+    const unchanged = Boolean(frame
+      && knownAuthorityRevision === frame.authorityRevision
+      && knownBranchId === frame.branchId
+      && knownCivilizationId === frame.civilizationId
+      && knownElapsedMonths === frame.elapsedMonths);
+    if (unchanged) return { status: 200, body: { runner, payload: null } };
+
+    const canUseKnownFrame = Boolean(frame
+      && knownAuthorityRevision === frame.authorityRevision
+      && knownBranchId === frame.branchId
+      && knownCivilizationId === frame.civilizationId
+      && Number.isInteger(knownElapsedMonths)
+      && knownElapsedMonths >= 0
+      && knownElapsedMonths < frame.elapsedMonths);
+    const previous = canUseKnownFrame ? session.frameAt(knownElapsedMonths) : null;
+    const needsProjectionResync = !previous
+      || !frame
+      || frame.elapsedMonths !== knownElapsedMonths + 1;
+    return {
+      status: 200,
+      body: {
+        runner,
+        payload: createStepPayload(previous, frame),
+        ...(needsProjectionResync ? initialReadProjection(session) : {}),
+      },
+    };
+  }
   if (route === 'embodiment-state' && method === 'GET') {
     return { status: 200, body: { embodiment: session.embodimentView() } };
   }
   if (route === 'embodiment-begin' && method === 'POST') {
     const totalStartedAt = perfNow();
-    const sky = skySample(body.skySample);
-    const cosmos = cosmosSnapshot(body.cosmosSnapshot);
+    const latest = session.latest();
+    const nextCosmos = latest?.cosmosSnapshot && !latest.cosmosSnapshot.pendingCollapse
+      ? advanceAuthoritativeCosmosMonth(latest.cosmosSnapshot)
+      : null;
+    const sky = nextCosmos?.skySample ?? skySample(body.skySample);
+    const cosmos = nextCosmos?.cosmosSnapshot ?? cosmosSnapshot(body.cosmosSnapshot);
     if (body.cosmosSnapshot !== undefined && !cosmos) {
       return { status: 400, body: { error: '宇宙快照无效' } };
     }

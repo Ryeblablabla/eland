@@ -22,7 +22,13 @@ import { SqliteRunStore } from './sqlite-run-store';
 const HOST = process.env.THREEBODY_HOST ?? "127.0.0.1";
 const PORT = Number(process.env.THREEBODY_PORT ?? 3220);
 const DATA_DIR = path.resolve(process.env.THREEBODY_DATA_DIR ?? path.join(process.cwd(), "data"));
-const MAX_BODY_BYTES = 50 * 1024 * 1024;
+const configuredMaxBodyMiB = Number(process.env.ELAND_MAX_HTTP_BODY_MIB ?? 50);
+const MAX_BODY_MIB = Number.isInteger(configuredMaxBodyMiB)
+  && configuredMaxBodyMiB >= 1
+  && configuredMaxBodyMiB <= 512
+  ? configuredMaxBodyMiB
+  : 50;
+const MAX_BODY_BYTES = MAX_BODY_MIB * 1024 * 1024;
 
 const store = new SqliteRunStore(DATA_DIR);
 const narrativeEnhancements = new NarrativeEnhancementService(store);
@@ -60,7 +66,7 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     size += buffer.length;
-    if (size > MAX_BODY_BYTES) throw new HttpError(413, "请求体超过 50MB");
+    if (size > MAX_BODY_BYTES) throw new HttpError(413, `请求体超过 ${MAX_BODY_MIB}MiB`);
     chunks.push(buffer);
   }
   if (!chunks.length) return {};

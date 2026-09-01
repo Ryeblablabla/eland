@@ -25,7 +25,7 @@ try {
     'src/game/eland/domain/agreement.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${agreementBundlePath}`,
   ], { stdio: 'pipe' });
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
-    'src/game/eland/application/model-decision/index.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${decisionBundlePath}`,
+    'src/game/eland/application/model-decision/decision-context.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${decisionBundlePath}`,
   ], { stdio: 'pipe' });
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'src/game/eland/domain/intent.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${intentBundlePath}`,
@@ -978,6 +978,116 @@ try {
   assert.ok((verifiedTechniqueState.people[0].knowledge.find((fact) => fact.id === 'technique:test')?.confidence ?? 0) >= 55, '主动观察真实产物后技术才能达到可传播置信度');
   assert.ok(verifiedTechniqueState.derived.milestones.some((milestone) => milestone.capabilityId === 59), '尝试加核验的事实链才能观察为用实验检验猜想');
 
+  const carriedVerificationState = createInitialState(3501, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const carriedVerifier = carriedVerificationState.people[0];
+  carriedVerifier.knowledge.push({
+    id: 'technique:expose:21:16:25', kind: 'technique', summary: '让食物暴露于火可得到熟食',
+    confidence: 46, learnedAtMonth: 0, sourceEventIds: ['test-expose-with-position-and-stack'],
+  });
+  carriedVerifier.inventory.push({
+    id: 'test-expose-cooked-output', materialId: 25, quantity: 1,
+    sourceEventIds: ['test-expose-with-position-and-stack'],
+  });
+  const misleadingFirePosition = {
+    x: carriedVerifier.position.cellId % carriedVerificationState.world.grid.width,
+    y: Math.floor(carriedVerifier.position.cellId / carriedVerificationState.world.grid.width),
+    z: Math.max(0, carriedVerifier.position.z - 1),
+  };
+  appendFixtureEvents(carriedVerificationState, [{
+    ...actionFact('test-expose-with-position-and-stack', 0, carriedVerifier.id, {
+      kind: 'act', operation: 'expose', targets: [],
+    }),
+    diff: {
+      position: misleadingFirePosition,
+      outputMaterialId: 25,
+      outputStackId: 'test-expose-cooked-output',
+    },
+  }]);
+  const carriedVerificationOption = buildDecisionContexts(carriedVerificationState, 1)
+    .find((context) => context.person.id === carriedVerifier.id)?.options
+    .find((option) => option.id.startsWith('verify-technique:technique:expose:21:16:25:'));
+  assert.equal(carriedVerificationOption?.nextAction.kind, 'attend');
+  assert.equal(carriedVerificationOption?.nextAction.target.kind, 'inventory-stack',
+    'when an operation records both its working position and a carried output, verification must bind the produced stack');
+  assert.deepEqual(carriedVerificationOption?.nextAction.verification, {
+    techniqueId: 'technique:expose:21:16:25',
+    sourceEventId: 'test-expose-with-position-and-stack',
+    expectedMaterialId: 25,
+  }, 'verification must carry the exact technique, producing event, and expected output material');
+  const carriedVerificationIntent = {
+    id: 'intent-test-carried-output-verification', ownerId: carriedVerifier.id,
+    summary: carriedVerificationOption.summary, domain: 'strategic',
+    goal: carriedVerificationOption.goal, nextAction: carriedVerificationOption.nextAction,
+    target: carriedVerificationOption.target, status: 'active', createdAtMonth: 0,
+    lastProgressAtMonth: 0, progress: 0, sourceDecisionEventId: 'test-carried-verification-decision',
+    sourceFactIds: carriedVerificationOption.sourceFactIds, actionEventIds: [], replanCount: 0,
+  };
+  carriedVerificationState.intents.push(carriedVerificationIntent);
+  carriedVerifier.activeIntentId = carriedVerificationIntent.id;
+  const carriedVerificationFact = executeActiveIntent(
+    carriedVerificationState,
+    carriedVerifier,
+    1,
+    0,
+    1,
+    [],
+  );
+  assert.equal(carriedVerificationFact?.diff.verifiedTechnique, true);
+  assert.equal(carriedVerificationIntent.status, 'completed',
+    'one successful source-bound output inspection must finish the verification intent');
+  assert.ok((carriedVerifier.knowledge.find((fact) => fact.id === 'technique:expose:21:16:25')?.confidence ?? 0) >= 55);
+
+  const repurposedOutputState = createInitialState(3502, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const repurposedVerifier = repurposedOutputState.people[0];
+  const tabletTechniqueId = 'technique:exert:24:13:0:27';
+  repurposedVerifier.knowledge.push({
+    id: tabletTechniqueId, kind: 'technique', summary: '用石制工具加工木材可得到记录板',
+    confidence: 46, learnedAtMonth: 0, sourceEventIds: ['test-tablet-output'],
+  });
+  repurposedVerifier.inventory.push({
+    id: 'test-repurposed-tablet-output', materialId: 27, quantity: 1,
+    sourceEventIds: ['test-tablet-output'], recordPayloadId: 'test-later-unrelated-record',
+  });
+  repurposedOutputState.records.push({
+    id: 'test-later-unrelated-record', authorId: repurposedOutputState.people[1].id,
+    knowledgeId: 'technique:combine-inventory:1x1+13x1:24', codebookId: 'codebook:test-later-unrelated-record',
+    kind: 'technique', summary: '石与木材可结合为石制工具', version: 1,
+    createdAtMonth: 0, sourceEventIds: ['test-later-record-writing'],
+  });
+  appendFixtureEvents(repurposedOutputState, [{
+    ...actionFact('test-tablet-output', 0, repurposedVerifier.id, {
+      kind: 'act', operation: 'exert', targets: [],
+    }),
+    diff: { outputMaterialId: 27, outputStackId: 'test-repurposed-tablet-output' },
+  }]);
+  const repurposedVerificationOption = buildDecisionContexts(repurposedOutputState, 1)
+    .find((context) => context.person.id === repurposedVerifier.id)?.options
+    .find((option) => option.id.startsWith(`verify-technique:${tabletTechniqueId}:`));
+  assert.equal(repurposedVerificationOption?.nextAction.kind, 'attend');
+  const repurposedVerificationIntent = {
+    id: 'intent-test-repurposed-output-verification', ownerId: repurposedVerifier.id,
+    summary: repurposedVerificationOption.summary, domain: 'strategic',
+    goal: repurposedVerificationOption.goal, nextAction: repurposedVerificationOption.nextAction,
+    target: repurposedVerificationOption.target, status: 'active', createdAtMonth: 0,
+    lastProgressAtMonth: 0, progress: 0, sourceDecisionEventId: 'test-repurposed-verification-decision',
+    sourceFactIds: repurposedVerificationOption.sourceFactIds, actionEventIds: [], replanCount: 0,
+  };
+  repurposedOutputState.intents.push(repurposedVerificationIntent);
+  repurposedVerifier.activeIntentId = repurposedVerificationIntent.id;
+  const repurposedVerificationFact = executeActiveIntent(
+    repurposedOutputState,
+    repurposedVerifier,
+    1,
+    0,
+    1,
+    [],
+  );
+  assert.equal(repurposedVerificationFact?.diff.verifiedTechnique, true,
+    'a source-bound physical verification must inspect the produced material even when that same carrier now holds a later record');
+  assert.equal(repurposedVerificationFact?.diff.recordPayloadId, undefined,
+    'the later record content must not replace the explicitly requested source-bound material verification');
+  assert.equal(repurposedVerificationIntent.status, 'completed');
+
   const blindTrialState = createInitialState(36, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   blindTrialState.people[0].inventory.push({ id: 'test-seed-stack', materialId: 22, quantity: 1, sourceEventIds: [] });
   const blindOptions = buildDecisionContexts(blindTrialState).find((context) => context.person.id === blindTrialState.people[0].id)?.options.filter((option) => option.id.startsWith('try-combine:')) ?? [];
@@ -1441,7 +1551,13 @@ try {
   assert.equal(collectiveState.derived.milestones.some((milestone) => milestone.capabilityId === 29), false,
     '成立一般共同体不能替代“友谊与联盟”的具体关系语义，该地图坐标应继续 guarded');
 
-  collectiveState.people.find((person) => person.id === founder.id).inventory.push({ id: 'test-permission-food', materialId: 21, quantity: 3, sourceEventIds: ['test-private-food-source'] });
+  const permissionGrantor = collectiveState.people.find((person) => person.id === founder.id);
+  const permissionGrantee = collectiveState.people.find((person) => person.id === partner.id);
+  collectiveState.projects = [];
+  permissionGrantor.inventory = permissionGrantor.inventory.filter((stack) => stack.materialId !== 21);
+  permissionGrantee.inventory = permissionGrantee.inventory.filter((stack) => stack.materialId !== 21);
+  permissionGrantor.inventory.push({ id: 'test-permission-food', materialId: 21, quantity: 5, sourceEventIds: ['test-private-food-source'] });
+  permissionGrantee.inventory.push({ id: 'test-grantee-food', materialId: 21, quantity: 3, sourceEventIds: ['test-grantee-food-source'] });
   let permissionContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
   const offerPermission = permissionContext?.options.find((option) => option.id.startsWith('offer-permission:')
     && option.nextAction.kind === 'communicate'
@@ -1456,10 +1572,35 @@ try {
   assert.ok(permission?.status === 'active' && permission.grantorId === founder.id && permission.granteeId === partner.id && permission.materialId === 21, '接受后应形成人、物质、数量和有效期均明确的许可事实');
   const usePermissionContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === partner.id);
   const usePermission = usePermissionContext?.options.find((option) => option.id.startsWith(`use-permission:${permission.id}:`));
+  assert.ok(usePermission, '许可只有在被授权人存在真实储备缺口且授权人仍有剩余时才可行使');
+  assert.equal(usePermission.domain, 'strategic', '行使许可是资源决策，不得继续膨胀为社会履约意图');
+  assert.equal(usePermission.semantics.obligation, 'optional', '取用权不是必须履行的承诺');
+  assert.equal(usePermission.nextAction.permissionUseBasis?.kind, 'personal-reserve');
   const partnerFoodBefore = collectiveState.people.find((person) => person.id === partner.id).inventory.filter((stack) => stack.materialId === 21).reduce((sum, stack) => sum + stack.quantity, 0);
   collectiveState = runRecordOption(collectiveState, partner.id, usePermission, 'use-resource-permission');
+  const permissionUseFact = [...collectiveState.world.past].reverse().find((event) => event.kind === 'action'
+    && event.action.kind === 'transfer'
+    && event.action.authorizationRef === permission.id);
+  assert.equal(permissionUseFact?.status, 'completed', `许可取用应通过执行边界复核：${JSON.stringify({
+    result: permissionUseFact?.result,
+    atMonth: permissionUseFact?.atMonth,
+    who: permissionUseFact?.who,
+    action: permissionUseFact?.action,
+    permission: collectiveState.permissions.find((candidate) => candidate.id === permission.id),
+  })}`);
   assert.equal(collectiveState.people.find((person) => person.id === partner.id)?.inventory.filter((stack) => stack.materialId === 21).reduce((sum, stack) => sum + stack.quantity, 0), partnerFoodBefore + 1, '被授权者仍必须通过真实 transfer 取用一份物质');
   assert.equal(collectiveState.permissions[0]?.useEventIds.length, 1, '许可的每次行使必须留下独立动作证据');
+  assert.equal(buildDecisionContexts(collectiveState).find((context) => context.person.id === partner.id)?.options.some((option) => option.id.startsWith(`use-permission:${permission.id}:`)), false,
+    '储备缺口已经被填平后，同一许可不能通过“当前库存加一”继续制造目标');
+  collectiveState.permissions.push({
+    id: 'permission:test-reciprocal-food', collectiveId: collective.id,
+    grantorId: partner.id, granteeId: founder.id, materialId: 21,
+    maxQuantityPerTransfer: 1, validFromMonth: collectiveState.clock.elapsedMonths,
+    validUntilMonth: collectiveState.clock.elapsedMonths + 24, status: 'active',
+    proposalAgreementId: 'fixture-reciprocal', sourceEventIds: ['test-reciprocal-source'], useEventIds: [],
+  });
+  assert.equal(buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id)?.options.some((option) => option.id.startsWith('use-permission:permission:test-reciprocal-food:')), false,
+    '双方储备相等时，互相许可不能产生把同一物资拿回去的反向行动');
   permissionContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
   const revokePermission = permissionContext?.options.find((option) => option.id.startsWith('revoke-permission:'));
   collectiveState = runRecordOption(collectiveState, founder.id, revokePermission, 'revoke-resource-permission');

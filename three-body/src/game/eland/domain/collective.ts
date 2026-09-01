@@ -70,8 +70,8 @@ function updateStatus(state: SimulationState, collective: CollectiveState): void
 
 /** Communication creates normative membership facts; the collective never acts by itself. */
 export function recordCollectiveAction(state: SimulationState, fact: ActionFact): void {
-  if (fact.status !== 'completed' || fact.action.kind !== 'communicate') return;
-  const content = fact.action.content;
+  if (fact.status !== 'completed' || fact.action.kind !== 'talk') return;
+  const content = fact.action.speakerMeaning;
   if (content.kind === 'accept') {
     const formation = proposalOf(state, content.referenceId, 'collective');
     if (formation?.proposal.kind === 'collective') {

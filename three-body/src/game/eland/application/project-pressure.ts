@@ -2,7 +2,7 @@ import { animalSpecies, isAnimalAlive } from '../domain/animal';
 import { Material, materialHas, type MaterialId } from '../domain/material';
 import type { DropState, SimulationState } from '../domain/model';
 import type { PersonState } from '../domain/person';
-import { ageMonths, inventoryQuantity, isAlive } from '../domain/person';
+import { ageMonths, hibernationPhase, inventoryQuantity, isAlive } from '../domain/person';
 import type { ProjectPressureBasis, ProjectProposal } from '../domain/project';
 import { shelterGeometryAt } from '../domain/structure';
 import {
@@ -55,6 +55,7 @@ export type ProjectPressureSubject = Pick<
     | 'remoteWorkPowerBasis'
     | 'productionToolBaselineRank'
     | 'capabilityReplicationBasis'
+    | 'hibernationRescueBasis'
 > & { desiredFunction?: ProjectProposal['desiredFunction'] };
 
 export interface ProjectPressureView {
@@ -298,6 +299,29 @@ function huntingBasis(
 function careBasis(owner: PersonState, subject: ProjectPressureSubject, atMonth: number, view: Required<ProjectPressureView>) {
   const visibleById = new Map(view.visiblePeople.map((person) => [person.id, person]));
   if (!visibleById.has(owner.id)) visibleById.set(owner.id, owner);
+  const rescue = subject.hibernationRescueBasis;
+  if (rescue) {
+    const sleeper = visibleById.get(rescue.sleeperId);
+    const condition = sleeper?.conditions.find((candidate) => candidate.id === rescue.hibernationConditionId
+      && candidate.kind === 'dehydrated-hibernation');
+    const minimumReserve = sleeper
+      ? Math.min(sleeper.body.health, sleeper.body.hydration, sleeper.body.nutrition)
+      : 100;
+    const pressure = condition
+      ? 68 + Math.max(0, 45 - minimumReserve) * 0.7
+        + (hibernationPhase(condition) === 'dormant' ? 10 : 0)
+      : sleeper ? 0 : subject.pressureBasis?.pressure ?? 56;
+    return makeBasis(subject, owner, atMonth, pressure, [
+      `state:hibernation-rescue:${rescue.hibernationConditionId}`,
+      `state:beneficiary-visible:${rescue.sleeperId}:${sleeper ? 'yes' : 'no'}`,
+      `state:hibernation-phase:${condition ? hibernationPhase(condition) : 'absent'}`,
+      `state:minimum-reserve:${Math.round(minimumReserve)}`,
+    ], [
+      ...(condition ? ['visible-hibernating-beneficiary'] : ['hibernation-ended']),
+      ...(minimumReserve < 28 ? ['beneficiary-body-emergency'] : []),
+      ...(!sleeper ? ['beneficiary-not-currently-visible'] : []),
+    ], condition ? unique([...rescue.sourceFactIds, ...condition.sourceEventIds]) : rescue.sourceFactIds);
+  }
   const observed = subject.beneficiaryIds.flatMap((personId) => {
     const person = visibleById.get(personId);
     if (!person) return [];

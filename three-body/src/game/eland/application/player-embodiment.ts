@@ -150,12 +150,7 @@ function targetForAction(
       return projected ? [projected] : [];
     })[0];
   }
-  if (action.kind === 'communicate') {
-    const audience = action.audience
-      .map((personId) => targetForWorldRef(state, { kind: 'person', personId }))
-      .find(Boolean);
-    return audience;
-  }
+  if (action.kind === 'talk' || action.kind === 'inscribe') return undefined;
   const holder = action.to.kind === 'person'
     ? targetForWorldRef(state, { kind: 'person', personId: action.to.personId })
     : action.to.kind === 'container'
@@ -195,7 +190,8 @@ function categoryForChoice(
   if (action.kind === 'move') return 'move';
   if (action.kind === 'transfer') return 'transfer';
   if (action.kind === 'attend') return 'attend';
-  if (action.kind === 'communicate') return 'communicate';
+  if (action.kind === 'talk') return 'talk';
+  if (action.kind === 'inscribe') return 'project';
   if (action.operation === 'ingest'
     || action.operation === 'dehydrate'
     || action.operation === 'rehydrate') return 'survival';

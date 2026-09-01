@@ -22,6 +22,7 @@ import type {
   ProjectState,
 } from '../../domain/project';
 import { worldEventById } from '../../domain/event-index';
+import { projectIsLedBy } from '../../domain/project-leadership';
 import { projectsOwnedBy } from '../../domain/state-index';
 import { findStandingPath, voxelAt } from '../../world/grid';
 import {
@@ -354,6 +355,13 @@ export function hypothesisStep(
   request: ProjectHypothesisRequest = { operation: 'combine-inventory' },
   targetPosition?: { x: number; y: number; z: number },
 ): ProjectStep | null {
+  // A hypothesis campaign is one person's bounded, source-grounded inquiry,
+  // not a public recipe hidden inside the project shell. Collaborators may
+  // contribute requested materials, demonstrations and known techniques, but
+  // they cannot silently execute a candidate compiled from the leader's
+  // subjective evidence. A real leadership transition closes the old campaign
+  // before a successor can open a new one.
+  if (!projectIsLedBy(project, person.id)) return null;
   const reachableDrops = visibleDrops.filter((drop) => !drop.recordPayloadId
     && findStandingPath(
       state.world.grid,
@@ -864,7 +872,7 @@ function actionInventorySourceKeys(person: PersonState, action: PrimitiveAction)
     && action.target.personId === person.id) {
     stackIds.push(action.target.stackId);
     if (action.instrumentStackId) stackIds.push(action.instrumentStackId);
-  } else if (action.kind === 'communicate' && action.carrierStackId) {
+  } else if (action.kind === 'inscribe') {
     stackIds.push(action.carrierStackId);
   } else if (action.kind === 'transfer' && action.stackId) {
     stackIds.push(action.stackId);

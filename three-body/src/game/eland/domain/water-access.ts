@@ -1,4 +1,4 @@
-import { materialHas } from './material';
+import { Material, materialHas, type MaterialId } from './material';
 import type { PrimitiveAction, WaterSearchBasis } from './action';
 import type { ActionFact, DecisionAuthorityState, SimulationState, WorldEvent } from './model';
 import type { PersonState } from './person';
@@ -18,6 +18,7 @@ import {
 } from '../world/grid';
 
 export interface WaterAccess {
+  materialId: MaterialId;
   waterPosition: { x: number; y: number; z: number };
   bankPosition: StandingPosition;
   pathLength: number;
@@ -43,21 +44,23 @@ function defaultVisibleCells(person: PersonState): number[] {
 }
 
 /** 返回本人看见或记得、且此刻物质仍为水并可实际走到岸边的最近水源。 */
-export function findReachableWater(
+function findReachableDrinkable(
   state: Pick<DecisionAuthorityState, 'world'>,
   person: PersonState,
-  visibleCellIds: Iterable<number> = defaultVisibleCells(person),
+  visibleCellIds: Iterable<number>,
+  accepts: (materialId: MaterialId) => boolean,
+  acceptsAccess: (access: WaterAccess) => boolean = () => true,
 ): WaterAccess | null {
   const visible = new Set(visibleCellIds);
   const positions = new Map<string, { position: WaterAccess['waterPosition']; remembered: boolean; sourceEventIds: string[] }>();
   for (const waterCell of visible) {
     const surface = surfaceMaterial(state.world.grid, waterCell);
-    if (!materialHas(surface, 'drinkable')) continue;
+    if (!accepts(surface)) continue;
     const position = topPosition(state.world.grid, waterCell);
     positions.set(`${position.x}:${position.y}:${position.z}`, { position, remembered: false, sourceEventIds: [] });
   }
   for (const place of person.knownPlaces) {
-    if (!materialHas(place.materialId, 'drinkable')) continue;
+    if (!accepts(place.materialId)) continue;
     const key = `${place.position.x}:${place.position.y}:${place.position.z}`;
     if (!positions.has(key)) positions.set(key, { position: place.position, remembered: true, sourceEventIds: place.sourceEventIds });
   }
@@ -66,20 +69,22 @@ export function findReachableWater(
   for (const known of positions.values()) {
     const { position } = known;
     const currentMaterial = voxelAt(state.world.grid, position.x, position.y, position.z);
-    if (!materialHas(currentMaterial, 'drinkable')) continue;
+    if (!accepts(currentMaterial)) continue;
     const waterCell = cellId(position.x, position.y);
     for (const bankCell of neighbors4(waterCell)) {
       for (const bankPosition of standingPositions(state.world.grid, bankCell)) {
         if (Math.abs(bankPosition.z - position.z) > 2) continue;
         const path = findStandingPath(state.world.grid, person.position, bankPosition);
         if (!path.length) continue;
-        candidates.push({
+        const access = {
+          materialId: currentMaterial,
           waterPosition: { ...position },
           bankPosition,
           pathLength: path.length,
           remembered: known.remembered,
           sourceEventIds: known.sourceEventIds,
-        });
+        } satisfies WaterAccess;
+        if (acceptsAccess(access)) candidates.push(access);
       }
     }
   }
@@ -87,6 +92,75 @@ export function findReachableWater(
     || Number(a.remembered) - Number(b.remembered)
     || a.bankPosition.cellId - b.bankPosition.cellId
     || a.bankPosition.z - b.bankPosition.z)[0] ?? null;
+}
+
+/** 返回本人看见或记得、且此刻仍可饮用并可实际走到岸边的最近水源。 */
+export function findReachableWater(
+  state: Pick<DecisionAuthorityState, 'world'>,
+  person: PersonState,
+  visibleCellIds: Iterable<number> = defaultVisibleCells(person),
+): WaterAccess | null {
+  return findReachableDrinkable(state, person, visibleCellIds, (materialId) => materialHas(materialId, 'drinkable'));
+}
+
+/**
+ * Return a drinkable source perceived or remembered by the guide whose exact
+ * bank position is also physically reachable by the companion. This proves a
+ * shared route without giving either person hidden map knowledge.
+ */
+export function findSharedReachableWater(
+  state: Pick<DecisionAuthorityState, 'world'>,
+  guide: PersonState,
+  companion: PersonState,
+  visibleCellIds: Iterable<number> = defaultVisibleCells(guide),
+): WaterAccess | null {
+  return findReachableDrinkable(
+    state,
+    guide,
+    visibleCellIds,
+    (materialId) => materialHas(materialId, 'drinkable'),
+    (access) => findStandingPath(state.world.grid, companion.position, access.bankPosition).length > 0,
+  );
+}
+
+/** 容器运输只接受真实液态水；冰可现场摄入，但不能被无加热规则地装成水。 */
+export function findReachableLiquidWater(
+  state: Pick<DecisionAuthorityState, 'world'>,
+  person: PersonState,
+  visibleCellIds: Iterable<number> = defaultVisibleCells(person),
+): WaterAccess | null {
+  return findReachableDrinkable(state, person, visibleCellIds, (materialId) => materialId === Material.Water);
+}
+
+/** Compile travel that turns a real sighting into a replayable place memory. */
+export function moveTowardWaterAccess(
+  water: WaterAccess,
+  atMonth: number,
+): WaterSearchMove {
+  const mode = water.remembered ? 'remembered' as const : 'visible' as const;
+  const sourceFactIds = [...new Set(water.sourceEventIds)];
+  return {
+    kind: 'move',
+    toCellId: water.bankPosition.cellId,
+    toZ: water.bankPosition.z,
+    waterAccessBasis: {
+      version: 'water-access-basis-v1',
+      mode,
+      materialId: water.materialId,
+      waterPosition: { ...water.waterPosition },
+      bankPosition: { ...water.bankPosition },
+      observedAtMonth: atMonth,
+      sourceFactIds,
+      basisKey: [
+        'water-access-basis-v1',
+        `mode=${mode}`,
+        `material=${water.materialId}`,
+        `water=${water.waterPosition.x}:${water.waterPosition.y}:${water.waterPosition.z}`,
+        `bank=${water.bankPosition.cellId}:${water.bankPosition.z}`,
+        `sources=${sourceFactIds.sort().join(',')}`,
+      ].join('|'),
+    },
+  };
 }
 
 /**

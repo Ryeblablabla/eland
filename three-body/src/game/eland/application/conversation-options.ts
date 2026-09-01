@@ -2,6 +2,7 @@ import type {
   ActionOption,
   GroundedConversationRef,
   GroundedConversationTopic,
+  SourceOperation,
 } from '../domain/action';
 import {
   GROUNDED_CONVERSATION_RESPONSE_WINDOW_MONTHS,
@@ -13,12 +14,17 @@ import {
   liveSocialEvidenceForPersonSource,
   liveSocialEvidenceForPersonSources,
   planningOverlayEvents,
-  retainedColdWorldEventsForLease,
   worldEventById,
   type RememberedGroundedOpeningBasisCompilationDiagnostics,
   type RememberedGroundedOpeningBasisSnapshot,
 } from '../domain/event-index';
-import type { ActionFact, EnvironmentFact, SimulationState, WorldEvent } from '../domain/model';
+import type {
+  ActionFact,
+  DecisionAuthorityState,
+  EnvironmentFact,
+  SimulationState,
+  WorldEvent,
+} from '../domain/model';
 import { ageMonths, isAlive, isDehydratedHibernating, type PersonState } from '../domain/person';
 import { intentsOwnedBy, personById } from '../domain/state-index';
 import { cellX, cellY } from '../world/grid';
@@ -27,6 +33,7 @@ import { latestSharedProjectBetween } from '../domain/project-participant-index'
 import { conversationalRendezvous, positionsWithinVoiceRange } from '../domain/social-space';
 import { relationTo } from '../domain/relation';
 import { agreementsForPerson } from '../domain/agreement';
+import { personalityScore } from '../domain/personality';
 import { livePersonSocialSourceEventIds, type LiveSocialEvidenceDescriptor } from '../domain/live-social-evidence';
 import {
   conversationEpisodeById,
@@ -43,6 +50,19 @@ interface ConversationCandidate {
   factId?: string;
   priority: number;
 }
+
+const OPERATION_CONVERSATION_LABEL: Record<SourceOperation, string> = {
+  exert: '施力',
+  separate: '分离或采收',
+  combine: '材料试作',
+  expose: '暴露处理',
+  ingest: '摄入',
+  reproduce: '生殖尝试',
+  hunt: '狩猎',
+  dehydrate: '进入脱水休眠',
+  rehydrate: '协助补水恢复',
+  inter: '实体交互',
+};
 
 function conversationEpisodeId(
   atMonth: number,
@@ -73,7 +93,7 @@ export interface GroundedConversationCompilationOptions {
 export function createGroundedConversationCompilationDiagnostics(): GroundedConversationCompilationDiagnostics {
   return {
     personSourceSnapshots: 0,
-    exactLeaseIndexes: 0,
+    sourceIndexes: 0,
     sourceResolutions: 0,
     sourceResolutionsByPersonAndId: {},
     rendezvousComputations: 0,
@@ -106,7 +126,7 @@ function sharedLifeMomentMatches(
 ): boolean {
   if (event.action) {
     return event.action.completed
-      && event.action.actionKind !== 'communicate'
+      && event.action.actionKind !== 'talk'
       && event.action.actorId === other.id
       && event.action.supportRecipientIds.includes(person.id);
   }
@@ -247,17 +267,51 @@ function groundedFailureSources(
 ): string[] {
   const sourceFactIds = resolvedSourceIds(state, owner, memory.sourceEventIds);
   if (!sourceFactIds.length) return [];
-  const causalCommunicationFailure = memory.causal?.actionKind === 'communicate'
+  const causalCommunicationFailure = memory.causal?.actionKind === 'talk'
     && (memory.causal.outcome === 'blocked' || memory.causal.outcome === 'failed');
   const includesBlockedCommunication = sourceFactIds.some((sourceId) => {
     const source = worldEventById(state, sourceId);
     return source?.kind === 'action'
-      && source.action.kind === 'communicate'
+      && source.action.kind === 'talk'
       && (source.status === 'blocked' || source.status === 'failed');
   });
   // A failed attempt to start or answer a conversation is protocol noise, not
   // a life episode worth offering as the subject of yet another conversation.
-  return causalCommunicationFailure || includesBlockedCommunication ? [] : sourceFactIds;
+  if (causalCommunicationFailure || includesBlockedCommunication) return [];
+  // A completed opening may share an Intent with later physical work. Keep
+  // the concrete physical facts as the failure basis, but never quote that
+  // opening back into a new failure conversation.
+  return sourceFactIds.filter((sourceId) => {
+    const source = worldEventById(state, sourceId);
+    return source?.kind !== 'action' || source.action.kind !== 'talk';
+  });
+}
+
+function groundedFailureSubject(
+  state: SimulationState,
+  sourceFactIds: string[],
+  fallback: string,
+): string {
+  const action = sourceFactIds
+    .map((sourceId) => worldEventById(state, sourceId))
+    .filter((source): source is ActionFact => source?.kind === 'action'
+      && source.action.kind !== 'talk')
+    .sort((left, right) => left.atMonth - right.atMonth
+      || left.orderInMonth - right.orderInMonth)
+    .at(-1);
+  if (!action) return fallback;
+  let actionLabel: string;
+  switch (action.action.kind) {
+    case 'move': actionLabel = '移动'; break;
+    case 'transfer': actionLabel = '物资转移'; break;
+    case 'attend': actionLabel = '观察'; break;
+    case 'act': actionLabel = OPERATION_CONVERSATION_LABEL[action.action.operation]; break;
+    case 'talk': return fallback;
+    case 'inscribe': actionLabel = '刻写记录'; break;
+  }
+  return action.status === 'blocked' || action.status === 'failed'
+    ? `一次${actionLabel}没有完成：${action.result}`
+    : `一次${actionLabel}完成后原目标仍未满足：${action.result}`;
 }
 
 function alreadyUsedBasis(
@@ -317,7 +371,6 @@ function basisKey(
 function latestEvent(
   state: SimulationState,
   predicate: (event: WorldEvent) => boolean,
-  retainedCold: readonly WorldEvent[] = [],
 ): WorldEvent | undefined {
   const overlay = planningOverlayEvents(state);
   for (let offset = overlay.length - 1; offset >= 0; offset -= 1) {
@@ -328,15 +381,7 @@ function latestEvent(
     const event = state.world.past[offset];
     if (predicate(event)) return event;
   }
-  for (let offset = retainedCold.length - 1; offset >= 0; offset -= 1) {
-    const event = retainedCold[offset];
-    if (predicate(event)) return event;
-  }
   return undefined;
-}
-
-function livingChildBirthLeaseKey(childId: string): string {
-  return `gameplay:living-child:${childId}:birth`;
 }
 
 function conditionPhrase(person: PersonState): { summary: string; sourceFactIds: string[] } | null {
@@ -403,11 +448,7 @@ function birthEventForSharedChild(state: SimulationState, person: PersonState, o
     (event) => event.kind === 'environment'
       && event.change === 'body'
       && event.diff.bornPersonId === child.id,
-    retainedColdWorldEventsForLease(state, livingChildBirthLeaseKey(child.id)),
   );
-  if (!birth && (state.world.historyCursor?.hotStartIndex ?? 0) > 0) {
-    throw new Error(`living child ${child.id} 缺少已验证出生事实`);
-  }
   return birth?.kind === 'environment' ? birth : undefined;
 }
 
@@ -473,7 +514,11 @@ function openingCandidates(
     ?? failures[0];
   if (failure) candidates.push({
     topic: 'failure',
-    summary: `向${other.name}说明本人记得的失败“${failure.memory.summary}”，并邀请对方一起复盘`,
+    summary: `向${other.name}说明本人记得的失败“${groundedFailureSubject(
+      state,
+      failure.sourceFactIds,
+      failure.memory.summary,
+    )}”，并邀请对方一起复盘`,
     reason: '本人记得一次真实失败，可以向身边人表达挫折并寻求理解',
     sourceFactIds: failure.sourceFactIds,
     priority: 62,
@@ -547,6 +592,16 @@ function openingOption(
 ): ActionOption | null {
   if (liveConversationEpisodeForPerson(state, person.id)
     || liveConversationEpisodeForPerson(state, other.id)) return null;
+  if (LOW_STAKES_TOPICS.includes(candidate.topic as typeof LOW_STAKES_TOPICS[number])) {
+    const recentPairEpisode = (state.memoryStore?.conversations ?? []).some((episode) => {
+      const samePair = (episode.initiatorId === person.id && episode.listenerId === other.id)
+        || (episode.initiatorId === other.id && episode.listenerId === person.id);
+      return samePair
+        && atMonth - (episode.openedAtMonth ?? episode.createdAtMonth)
+          < GROUNDED_CONVERSATION_RESPONSE_WINDOW_MONTHS;
+    });
+    if (recentPairEpisode) return null;
+  }
   const conversationBasisKey = basisKey(person, other, candidate);
   if (alreadyUsedBasis(rememberedSources, person, other, conversationBasisKey)) return null;
   const episodeId = conversationEpisodeId(atMonth, person.id, other.id, conversationBasisKey);
@@ -563,16 +618,14 @@ function openingOption(
   };
   const representationId = `conversation:${candidate.topic}:${atMonth}:${person.id}:${other.id}`;
   const conversationAction = {
-    kind: 'communicate' as const,
-    content: {
+    kind: 'talk' as const,
+    speakerMeaning: {
       id: representationId,
       kind: 'claim' as const,
       summary: candidate.summary,
       ...(candidate.factId ? { factId: candidate.factId } : {}),
       conversation,
     },
-    audience: [other.id],
-    channel: 'voice' as const,
   };
   const together = positionsWithinVoiceRange(person.position, other.position);
   if (LOW_STAKES_TOPICS.includes(candidate.topic as typeof LOW_STAKES_TOPICS[number])
@@ -605,11 +658,13 @@ function openConversationGrounding(
   person: PersonState,
   other: PersonState,
 ): NonNullable<ActionOption['openConversationGrounding']> {
+  const usedOpenSourceIds = rememberedOpenConversationSourceIds(state, person, other);
   const relationshipSources = resolvedSourceIds(
     state,
     person,
     relationTo(person, other.id)?.sourceEventIds ?? [],
-  );
+  ).filter((sourceFactId) => !usedOpenSourceIds.has(sourceFactId)
+    && !isGroundedConversationActionSource(state, sourceFactId));
   const facts: NonNullable<ActionOption['openConversationGrounding']>['facts'] = [];
   const seen = new Set<string>();
   const kindCounts = { memory: 0, knowledge: 0, relationship: 0 };
@@ -620,7 +675,11 @@ function openConversationGrounding(
     summary: string,
     extra: { memoryKind?: string; knowledgeId?: string } = {},
   ) => {
-    if (!sourceFactId || seen.has(sourceFactId) || kindCounts[kind] >= kindLimits[kind]) return;
+    if (!sourceFactId
+      || usedOpenSourceIds.has(sourceFactId)
+      || isGroundedConversationActionSource(state, sourceFactId)
+      || seen.has(sourceFactId)
+      || kindCounts[kind] >= kindLimits[kind]) return;
     seen.add(sourceFactId);
     kindCounts[kind] += 1;
     facts.push({ kind, sourceFactId, summary, ...extra });
@@ -660,6 +719,29 @@ function openConversationGrounding(
     fallbackSourceFactIds: relationshipSources.slice(-1),
     facts,
   };
+}
+
+function isGroundedConversationActionSource(state: DecisionAuthorityState, eventId: string): boolean {
+  const event = worldEventById(state, eventId);
+  return Boolean(event?.kind === 'action'
+    && event.action.kind === 'talk'
+    && event.action.speakerMeaning.kind === 'claim'
+    && event.action.speakerMeaning.conversation);
+}
+
+function rememberedOpenConversationSourceIds(
+  state: DecisionAuthorityState,
+  person: PersonState,
+  other: PersonState,
+): Set<string> {
+  const remembered = (state.memoryStore?.items ?? [])
+    .filter((item) => item.ownerId === person.id
+      && item.lane === 'dialogue'
+      && item.personIds.includes(other.id)
+      && item.topicKeys.includes('dialogue:open'))
+    .flatMap((item) => item.sourceEventIds)
+    .filter((eventId) => !isGroundedConversationActionSource(state, eventId));
+  return new Set(remembered);
 }
 
 function openConversationBasisKey(
@@ -713,10 +795,8 @@ function openConversationOption(
     reason: '对方正在当前语音范围内；是否开口、谈什么以及引用哪些本人经历由人物决定',
     goal: { kind: 'representation-made', representationId: id },
     nextAction: {
-      kind: 'communicate',
-      content: { id, kind: 'claim', summary: `与${other.name}进行开放交谈`, conversation },
-      audience: [other.id],
-      channel: 'voice',
+      kind: 'talk',
+      speakerMeaning: { id, kind: 'claim', summary: `与${other.name}进行开放交谈`, conversation },
     },
     target: { kind: 'person', personId: other.id },
     estimatedDuration: 'one-month',
@@ -730,18 +810,21 @@ function openConversationOption(
 
 /** Rebind a model-selected open utterance to only the request-authorized facts. */
 export function compileOpenConversationOption(
+  state: DecisionAuthorityState,
+  person: PersonState,
   option: ActionOption,
   selectedSourceFactIds: readonly string[] = [],
 ): ActionOption | null {
   const grounding = option.openConversationGrounding;
   const action = option.completionAction ?? option.nextAction;
   if (!grounding
-    || action.kind !== 'communicate'
-    || action.content.kind !== 'claim'
-    || action.content.conversation?.topic !== 'open'
-    || action.content.conversation.turn !== 'opening') return null;
-  const conversation = action.content.conversation;
-  if (grounding.listenerId !== conversation.listenerId) return null;
+    || action.kind !== 'talk'
+    || action.speakerMeaning.kind !== 'claim'
+    || action.speakerMeaning.conversation?.topic !== 'open'
+    || action.speakerMeaning.conversation.turn !== 'opening') return null;
+  const conversation = action.speakerMeaning.conversation;
+  if (grounding.listenerId !== conversation.listenerId
+    || conversation.speakerId !== person.id) return null;
   const requested = [...new Set(selectedSourceFactIds)];
   const allowed = new Set(grounding.facts.map((fact) => fact.sourceFactId));
   if (requested.length > 3 || requested.some((sourceFactId) => !allowed.has(sourceFactId))) return null;
@@ -749,6 +832,10 @@ export function compileOpenConversationOption(
     ? requested
     : [...grounding.fallbackSourceFactIds];
   if (!sourceFactIds.length) return null;
+  const listener = personById(state, conversation.listenerId);
+  if (!listener) return null;
+  const usedOpenSourceIds = rememberedOpenConversationSourceIds(state, person, listener);
+  if (sourceFactIds.every((sourceFactId) => usedOpenSourceIds.has(sourceFactId))) return null;
   const encodedMonth = Number(option.id.split(':')[2]);
   const episodeId = conversation.episodeId ?? conversationEpisodeId(
     Number.isInteger(encodedMonth) ? encodedMonth : 0,
@@ -763,9 +850,15 @@ export function compileOpenConversationOption(
     sourceFactIds,
     openGroundingCompiled: true,
   };
+  if (hasRememberedGroundedConversationOpeningBasis(
+    state,
+    compiledConversation.basisKey,
+    compiledConversation.speakerId,
+    compiledConversation.listenerId,
+  )) return null;
   const compiledAction = {
     ...action,
-    content: { ...action.content, conversation: compiledConversation },
+    speakerMeaning: { ...action.speakerMeaning, conversation: compiledConversation },
   };
   return {
     ...option,
@@ -781,11 +874,11 @@ function liveResponseOpeningIds(state: SimulationState, person: PersonState): Se
   for (const intent of intentsOwnedBy(state, person.id)) {
     if (intent.status !== 'active' && intent.status !== 'suspended') continue;
     for (const action of [intent.nextAction, intent.completionAction]) {
-      if (action?.kind !== 'communicate'
-        || action.content.kind !== 'claim'
-        || action.content.conversation?.turn !== 'response'
-        || !action.content.conversation.referenceEventId) continue;
-      liveResponseOpeningIds.add(action.content.conversation.referenceEventId);
+      if (action?.kind !== 'talk'
+        || action.speakerMeaning.kind !== 'claim'
+        || action.speakerMeaning.conversation?.turn !== 'response'
+        || !action.speakerMeaning.conversation.referenceEventId) continue;
+      liveResponseOpeningIds.add(action.speakerMeaning.conversation.referenceEventId);
     }
   }
   return liveResponseOpeningIds;
@@ -805,18 +898,18 @@ function pendingOpening(
   const liveResponses = liveResponseOpeningIds(state, person);
   const opening = [...groundedConversationOpeningsForListener(state, person.id)].reverse().find((event) => {
     if (atMonth - event.atMonth > GROUNDED_CONVERSATION_RESPONSE_WINDOW_MONTHS
-      || event.action.kind !== 'communicate'
-      || event.action.content.kind !== 'claim') return false;
-    const conversation = event.action.content.conversation;
+      || event.action.kind !== 'talk'
+      || event.action.speakerMeaning.kind !== 'claim') return false;
+    const conversation = event.action.speakerMeaning.conversation;
     return conversation?.turn === 'opening'
       && conversation.listenerId === person.id
-      && event.action.audience.includes(person.id)
+      && ((event.diff.understoodByPersonIds as string[] | undefined) ?? []).includes(person.id)
       && !liveResponses.has(event.id)
       && !openingAlreadyAnswered(state, person.id, event.id);
   });
-  return opening ? { opening, episodeId: opening.action.kind === 'communicate'
-    && opening.action.content.kind === 'claim'
-    ? opening.action.content.conversation?.episodeId
+  return opening ? { opening, episodeId: opening.action.kind === 'talk'
+    && opening.action.speakerMeaning.kind === 'claim'
+    ? opening.action.speakerMeaning.conversation?.episodeId
     : undefined } : undefined;
 }
 
@@ -826,35 +919,71 @@ function responseOptionForOpening(
   opening: ActionFact,
   episodeId?: string,
 ): ActionOption | null {
-  if (!opening || opening.action.kind !== 'communicate' || opening.action.content.kind !== 'claim') return null;
-  const openingConversation = opening.action.content.conversation;
+  if (!opening || opening.action.kind !== 'talk' || opening.action.speakerMeaning.kind !== 'claim') return null;
+  const openingConversation = opening.action.speakerMeaning.conversation;
   if (!openingConversation) return null;
   const speakerCandidate = personById(state, openingConversation.speakerId);
   const speaker = speakerCandidate && isAlive(speakerCandidate) ? speakerCandidate : undefined;
   if (!speaker || !positionsWithinVoiceRange(person.position, speaker.position)) return null;
-  const summary = openingConversation.turn === 'opening'
-    ? `回应${speaker.name}刚才开启的交谈`
-    : `接着回应${speaker.name}刚才说的话`;
+  const acknowledgementByTopic: Record<GroundedConversationTopic, string> = {
+    open: `回应${speaker.name}：我听见了你基于共同经历说的这些事`,
+    everyday: `回应${speaker.name}：我听见了你谈起的眼前日常`,
+    reminiscence: `回应${speaker.name}：我也记得这段共同经历`,
+    playful: `回应${speaker.name}：我听懂了你说的这件趣事`,
+    care: `回应${speaker.name}的关切：我听见了，也会留意眼前的身体处境`,
+    hardship: `回应${speaker.name}：我听见了你正在承受的困难`,
+    gratitude: `回应${speaker.name}：我接受这份基于真实帮助的感谢`,
+    'shared-work': `回应${speaker.name}：我记得我们共同完成的这段劳动`,
+    failure: `回应${speaker.name}：这次失败已有明确来源，应保留结果而不是空转重复`,
+    discovery: `回应${speaker.name}：我已经听到这项发现，并记住它的事实来源`,
+    family: `回应${speaker.name}：我听见了共同照护中的责任和疲惫`,
+    loss: `回应${speaker.name}：我听见了这次真实的失去`,
+  };
+  const questionByTopic: Partial<Record<GroundedConversationTopic, string>> = {
+    failure: `回应${speaker.name}：这次失败是否只排除了当时的材料与条件，还是还有别的证据？`,
+    discovery: `回应${speaker.name}：这项发现是在什么可观察条件下成立的，哪些部分还没有确认？`,
+  };
+  const answerByTopic: Partial<Record<GroundedConversationTopic, string>> = {
+    failure: `回应${speaker.name}的问题：目前只能确认原材料和当时条件下的失败，不能把结论扩大到没有试过的办法`,
+    discovery: `回应${speaker.name}的问题：目前可靠的只有原来那组观察来源，其他条件仍需要重新验证`,
+  };
+  const curiosity = (person.baselineCapacities.cognition + personalityScore(person, 'openness')) / 2;
+  const asksGroundedQuestion = openingConversation.turn === 'opening'
+    && questionByTopic[openingConversation.topic]
+    && curiosity >= 58;
+  const answersQuestion = openingConversation.turn === 'response'
+    && openingConversation.move === 'question'
+    && answerByTopic[openingConversation.topic];
+  const move = asksGroundedQuestion ? 'question' as const : 'acknowledge' as const;
+  const summary = answersQuestion
+    ? answerByTopic[openingConversation.topic]!
+    : asksGroundedQuestion
+      ? questionByTopic[openingConversation.topic]!
+      : acknowledgementByTopic[openingConversation.topic];
+  const { stance: _priorStance, move: _priorMove, ...sharedConversation } = openingConversation;
   const conversation: GroundedConversationRef = {
-    ...openingConversation,
+    ...sharedConversation,
     episodeId: episodeId ?? openingConversation.episodeId
       ?? conversationEpisodeId(opening.atMonth, openingConversation.speakerId, openingConversation.listenerId, opening.id),
     turn: 'response',
     speakerId: person.id,
     listenerId: speaker.id,
     referenceEventId: opening.id,
+    move,
   };
   const representationId = `respond-conversation:${opening.id}:${person.id}`;
   const responseAction = {
-    kind: 'communicate' as const,
-    content: { id: representationId, kind: 'claim' as const, summary, conversation },
-    audience: [speaker.id],
-    channel: 'voice' as const,
+    kind: 'talk' as const,
+    speakerMeaning: { id: representationId, kind: 'claim' as const, summary, conversation },
   };
   return {
     id: representationId,
     summary,
-    reason: '对方刚向自己发起有来源的交流；人物可以选择回应，也可以把注意力留给其他事情',
+    reason: asksGroundedQuestion
+      ? '对方提出了有来源的失败或发现；本人认知与开放性使尚未确认的边界成为一个真实问题，但仍可选择把注意力留给其他事情'
+      : answersQuestion
+        ? '对方围绕原事实提出了具体问题；本人只能回答现有来源真正支持的范围，不能补造结论'
+        : '对方刚向自己发起有来源的交流；人物可以确认听见，也可以把注意力留给其他事情',
     goal: { kind: 'representation-made', representationId },
     nextAction: responseAction,
     target: { kind: 'person', personId: speaker.id },

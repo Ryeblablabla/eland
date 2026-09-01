@@ -917,6 +917,9 @@ void main() {`,
       const weather = readFrame().society.weather ?? { kind: 'clear' as const, intensity: 0, sinceMonth: 0 };
       const profile = CLOUD_WEATHER[weather.kind];
       const severity = THREE.MathUtils.clamp((weather.intensity - 1) / 9, 0, 1);
+      // 风暴云压低压扁：雨云略沉，风暴云明显更低更扁——形态语言与天色一致。
+      const cloudBaseDrop = weather.kind === 'storm' ? 3.6 : weather.kind === 'rain' ? 1.4 : 0;
+      const cloudFlattenTarget = weather.kind === 'storm' ? 0.78 : 1;
       const targetOpacity = THREE.MathUtils.clamp(profile.opacity + severity * 0.06, 0, 1);
       const targetPresence = profile.presence * THREE.MathUtils.lerp(0.72, 1, severity);
       const targetShadowOpacity = THREE.MathUtils.clamp(profile.shadowOpacity + severity * 0.06, 0, 0.56);
@@ -972,7 +975,9 @@ void main() {`,
         if (cluster.position.z > cloudFieldHalfZ) cluster.position.z -= cloudFieldHalfZ * 2;
         if (cluster.position.z < -cloudFieldHalfZ) cluster.position.z += cloudFieldHalfZ * 2;
         cluster.position.y = (cluster.userData.cloudBaseY as number)
-          + Math.sin(cloudMorphPhase * 0.36 + (cluster.userData.cloudPhase as number)) * 0.18;
+          + Math.sin(cloudMorphPhase * 0.36 + (cluster.userData.cloudPhase as number)) * 0.18
+          - cloudBaseDrop;
+        cluster.scale.y = THREE.MathUtils.damp(cluster.scale.y, cloudFlattenTarget, 0.8, deltaSeconds);
         const boundaryDistance = Math.min(
           cloudFieldHalfX - Math.abs(cluster.position.x),
           cloudFieldHalfZ - Math.abs(cluster.position.z),

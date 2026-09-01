@@ -19,6 +19,7 @@ import type { SourcedMassMeasurementAction } from './measurement';
 import type { ActionOptionSemanticsV1 } from './action-option-semantics';
 import type { ProjectLeadershipSuccessionActionBasis } from './project-leadership';
 import type { CharacterAgendaProposal, CharacterAgendaUpdate } from './character-agenda';
+import type { MentalAct } from './mental-act';
 
 export interface VoxelPosition { x: number; y: number; z: number }
 
@@ -37,6 +38,20 @@ export interface WaterSearchBasis {
   candidateIndex: number;
   /** Only new person-local water evidence may reopen an exhausted episode. */
   evidenceKey: string;
+}
+
+/**
+ * One locally observed care episode that lets a parent physically transport
+ * an infant who is older than the automatic carried-child stage. The basis is
+ * revalidated by the move executor; it is not a generic follower flag.
+ */
+export interface DependentTransportBasis {
+  version: 'dependent-transport-v1';
+  dependentId: PersonId;
+  observedAtMonth: number;
+  reason: 'thermal-shelter' | 'hibernation-recovery' | 'hydration-access' | 'food-access';
+  conditionIds: string[];
+  sourceFactIds: string[];
 }
 
 export type WorldRef =
@@ -134,6 +149,36 @@ export interface TechniqueImitationRef {
   techniqueId: string;
 }
 
+/**
+ * The perceived deficit that makes exercising a standing resource permission
+ * useful now.  Permission grants legality only; this basis supplies motive.
+ */
+export interface PermissionUseBasis {
+  version: 'permission-use-basis-v1';
+  permissionId: string;
+  kind: 'personal-reserve' | 'project-demand';
+  materialId: MaterialId;
+  requiredQuantity: number;
+  receiverQuantity: number;
+  grantorQuantity: number;
+  projectId?: string;
+  projectDemandBranchKey?: string;
+  sourceFactIds: string[];
+  basisKey: string;
+}
+
+/** A visible or remembered drinkable source that causally anchors travel. */
+export interface WaterAccessBasis {
+  version: 'water-access-basis-v1';
+  mode: 'visible' | 'remembered';
+  materialId: MaterialId;
+  waterPosition: VoxelPosition;
+  bankPosition: { cellId: number; z: number };
+  observedAtMonth: number;
+  sourceFactIds: string[];
+  basisKey: string;
+}
+
 export type GroundedConversationTopic =
   | 'open'
   | 'everyday'
@@ -147,6 +192,15 @@ export type GroundedConversationTopic =
   | 'discovery'
   | 'family'
   | 'loss';
+
+export type GroundedConversationMove =
+  | 'acknowledge'
+  | 'support'
+  | 'question'
+  | 'challenge'
+  | 'share-fact'
+  | 'commit'
+  | 'close';
 
 /** A social utterance grounded in replayable life history rather than generic flavor text. */
 export interface GroundedConversationRef {
@@ -163,6 +217,8 @@ export interface GroundedConversationRef {
   openGroundingCompiled?: true;
   referenceEventId?: string;
   stance?: 'supportive' | 'guarded';
+  /** What this response actually contributes; old responses hydrate as acknowledgement. */
+  move?: GroundedConversationMove;
 }
 
 export interface OpenConversationGroundingFact {
@@ -274,6 +330,10 @@ export type PrimitiveAction =
       wildlifeThreatBasis?: WildlifeThreatBasis;
       /** Frozen finite frontier for a locally grounded water-search episode. */
       waterSearchBasis?: WaterSearchBasis;
+      /** Exact perceived water source that remains stable while travelling. */
+      waterAccessBasis?: WaterAccessBasis;
+      /** Exact co-located infant and current crisis that authorize physical transport. */
+      dependentTransportBasis?: DependentTransportBasis;
     }
   | {
       kind: 'transfer';
@@ -283,7 +343,11 @@ export type PrimitiveAction =
       to: HolderRef;
       dropId?: string;
       stackId?: string;
+      /** Required when collecting a liquid voxel into one carried container. */
+      containerStackId?: string;
       authorizationRef?: string;
+      /** Required when legality comes from a standing ResourcePermission. */
+      permissionUseBasis?: PermissionUseBasis;
       /** Present only when the actor knows this exact ground drop is a deceased person's estate. */
       estateCarePersonId?: PersonId;
     }
@@ -328,7 +392,17 @@ export type PrimitiveAction =
         expectedMaterialId: MaterialId;
       };
     }
-  | { kind: 'communicate'; content: RepresentationInput; audience: PersonId[]; channel: 'voice' | 'gesture' | 'record'; carrierStackId?: string };
+  | {
+      /** Physical vocalization. Meaning is the speaker's private reading, not a property of the sound. */
+      kind: 'talk';
+      speakerMeaning: RepresentationInput;
+    }
+  | {
+      /** Material inscription is not airborne speech and therefore has no acoustic audience. */
+      kind: 'inscribe';
+      inscriptionMeaning: Extract<RepresentationInput, { kind: 'claim' }>;
+      carrierStackId: string;
+    };
 
 export function waterCurrentObservationFactId(segmentId: string): string {
   return `observation:water-current:${segmentId}`;
@@ -453,6 +527,7 @@ export type FactPredicate =
   | { kind: 'project-completed'; projectId: string }
   | { kind: 'technique-demonstrated'; projectId: string; requestEventId: string }
   | { kind: 'agreement-fulfilled'; agreementId: string }
+  | { kind: 'agreement-contribution-recorded'; agreementId: string; personId: PersonId }
   | { kind: 'death-mourned'; remainsId: string }
   | { kind: 'remains-interred'; remainsId: string }
   | { kind: 'memorial-marked'; remainsId: string }
@@ -605,15 +680,6 @@ export interface ActionOption {
   semantics?: ActionOptionSemanticsV1;
 }
 
-/** A sourced, subjective compression proposal. It never creates a world fact. */
-export interface MemoryConsolidationUpdate {
-  sourceItemIds: string[];
-  gist: string;
-  topicKeys: string[];
-  unresolved: boolean;
-  emotionalValence: number;
-}
-
 export type IntentDecision =
   | {
       kind: 'start'; optionId: string; followUpOptionId?: string; reason: string;
@@ -624,7 +690,8 @@ export type IntentDecision =
       characterAgendaProposal?: CharacterAgendaProposal;
       /** Subjective agenda change; it never authorizes or reports a world action. */
       characterAgendaUpdate?: CharacterAgendaUpdate;
-      memoryConsolidation?: MemoryConsolidationUpdate;
+      /** Model-authored subjective direction; the option is only its compiled next step. */
+      mentalAct?: MentalAct;
       /** Server-owned link to a player conversation that requested this model review. */
       sourceInteractionId?: string;
     }
@@ -638,7 +705,7 @@ export type IntentDecision =
       characterAgendaProposal?: CharacterAgendaProposal;
       /** Subjective agenda change; it never authorizes or reports a world action. */
       characterAgendaUpdate?: CharacterAgendaUpdate;
-      memoryConsolidation?: MemoryConsolidationUpdate;
+      mentalAct?: MentalAct;
       /** Server-owned link to a player conversation that requested this model review. */
       sourceInteractionId?: string;
     }
@@ -649,5 +716,5 @@ export type IntentDecision =
       kind: 'idle'; reason: string;
       /** Allows reflection to change a durable concern without inventing an executable option. */
       characterAgendaUpdate?: CharacterAgendaUpdate;
-      memoryConsolidation?: MemoryConsolidationUpdate;
+      mentalAct?: MentalAct;
     };

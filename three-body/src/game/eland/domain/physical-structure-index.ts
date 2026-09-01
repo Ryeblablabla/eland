@@ -212,6 +212,46 @@ function activeConstructionRecords(
     && voxelAt(world, record.x, record.y, record.z) === record.materialId);
 }
 
+/**
+ * Shelter construction deliberately leaves a walkable interior: its overhead
+ * voxel and contributing side wall can therefore touch only along an edge.
+ * Connect exactly those components that jointly produce one verified shelter
+ * geometry; unrelated diagonal construction remains separate.
+ */
+function shelterFunctionalConnections(
+  state: PhysicalStructureState,
+  byKey: ReadonlyMap<string, StructureComponent>,
+): Map<string, Set<string>> {
+  const connections = new Map<string, Set<string>>();
+  const connect = (left: string, right: string) => {
+    if (left === right) return;
+    const leftConnections = connections.get(left) ?? new Set<string>();
+    const rightConnections = connections.get(right) ?? new Set<string>();
+    leftConnections.add(right);
+    rightConnections.add(left);
+    connections.set(left, leftConnections);
+    connections.set(right, rightConnections);
+  };
+  for (const overhead of byKey.values()) {
+    const standingZ = overhead.z - 2;
+    if (standingZ < 0) continue;
+    const position = {
+      cellId: overhead.x + overhead.y * state.world.grid.width,
+      z: standingZ,
+    };
+    const shelter = shelterGeometryAt(state.world.grid, position);
+    if (!shelter || shelter.overheadMaterialId !== overhead.materialId) continue;
+    const overheadKey = positionKey(overhead.x, overhead.y, overhead.z);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      for (const wallZ of [standingZ, standingZ + 1]) {
+        const wallKey = positionKey(overhead.x + dx, overhead.y + dy, wallZ);
+        if (byKey.has(wallKey)) connect(overheadKey, wallKey);
+      }
+    }
+  }
+  return connections;
+}
+
 function deriveStructuresFromRecords(
   state: PhysicalStructureState,
   records: readonly PhysicalConstructionRecord[],
@@ -219,6 +259,7 @@ function deriveStructuresFromRecords(
   const all: StructureComponent[] = activeConstructionRecords(state.world.grid, records, false)
     .map(({ x, y, z, materialId, sourceEventId }) => ({ x, y, z, materialId, sourceEventId }));
   const byKey = new Map(all.map((position) => [positionKey(position.x, position.y, position.z), position]));
+  const functionalConnections = shelterFunctionalConnections(state, byKey);
   const visited = new Set<string>();
   const structures: PhysicalStructure[] = [];
   for (const origin of all) {
@@ -232,14 +273,17 @@ function deriveStructuresFromRecords(
       const current = queue[queueIndex];
       queueIndex += 1;
       group.push(current);
-      for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
-        const key = positionKey(current.x + dx, current.y + dy, current.z + dz);
+      const enqueue = (key: string) => {
         const next = byKey.get(key);
         if (next && !visited.has(key)) {
           visited.add(key);
           queue.push(next);
         }
+      };
+      for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+        enqueue(positionKey(current.x + dx, current.y + dy, current.z + dz));
       }
+      for (const key of functionalConnections.get(positionKey(current.x, current.y, current.z)) ?? []) enqueue(key);
     }
     const occupiedCells = [...new Set(group.map((position) => position.x + position.y * state.world.grid.width))];
     const sourceEventIds = group.map((component) => component.sourceEventId);
@@ -320,11 +364,11 @@ export function finishPhysicalStructureFold(
   return materializePhysicalStructureIndex(state, fold);
 }
 
-/** Full-history compatibility path. A bounded hot suffix must never impersonate a ledger. */
+/** Full-history compatibility path. A truncated ledger is rejected. */
 export function derivePhysicalStructureIndex(state: PhysicalStructureState): PhysicalStructureIndex {
   const history = committedHistoryView(state);
   if (history.hotStartIndex !== 0 || history.events.length !== history.hotEventCount) {
-    throw new Error('bounded 或 planning 历史不能全量重建物理结构索引');
+    throw new Error('裁剪或 planning 历史不能全量重建物理结构索引');
   }
   const fold = beginPhysicalStructureFold(state.world.grid);
   foldPhysicalStructureEvents(fold, history.events.slice(0, history.hotEventCount), 0);
@@ -409,7 +453,7 @@ export function physicalStructureIndexOf(state: PhysicalStructureState): Physica
   }
   if (!base || !cacheMatchesCommittedSeal(state, base)) {
     if (history.hotStartIndex !== 0) {
-      throw new Error('bounded state 缺少与绝对历史一致的物理结构 v2 投影');
+      throw new Error('裁剪状态缺少与绝对历史一致的物理结构 v2 投影');
     }
     if (history.events.length !== history.hotEventCount && overlay.length === 0) {
       throw new Error('未登记的 planning 历史不能重建物理结构索引');

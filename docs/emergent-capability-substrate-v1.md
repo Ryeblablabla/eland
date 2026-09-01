@@ -8,7 +8,7 @@
 
 “一千个人类重点事件”实际是一千项**能力观察坐标**，不是一千个待编写的剧情脚本，也不是科技树。它们按 55 个领域组织，反复组合的是少数底层机制：身体过程、物质转换、学习与传播、承诺与授权、组织与规则、交换与记账、冲突与控制、生态与灾害、跨地域网络。
 
-当前运行时观察器 v2 共有 137 个定义：120 个与地图原标签逐项一致的坐标，其中 51 个有当前结构化事实支持、69 个保持 guarded；另有 17 个不冒用地图编号的三体/世界复杂事件。观察器位于 `projection/capability-milestones.ts`，并由 `application/monthly-simulation.ts` 统一投影；定义、严格语义和六条 30 年历史重投影见[《能力里程碑因果观察器 v2》](./capability-milestones-causal-observer-v2.md)。
+当前运行时观察器 v2 共有 137 个定义：120 个与地图原标签逐项一致的坐标，其中 51 个有当前结构化事实支持、69 个保持 guarded；另有 17 个不冒用地图编号的三体/世界复杂事件。观察器位于 `projection/capability-milestones.ts`，并由 `simulation-runtime.ts` 统一投影；定义、严格语义和六条 30 年历史重投影见[《能力里程碑因果观察器 v2》](./capability-milestones-causal-observer-v2.md)。
 
 即使如此，正确方向仍然不是逐条手工添加其余九百多项动作，而是继续补齐最小底座，使人物只面对局部问题并执行少量动作，而千项观察器在事后识别其组合结果。
 
@@ -334,7 +334,7 @@ type PrimitiveAction =
   | { kind: 'transfer'; object: PhysicalRef; quantity: number; from: HolderRef; to: HolderRef }
   | { kind: 'act'; operation: SourceOperation; targets: WorldRef[]; tool?: AssemblyRef }
   | { kind: 'attend'; target: WorldRef | RecordRef | ClaimRef; instrument?: AssemblyRef }
-  | { kind: 'communicate'; content: RepresentationRef; channel: ChannelRef; audience: AudienceRef };
+  | { kind: 'talk'; content: RepresentationRef; channel: ChannelRef; audience: AudienceRef };
 
 type SourceOperation =
   | 'exert'
@@ -356,13 +356,13 @@ type SourceOperation =
 - `transfer`：能被物理持有的物质、物品、组装体或记录改变位置/持有者；权利变化必须来自被接受并被群体承认的规范事实，不能被这个动作凭空搬运；
 - `act`：固定局部作用原语，效果由目标、工具和世界规律决定；
 - `attend`：投入时间观察、测量、阅读、比较或核验，产生有来源且可能有误差的知识；
-- `communicate`：通过可用频道向受众表达符号内容。
+- `talk`：通过可用频道向受众表达符号内容。
 
 `reproduce` 只裁决同意、身体和空间条件，不读取“社会是否允许近亲”这类后成规范。亲缘距离通过后代遗传负荷影响初始属性、寿命压力和疾病易感性；人物在观察到真实后果后形成记忆与主张，再由本地规划和沟通逐步产生近亲回避。这样禁忌来自经验传播，而不是世界预装的行为黑名单。
 
 自动看见附近事物仍属于感知，不消耗独立动作；`attend` 表示持续关注、测量和验证，是观察自然、实验、调查、审计、诊断、新闻和科学制度不可缺少的投入。
 
-`communicate` 取代过窄的 `speak`。频道可以由嗓音、手势、触摸、实体记录、信使或设备提供；没有实际频道就不能远程广播。内容可以是：
+`talk` 取代过窄的 `speak`。频道可以由嗓音、手势、触摸、实体记录、信使或设备提供；没有实际频道就不能远程广播。内容可以是：
 
 ```text
 陈述或询问 Claim
@@ -377,7 +377,7 @@ type SourceOperation =
 
 这些是通信内容的语用结构，不是 `PlanMode`。交易、选举、教学、审判、祈祷、新闻、罢工和外交仍然是多月、多人的动作链。
 
-开局不必预置成熟语言，只给人物共同的少量身体信号，例如指向、接近、退避和情绪表达。人物反复把新声音、手势或刻痕与眼前对象/事件配对，其他人通过 `attend + communicate(accept/clarify)` 学会同一对应后，才产生共享 `Codebook`。这样既允许最初交流，也保留第 21 项“创造语言”的真实形成过程。
+开局不必预置成熟语言，只给人物共同的少量身体信号，例如指向、接近、退避和情绪表达。人物反复把新声音、手势或刻痕与眼前对象/事件配对，其他人通过 `attend + talk(accept/clarify)` 学会同一对应后，才产生共享 `Codebook`。这样既允许最初交流，也保留第 21 项“创造语言”的真实形成过程。
 
 休息仍不是第六种动作：本月未执行劳动且环境允许时进入恢复结算。等待、沉默、拒绝行动也通过意图和当月无动作表达。
 
@@ -401,7 +401,7 @@ type KnowledgeObject =
 
 ```text
 观察 + 记忆                 → 个人经验
-Codebook + communicate      → 语言与教学
+Codebook + talk      → 语言与教学
 颜料/刻痕 + 载体 + Codebook → 文字与图像
 实体载体 + RecordPayload    → 档案、契约、货币、身份凭证
 试验 + Metric + Claim       → 科学知识
@@ -545,7 +545,7 @@ Planet            气候、资源与远距离共同外力
 |---|---:|---|---|
 | 生命、健康、家庭与照护 | 1–10、101–200、861–900 | 身体状态、生命周期、情绪、亲缘、照护动作、疾病传播 | 核心底座可表达 |
 | 生存、食物、居住与日常 | 11–20、121–160 | 物质、组装体、摄入、暴露、私有背包 | 核心底座可表达 |
-| 语言、教育、记忆、艺术、宗教与游戏 | 21–30、51–60、201–320 | attend、communicate、Codebook、Narrative、记录和共同程序 | 核心底座可表达；作品“好坏”和信仰真实性只能作为人物评价 |
+| 语言、教育、记忆、艺术、宗教与游戏 | 21–30、51–60、201–320 | attend、talk、Codebook、Narrative、记录和共同程序 | 核心底座可表达；作品“好坏”和信仰真实性只能作为人物评价 |
 | 农业、生态与其他物种 | 31–40、341–360、821–840 | 活体谱系、种群、土壤/水循环、疾病与遗传差异 | 核心底座可表达 |
 | 手工业、交通、城市与基础设施 | 41–44、321–400、721–740、781–800 | 组装体、连接拓扑、能量网络、多区域 | 需要工程扩展；不新增人物动作 |
 | 交换、市场、货币、金融与财富 | 45–50、421–480 | 授权、Agreement、账户、记录、共同体与多区域流通 | 核心底座可表达 |
@@ -603,7 +603,7 @@ type EvidencePredicate =
 | 宗教 | Narrative + 自然解释 Claim + 仪式 Procedure + 表演/供奉 + 共同体 + 跨代传播 |
 | 市场与货币 | 报价 Agreement + 条件转移 + 重复地点 + 多方流通 + Metric + 价格记录 |
 | 银行与保险 | 账户 Claim + 存取承诺 + 风险条件 + 共同资金 + 记录可信度 + 违约/赔付 |
-| 法律与法院 | 公布 Rule + 管辖成员 + 证据 attend + 申辩 communicate + Mandate + 裁决 + 人物执行制裁 |
+| 法律与法院 | 公布 Rule + 管辖成员 + 证据 attend + 申辩 talk + Mandate + 裁决 + 人物执行制裁 |
 | 国家 | 多地域共同体 + 成员/边界 + 税收义务 + 官职授权 + 公共资产 + 持续执行与被服从/反抗 |
 | 战争 | 两个共同体 + 敌对 Claim + 动员授权 + 武器/补给 + 群体伤害 + 领土控制 + 停火承诺 |
 | 科学 | 问题 Claim + 测量 Metric + 重复 attend/act + 失败记录 + 传播 + 他人复现 + 修订置信度 |
@@ -629,7 +629,7 @@ application/
   advance-month/  环境、15 个规划刻度、身体、传播、履约和事件落账
   plan-tick/      本地规划、动作编译、预演、修复与执行
   model-task/     异步长期建议、玩家交互、创造性表达与叙事
-  communicate/    频道可达性、理解、复制误差和知识更新
+  talk/    频道可达性、理解、复制误差和知识更新
 
 projection/
   practice/       重复个人与多人行动
@@ -646,7 +646,7 @@ projection/
 
 1. 保留三项身体值，增加通用 Condition、派生身体能力和四个动机偏置；
 2. 增加年龄、妊娠、出生、伤害因果、疾病传播和死亡遗留物；
-3. 把 `speak` 改为 `communicate`，增加 `attend`；
+3. 把 `speak` 改为 `talk`，增加 `attend`；
 4. 先验证生育、照护、杀戮、信任、偷窃、分享和知识学习。
 
 ### 阶段 B：完成可持续物质世界

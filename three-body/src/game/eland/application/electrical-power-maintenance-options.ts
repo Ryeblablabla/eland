@@ -2,20 +2,15 @@ import type { ActionOption, PrimitiveAction, WorldRef } from '../domain/action';
 import {
   ELECTRICAL_POWER_ACTION_BASIS_VERSION,
   ELECTRICAL_POWER_WORLD_VERSION,
-  activeElectricalMaintenanceProjectLeaseKey,
-  activeElectricalMaintenanceReplacementLeaseKey,
-  currentElectricalNetworkFaultLeaseKey,
   electricalPowerFaultObservationFactId,
   electricalPowerPlanKey,
-  livingPersonElectricalComponentTechniqueLeaseKey,
-  livingPersonElectricalFaultObservationLeaseKey,
   sameElectricalPosition,
   validateElectricalPowerTopology,
   type ElectricalPowerNetworkState,
   type ElectricalPowerPlan,
   type ElectricalVoxelPosition,
 } from '../domain/electrical-power';
-import { worldEventByIdWithRetainedLease } from '../domain/event-index';
+import { worldEventById } from '../domain/event-index';
 import {
   inventoryCombinationForOutput,
   inventoryCombinationTechniqueId,
@@ -106,11 +101,7 @@ function currentElectricalFaultEvent(
   network: ElectricalPowerNetworkState,
 ): ActionFact | null {
   if (!network.fault) return null;
-  const event = worldEventByIdWithRetainedLease(
-    state,
-    network.fault.faultEventId,
-    currentElectricalNetworkFaultLeaseKey(network.id),
-  );
+  const event = worldEventById(state, network.fault.faultEventId);
   return event?.kind === 'action'
     && event.status === 'completed'
     && event.diff.electricalPowerFault === true
@@ -149,9 +140,8 @@ function personalElectricalFaultDiagnosis(
     && fact.kind === 'observation'
     && fact.confidence >= 55);
   if (!knowledge) return null;
-  const leaseKey = livingPersonElectricalFaultObservationLeaseKey(person.id, network.id);
   for (const eventId of [...knowledge.sourceEventIds].reverse().slice(0, 8)) {
-    const event = worldEventByIdWithRetainedLease(state, eventId, leaseKey);
+    const event = worldEventById(state, eventId);
     if (event?.kind === 'action'
       && electricalDiagnosisEventMatches(person, network, faultEvent, event)) {
       return { knowledgeId, diagnosisEvent: event };
@@ -384,9 +374,8 @@ function reliableConductorRecipeBasis(
     && fact.id === knowledgeId
     && fact.confidence >= 55);
   if (!knowledge) return null;
-  const leaseKey = livingPersonElectricalComponentTechniqueLeaseKey(person.id, knowledgeId);
   const sources = [...knowledge.sourceEventIds].reverse().slice(0, 24).flatMap((eventId) => {
-    const event = worldEventByIdWithRetainedLease(state, eventId, leaseKey);
+    const event = worldEventById(state, eventId);
     return event?.kind === 'action' && event.who === person.id ? [event] : [];
   });
   const response = sources.find((fact) => fact.status === 'completed'
@@ -434,9 +423,8 @@ function projectContract(
 }
 
 function projectReplacementFacts(state: SimulationState, project: ProjectState): ActionFact[] {
-  const leaseKey = activeElectricalMaintenanceReplacementLeaseKey(project.id);
   return project.actionEventIds.slice(-ELECTRICAL_MAINTENANCE_PROJECT_EVENT_LIMIT).flatMap((eventId) => {
-    const event = worldEventByIdWithRetainedLease(state, eventId, leaseKey);
+    const event = worldEventById(state, eventId);
     return event?.kind === 'action' ? [event] : [];
   }).sort(actionOrder);
 }
@@ -714,9 +702,8 @@ export function electricalPowerMaintenanceCompletionEvidence(
       basis.componentPosition.z,
     ) !== Material.CopperConductor
     || !validateElectricalPowerTopology(state.world.grid, network).valid) return [];
-  const basisLeaseKey = activeElectricalMaintenanceProjectLeaseKey(project.id);
-  const faultEvent = worldEventByIdWithRetainedLease(state, basis.faultEventId, basisLeaseKey);
-  const diagnosisEvent = worldEventByIdWithRetainedLease(state, basis.diagnosisEventId, basisLeaseKey);
+  const faultEvent = worldEventById(state, basis.faultEventId);
+  const diagnosisEvent = worldEventById(state, basis.diagnosisEventId);
   if (faultEvent?.kind !== 'action'
     || faultEvent.status !== 'completed'
     || faultEvent.diff.electricalPowerFault !== true

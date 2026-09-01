@@ -5,11 +5,17 @@ export interface ModelMessage {
   content: string;
 }
 
+export interface ModelJsonSchema {
+  name: string;
+  schema: Record<string, unknown>;
+}
+
 export interface ModelTextRequest {
   messages: ModelMessage[];
   maxOutputTokens: number;
   temperature?: number;
   jsonObject?: boolean;
+  jsonSchema?: ModelJsonSchema;
   timeoutMs?: number;
 }
 
@@ -103,9 +109,9 @@ function requestBody(endpoint: ResolvedModelEndpoint, request: ModelTextRequest)
             text: {
               format: {
                 type: 'json_schema',
-                name: 'eland_json_object',
+                name: request.jsonSchema?.name ?? 'eland_json_object',
                 strict: false,
-                schema: { type: 'object', additionalProperties: true },
+                schema: request.jsonSchema?.schema ?? { type: 'object', additionalProperties: true },
               },
             },
           }
@@ -118,7 +124,9 @@ function requestBody(endpoint: ResolvedModelEndpoint, request: ModelTextRequest)
       messages: request.messages,
       stream: false,
       think: endpoint.thinking ?? false,
-      ...(request.jsonObject && endpoint.structuredOutput === 'native-json' ? { format: 'json' } : {}),
+      ...(request.jsonObject && endpoint.structuredOutput === 'native-json'
+        ? { format: request.jsonSchema?.schema ?? 'json' }
+        : {}),
       options: {
         num_predict: request.maxOutputTokens,
         ...(request.temperature === undefined ? {} : { temperature: request.temperature }),

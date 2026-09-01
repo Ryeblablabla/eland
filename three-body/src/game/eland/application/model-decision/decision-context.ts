@@ -9,7 +9,7 @@ import { effectivePersonality } from '../../domain/personality';
 import type { DecisionContext } from '../../simulation';
 import { CONTAINER_CAPACITY } from '../../domain/container';
 import { assessSocialRepetition } from '../../domain/social-repetition';
-import { buildPersonSoul } from '../../domain/person-soul';
+import { buildPersonExperienceLayer, buildPersonSoul } from '../../domain/person-soul';
 import { cognitionStateOf, outcomeBeliefSuccess } from '../../domain/cognition';
 import { buildCognitiveFrame } from '../cognition/option-appraisal';
 import { speechActFromRepresentation } from '../../projection/speech-act';
@@ -23,6 +23,7 @@ import { actionOptionSemantics } from '../../domain/action-option-semantics';
 import { followUpSemanticallyMatches } from '../../domain/intent-follow-up';
 import { projectMaterialPlanProvenance } from '../projects/project-material-provenance';
 import type { CharacterAgendaItem } from '../../domain/character-agenda';
+import type { MentalAct } from '../../domain/mental-act';
 import { cellX, cellY, surfaceMaterial, topPosition } from '../../world/grid';
 import {
   decisionCounterpartIds,
@@ -54,13 +55,18 @@ export interface DecisionRequestContext {
     personality: ReturnType<typeof effectivePersonality>;
     motiveSensitivity: DecisionContext['person']['motiveSensitivity'];
     soul: ReturnType<typeof buildPersonSoul>;
+    experience: ReturnType<typeof buildPersonExperienceLayer>;
     currentChoice: string;
     currentAction: string;
     position: { cellId: number; z: number };
     inventory: Array<{ stackId: string; name: string; properties: string[]; perception: PerceivedMaterialProfile; quantity: number }>;
     knowledge: Array<{ id: string; summary: string; confidence: number }>;
     knownPlaces: Array<{ name: string; position: { x: number; y: number; z: number }; lastConfirmedAtMonth: number }>;
+    /** The person's only model-visible memory document. */
+    mindMarkdown: string;
     memories: RecalledMemory[];
+    /** Persisted subjective turns, not claims that their assumptions were true. */
+    recentMentalActs: Array<MentalAct & { atMonth: number }>;
     cognition: ReturnType<typeof buildDecisionCognitionProjection>;
     characterAgenda: CharacterAgendaSummary[];
     kinship: {
@@ -72,7 +78,7 @@ export interface DecisionRequestContext {
       }>;
     };
   };
-  clock: { elapsedMonths: number };
+  clock: { elapsedMonths: number; planningTick?: number };
   climate: DecisionContext['state']['civilization']['climate'];
   epoch: DecisionContext['state']['civilization']['epoch'];
   weather: DecisionContext['state']['civilization']['weather'];
@@ -360,10 +366,10 @@ export function buildDecisionRequestContext(
     .slice(0, 12)
     .map(({ position, name, properties }) => ({ position, name, properties }));
   const communicatedKnowledgeIds = new Set(context.options.flatMap((option) => (
-    option.nextAction.kind === 'communicate'
-      && option.nextAction.content.kind === 'claim'
-      && option.nextAction.content.factId
-      ? [option.nextAction.content.factId]
+    option.nextAction.kind === 'talk'
+      && option.nextAction.speakerMeaning.kind === 'claim'
+      && option.nextAction.speakerMeaning.factId
+      ? [option.nextAction.speakerMeaning.factId]
       : []
   )));
   const communicatedKnowledge = person.knowledge
@@ -382,21 +388,25 @@ export function buildDecisionRequestContext(
   const activeProjectProvenance = activeProject
     ? projectMaterialPlanProvenance(state, person, activeProject)
     : null;
-  const recalledMemories = retrieveAgentMemories(state, person, {
-    atMonth: state.clock.elapsedMonths + 1,
-    personIds: [...decisionCounterpartIds(context)],
-    unresolved: true,
-    laneLimits: {
-      episodic: 3,
-      semantic: 2,
-      social: 2,
-      procedural: 2,
-      prospective: 2,
-      dialogue: 2,
-    },
-    limit: 10,
-    tokenBudget: 1_400,
-  });
+  const recalledMemories = context.mind
+    ? [...context.mind.episodes, ...context.mind.beliefs].slice(0, 10)
+    : retrieveAgentMemories(state, person, {
+        atMonth: state.clock.elapsedMonths + 1,
+        personIds: [...decisionCounterpartIds(context)],
+        unresolved: true,
+        limit: 10,
+        tokenBudget: 1_400,
+      });
+  const counterpartIds = [...decisionCounterpartIds(context)];
+  const recentMentalActs = context.mind?.deliberations ?? [...state.world.past]
+    .reverse()
+    .flatMap((event) => event.kind === 'decision'
+      && event.who === person.id
+      && 'mentalAct' in event.decision
+      && event.decision.mentalAct
+      ? [{ ...structuredClone(event.decision.mentalAct), atMonth: event.atMonth }]
+      : [])
+    .slice(0, 4);
   return {
     person: {
       id: person.id,
@@ -414,6 +424,7 @@ export function buildDecisionRequestContext(
       personality: effectivePersonality(person),
       motiveSensitivity: person.motiveSensitivity,
       soul: buildPersonSoul(person),
+      experience: buildPersonExperienceLayer(person, recalledMemories, counterpartIds),
       currentChoice: person.lastDecisionText.slice(0, 140),
       currentAction: person.currentActionText.slice(0, 180),
       position: { cellId: person.position.cellId, z: person.position.z },
@@ -433,12 +444,17 @@ export function buildDecisionRequestContext(
         .sort((a, b) => b.lastConfirmedAtMonth - a.lastConfirmedAtMonth || a.id.localeCompare(b.id))
         .slice(0, 8)
         .map(({ materialId, position, lastConfirmedAtMonth }) => ({ name: materialDefinition(materialId).name, position, lastConfirmedAtMonth })),
+      mindMarkdown: context.mind?.markdown ?? person.mindMarkdown ?? '',
       memories: recalledMemories,
+      recentMentalActs,
       cognition: buildDecisionCognitionProjection(context),
       characterAgenda: characterAgendaSummary(person.characterAgenda?.items),
       kinship: immediateKinship(state, person),
     },
-    clock: { elapsedMonths: state.clock.elapsedMonths },
+    clock: {
+      elapsedMonths: context.decisionMonth ?? state.clock.elapsedMonths,
+      ...(context.planningTick !== undefined ? { planningTick: context.planningTick } : {}),
+    },
     climate: state.civilization.climate,
     epoch: state.civilization.epoch,
     weather: state.civilization.weather,
@@ -542,19 +558,19 @@ export function buildDecisionRequestContext(
           ? { openConversationGrounding: structuredClone(option.openConversationGrounding) }
           : {}),
         semantics: structuredClone(actionOptionSemantics(option)),
-        ...(nextAction.kind === 'communicate'
+        ...(nextAction.kind === 'talk'
           ? {
-              communicationKind: nextAction.content.kind,
-              speechAct: speechActFromRepresentation(nextAction.content),
+              communicationKind: nextAction.speakerMeaning.kind,
+              speechAct: speechActFromRepresentation(nextAction.speakerMeaning),
             }
-          : completionAction?.kind === 'communicate'
+          : completionAction?.kind === 'talk'
             ? {
-                communicationKind: completionAction.content.kind,
-                speechAct: speechActFromRepresentation(completionAction.content),
+                communicationKind: completionAction.speakerMeaning.kind,
+                speechAct: speechActFromRepresentation(completionAction.speakerMeaning),
               }
             : {}),
-        ...(nextAction.kind === 'communicate' && nextAction.content.kind === 'claim' && nextAction.content.factId
-          ? { communicatesFactId: nextAction.content.factId }
+        ...(nextAction.kind === 'talk' && nextAction.speakerMeaning.kind === 'claim' && nextAction.speakerMeaning.factId
+          ? { communicatesFactId: nextAction.speakerMeaning.factId }
           : {}),
         ...(repetition?.subjectKey ? { socialRepetition: {
           score: repetition.score,

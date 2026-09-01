@@ -5,7 +5,6 @@ import type {
   AgentHistoryView,
   AgentMemoryView,
   EraKey,
-  ModernCivilizationAchievementView,
   SocietyAgent,
   SocietyState,
   SpeechLineView,
@@ -24,12 +23,13 @@ import { portraitForPerson } from '../personPortraits';
 import { voxelAt } from './world/grid';
 import { traitDefinition, traitStatesOf } from './domain/trait';
 import { validateElectricalPowerTopology, type ElectricalPowerNetworkState } from './domain/electrical-power';
-import { observeModernCivilizationEvidence } from './domain/era-progression';
 import {
   speechHistoryTextForEvent,
   verifiedSpeechLinesBySourceEventId,
 } from './projection/speech-history';
 import { retrieveAgentMemories } from './domain/agent-memory';
+import { projectPersonMindMarkdown } from './domain/person-mind';
+import { languageBroadcastFromDiff } from './domain/language-perception';
 
 export { projectPlayerNarrative } from './projection/player-narrative';
 export type { WorldEventLookup } from './projection/player-narrative';
@@ -322,18 +322,25 @@ function actionVisual(
         : {}),
     };
   }
-  const toolMaterialId = action.carrierStackId
-    ? lookup.inventoryByPersonId.get(person.id)?.get(action.carrierStackId)?.materialId
+  if (action.kind === 'inscribe') {
+    const toolMaterialId = lookup.inventoryByPersonId.get(person.id)?.get(action.carrierStackId)?.materialId;
+    return {
+      actionKind: 'inscribe',
+      ...factLocation,
+      ...(toolMaterialId !== undefined ? { toolMaterialId } : {}),
+    };
+  }
+  const perceivedId = fact
+    ? languageBroadcastFromDiff(fact.diff)?.perceivedByPersonIds[0]
     : undefined;
   return {
-    actionKind: 'communicate', channel: action.channel, communicationKind: action.content.kind,
+    actionKind: 'talk', communicationKind: action.speakerMeaning.kind,
     ...factLocation,
-    ...(action.audience[0] ? {
+    ...(perceivedId ? {
       targetKind: 'person' as const,
-      targetPersonId: action.audience[0],
-      ...worldRefLocation(state, lookup, { kind: 'person', personId: action.audience[0] }),
+      targetPersonId: perceivedId,
+      ...worldRefLocation(state, lookup, { kind: 'person', personId: perceivedId }),
     } : {}),
-    ...(toolMaterialId !== undefined ? { toolMaterialId } : {}),
   };
 }
 
@@ -411,9 +418,10 @@ function actionHistoryDetail(state: SimulationState, lookup: StateLookup, event:
     return `${to} · 对象 ${targets}${tool ? ` · 使用 ${materialDefinition(tool.materialId).name}` : ''}`;
   }
   if (event.action.kind === 'attend') return `${to} · 观察 ${historyWorldRefLabel(state, lookup, event.action.target)}`;
-  const audience = event.action.audience.map((id) => lookup.peopleById.get(id)?.name ?? '未知人物').join('、') || '身边的人';
-  const channel = event.action.channel === 'voice' ? '交谈' : event.action.channel === 'gesture' ? '手势' : '记录';
-  return `${to} · 通过${channel}面向 ${audience}`;
+  if (event.action.kind === 'inscribe') return `${to} · 在记录载体上留下刻痕`;
+  const perceived = languageBroadcastFromDiff(event.diff)?.perceivedByPersonIds
+    .map((id) => lookup.peopleById.get(id)?.name ?? '未知人物').join('、') || '无人明确感知';
+  return `${to} · 说出语言，被 ${perceived} 感知`;
 }
 
 function personView(state: SimulationState, lookup: SocietyProjectionLookup, person: PersonState): SocietyAgent {
@@ -423,6 +431,7 @@ function personView(state: SimulationState, lookup: SocietyProjectionLookup, per
   const activeIntent = person.activeIntentId ? lookup.intentsById.get(person.activeIntentId) : undefined;
   const active = activeIntent?.status === 'active' ? activeIntent : undefined;
   const currentNeed = needs.find((need) => need.dominant)?.label ?? '维持生活';
+  const projectedPersonState = personStateOf(person);
   const visualAction = recentActionFor(state, lookup, person);
   const visualSourceMaterialId = visualAction?.sourceMaterialId ?? visualAction?.materialId;
   const currentActionText = visualAction?.operation === 'separate' && visualSourceMaterialId === Material.BerryBush
@@ -430,6 +439,24 @@ function personView(state: SimulationState, lookup: SocietyProjectionLookup, per
     : visualAction?.operation === 'separate' && visualSourceMaterialId === Material.CropMature
       ? '收割成熟作物'
       : person.currentActionText;
+  const activityKind: SocietyAgent['activity']['kind'] = projectedPersonState === 'hibernating'
+    ? 'waiting'
+    : visualAction?.actionKind === 'move'
+    ? 'travelling'
+    : visualAction
+      ? 'acting'
+      : active
+        ? 'waiting'
+        : 'idle';
+  const hibernationSinceMonth = person.conditions.find((condition) => condition.kind === 'dehydrated-hibernation')?.sinceMonth;
+  const activitySinceMonth = projectedPersonState === 'hibernating' && hibernationSinceMonth !== undefined
+    ? hibernationSinceMonth
+    : visualAction
+    ? state.clock.elapsedMonths
+    : Math.min(
+      state.clock.elapsedMonths,
+      Math.max(person.bornAtMonth, (person.lastActionAtMonth ?? state.clock.elapsedMonths) + 1),
+    );
   const remains = state.world.remains?.find((candidate) => candidate.personId === person.id);
   const projectedPosition = remains?.status === 'interred' && remains.grave
     ? { cellId: remains.position.cellId, z: remains.grave.position.z + 1 }
@@ -445,9 +472,14 @@ function personView(state: SimulationState, lookup: SocietyProjectionLookup, per
     previousCellId: remains ? projectedPosition.cellId : person.position.previousCellId,
     lastPath: remains ? remainsPath : [...person.position.lastPath],
     tickPath: remains ? remainsPath : [...person.position.tickPath],
-    state: personStateOf(person),
+    state: projectedPersonState,
     ...(remains ? { bodyDisposition: remains.status } : {}),
     doing: currentActionText,
+    activity: {
+      kind: activityKind,
+      reason: currentActionText,
+      sinceMonth: activitySinceMonth,
+    },
     ...(active ? { activeIntentId: active.id } : {}),
     sex: person.sex,
     lifespanMonths: person.lifespanMonths,
@@ -596,65 +628,11 @@ function electricalPowerView(state: SimulationState): SocietyState['electricalPo
   };
 }
 
-const MODERN_ACHIEVEMENT_FACTS = [
-  {
-    key: 'stable-electricity',
-    label: '有用供电',
-  },
-  {
-    key: 'reviewable-measurement',
-    label: '可复核测量',
-  },
-  {
-    key: 'independent-record-use',
-    label: '他人读取并使用记录',
-  },
-] as const;
-
-/**
- * 从权威状态观察三项现代事实并投影为 UI 读模型；不写回领域状态。
- * development 的 gate 只属于当前目标阶段，不能用它隐藏已经发生的跨阶段现代事实。
- */
-export function toModernCivilizationAchievementView(
-  state: SimulationState,
-): ModernCivilizationAchievementView {
-  const development = state.civilization.development;
-  const current = development?.currentEra === 'modern-civilization';
-  const historical = development?.historicalPeakEra === 'modern-civilization';
-  const status: ModernCivilizationAchievementView['status'] = current
-    ? 'achieved'
-    : historical
-      ? 'historical-achievement'
-      : 'candidate';
-  const achieved = status !== 'candidate';
-  const modernEvidence = observeModernCivilizationEvidence(state);
-  const observedByKey = {
-    'stable-electricity': modernEvidence.electricalPower !== null,
-    'reviewable-measurement': modernEvidence.comparableMeasurement !== null,
-    'independent-record-use': modernEvidence.independentRecordExperiment !== null,
-  } as const;
-  const facts = MODERN_ACHIEVEMENT_FACTS.map(({ key, label }) => ({
-    key,
-    label,
-    // 历史最高或当前现代已是权威观察器确认过三项事实的结果。
-    observed: achieved || observedByKey[key],
-  }));
-  const observedFactCount = facts.filter((fact) => fact.observed).length;
-  return {
-    status,
-    observedFactCount,
-    requiredFactCount: 3,
-    progress: observedFactCount / 3,
-    facts,
-  };
-}
-
 export function toSocietyState(state: SimulationState): SocietyState {
   const { grid } = state.world;
   const lookup = societyProjectionLookup(state);
   const civilizationIndex = state.civilization.civilizationIndex;
   const electricalPower = electricalPowerView(state);
-  const modernAchievement = toModernCivilizationAchievementView(state);
   const componentPoints = (key: keyof typeof civilizationIndex.components): number => {
     const component = civilizationIndex.components[key];
     return Math.round(component.score * component.weight * 100) / 100;
@@ -758,7 +736,6 @@ export function toSocietyState(state: SimulationState): SocietyState {
           social: componentPoints('social'),
           history: componentPoints('history'),
         },
-        modernAchievement,
       },
       practices: state.derived.practices.map(({ key, label, count, stability }) => ({ key, label, count, stability })),
       institutions: state.derived.institutions.map(({ key, label, note }) => ({ key, label, note })),
@@ -849,6 +826,8 @@ export function toAgentMemory(
 ): AgentMemoryView | null {
   const person = state.people.find((candidate) => candidate.id === agentId);
   if (!person) return null;
+  const markdown = person.mindMarkdown
+    ?? projectPersonMindMarkdown(state, person, state.clock.elapsedMonths);
   const nameById = new Map(state.people.map((candidate) => [candidate.id, candidate.name]));
   const remembered = retrieveAgentMemories(state, person, {
     atMonth: state.clock.elapsedMonths,
@@ -876,7 +855,7 @@ export function toAgentMemory(
     firstMonth: memory.firstExperiencedAtMonth,
     lastMonth: memory.lastExperiencedAtMonth,
   }));
-  return { agentId, throughMonth: state.clock.elapsedMonths, remembered };
+  return { agentId, throughMonth: state.clock.elapsedMonths, markdown, remembered };
 }
 
 export function monthSpeaker(state: SimulationState, events: WorldEvent[]): string | null {

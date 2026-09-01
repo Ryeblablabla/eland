@@ -39,10 +39,10 @@ export function projectMaterialContributionRequestHasAuthoritativeSource(
     || event.status !== 'completed'
     || event.who !== request.requesterId
     || event.atMonth !== request.atMonth
-    || event.action.kind !== 'communicate'
-    || event.action.content.kind !== 'request') return false;
-  const audience = event.action.audience;
-  const payload = event.action.content.projectMaterialContribution;
+    || event.action.kind !== 'talk'
+    || event.action.speakerMeaning.kind !== 'request') return false;
+  const audience = ((event.diff.understoodByPersonIds as string[] | undefined) ?? []);
+  const payload = event.action.speakerMeaning.projectMaterialContribution;
   return Boolean(payload
     && request.version === 'project-material-contribution-request-v1'
     && request.projectId === project.id

@@ -289,7 +289,15 @@ export function compileCharacterAgendaProposal(
         ...(typeof raw.approach?.basisKey === 'string' && raw.approach.basisKey.trim()
           ? { basisKey: raw.approach.basisKey.trim() }
           : {}),
-        summary: probe ? canonicalProbeSummary(context, probe) : summary,
+        // Imaginative strategy text remains a MentalAct, but an approach
+        // classified as executable must name the exact locally selected
+        // affordance. This prevents prose such as “接触久一点” from borrowing
+        // an unrelated legal action and becoming operational state.
+        summary: probe
+          ? canonicalProbeSummary(context, probe)
+          : disposition === 'executable-now' && selectedOption
+            ? selectedOption.summary
+            : summary,
         disposition,
         sourceFactIds,
         ...(probe ? { probe } : {}),

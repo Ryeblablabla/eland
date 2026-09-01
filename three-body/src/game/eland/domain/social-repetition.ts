@@ -1,11 +1,14 @@
 import type { ActionOption, PrimitiveAction } from './action';
 import {
   liveSocialEvidenceForPersonSources,
+  worldEventById,
 } from './event-index';
 import type { DecisionAuthorityState } from './model';
 import type { PersonState } from './person';
-import { agreementByProposalEventId } from './agreement';
+import { agreementById, agreementByProposalEventId } from './agreement';
 import { personById } from './state-index';
+import { relationTo } from './relation';
+import { relationshipDecisionRenewalAfter } from './relationship-evidence';
 import { actionOptionSemantics } from './action-option-semantics';
 import {
   liveSocialCommunicationSubjectKey,
@@ -15,7 +18,7 @@ import {
 type SocialOutcome = 'unanswered' | 'supportive' | 'guarded' | 'proposed' | 'accepted' | 'rejected' | 'fulfilled' | 'expired' | 'breached' | 'cancelled';
 type SocialRepetitionState = Pick<
   DecisionAuthorityState,
-  'agreements' | 'intents' | 'people' | 'world'
+  'agreements' | 'clock' | 'intents' | 'people' | 'projects' | 'world'
 >;
 
 function rememberedCommunicationOrder(
@@ -37,22 +40,22 @@ export interface SocialRepetitionAssessment {
   outcome?: SocialOutcome;
 }
 
-function communicationAction(option: ActionOption): Extract<PrimitiveAction, { kind: 'communicate' }> | undefined {
-  if (option.nextAction.kind === 'communicate') return option.nextAction;
-  return option.completionAction?.kind === 'communicate' ? option.completionAction : undefined;
+function communicationAction(option: ActionOption): Extract<PrimitiveAction, { kind: 'talk' }> | undefined {
+  if (option.nextAction.kind === 'talk') return option.nextAction;
+  return option.completionAction?.kind === 'talk' ? option.completionAction : undefined;
 }
 
-function socialSubjectKey(action: Extract<PrimitiveAction, { kind: 'communicate' }>): string | null {
+function socialSubjectKey(action: Extract<PrimitiveAction, { kind: 'talk' }>): string | null {
   return liveSocialCommunicationSubjectKey(action);
 }
 
-function isOptionalInitiation(option: ActionOption, action: Extract<PrimitiveAction, { kind: 'communicate' }>): boolean {
+function isOptionalInitiation(option: ActionOption, action: Extract<PrimitiveAction, { kind: 'talk' }>): boolean {
   if (option.domain !== 'social'
     || actionOptionSemantics(option).obligation !== 'optional') return false;
-  return action.content.kind === 'claim'
-    || action.content.kind === 'prediction'
-    || action.content.kind === 'request'
-    || action.content.kind === 'offer';
+  return action.speakerMeaning.kind === 'claim'
+    || action.speakerMeaning.kind === 'prediction'
+    || action.speakerMeaning.kind === 'request'
+    || action.speakerMeaning.kind === 'offer';
 }
 
 function rememberedCommunications(
@@ -73,8 +76,8 @@ function actionBasisSourceIds(event: LiveSocialEvidenceDescriptor): string[] {
   return [...(event.action?.communication?.basisSourceEventIds ?? [])];
 }
 
-function currentBasisSourceIds(option: ActionOption, action: Extract<PrimitiveAction, { kind: 'communicate' }>): string[] {
-  const content = action.content;
+function currentBasisSourceIds(option: ActionOption, action: Extract<PrimitiveAction, { kind: 'talk' }>): string[] {
+  const content = action.speakerMeaning;
   const conversationSources = content.kind === 'claim' ? content.conversation?.sourceFactIds ?? [] : [];
   const relationshipSources = (content.kind === 'request' || content.kind === 'offer')
     && (content.proposal?.kind === 'companion' || content.proposal?.kind === 'reproduce')
@@ -139,9 +142,9 @@ function acuteBodyUrgency(person: PersonState): number {
 function survivalUrgency(
   state: SocialRepetitionState,
   person: PersonState,
-  action: Extract<PrimitiveAction, { kind: 'communicate' }>,
+  action: Extract<PrimitiveAction, { kind: 'talk' }>,
 ): number {
-  const content = action.content;
+  const content = action.speakerMeaning;
   if ((content.kind === 'request' || content.kind === 'offer') && content.proposal?.kind === 'assist') {
     const proposal = content.proposal;
     const requester = personById(state, proposal.requesterId);
@@ -164,6 +167,54 @@ function survivalUrgency(
   return subject ? acuteBodyUrgency(subject) : 0;
 }
 
+function recentRelationshipBoundaryCost(
+  state: SocialRepetitionState,
+  person: PersonState,
+  option: ActionOption,
+): SocialRepetitionAssessment | null {
+  const basis = option.relationshipBasis;
+  if (!basis || actionOptionSemantics(option).socialContext?.phase !== 'proposal') return null;
+  const partner = personById(state, basis.partnerId);
+  const relation = partner ? relationTo(person, partner.id) : undefined;
+  if (!partner || !relation) return null;
+  const boundary = [...(relation.evidenceLedger?.decisionBoundaries ?? [])]
+    .sort((left, right) => right.atMonth - left.atMonth || right.eventId.localeCompare(left.eventId))
+    .flatMap((anchor) => {
+      const event = worldEventById(state, anchor.eventId);
+      if (event?.kind !== 'action'
+        || event.action.kind !== 'talk'
+        || event.action.speakerMeaning.kind !== 'reject') return [];
+      const agreement = agreementById(state, event.action.speakerMeaning.referenceId);
+      if (!agreement
+        || agreement.proposal.kind !== basis.kind
+        || !agreement.partyIds.includes(person.id)
+        || !agreement.partyIds.includes(partner.id)) return [];
+      return [{ anchor, event }];
+    })[0];
+  if (!boundary) return null;
+  const age = Math.max(0, state.clock.elapsedMonths - boundary.anchor.atMonth);
+  const ownDecision = boundary.event.who === person.id;
+  const renewal = relationshipDecisionRenewalAfter(
+    state,
+    person,
+    partner,
+    boundary.event.id,
+  );
+  const score = (ownDecision ? -120 : -102)
+    * Math.exp(-age / 12 - renewal.strength * 1.5);
+  return {
+    score,
+    reasons: [ownDecision
+      ? '本人刚明确拒绝过同一人物的同类关系选择；反向开口与本人仍记得的决定相冲突，但这只是会衰减的预期成本'
+      : '对方刚明确拒绝过同类关系选择；再次开口的预期显著降低，但候选仍保留并可被后续关系收益超过'],
+    sourceFactIds: [boundary.event.id, ...renewal.sourceFactIds],
+    subjectKey: basis.subjectKey,
+    previousCommunicationEventId: boundary.event.id,
+    newEvidenceEventIds: renewal.sourceFactIds,
+    outcome: 'rejected',
+  };
+}
+
 /**
  * Repetition is an expected-value cost, not a monthly action cap. The person
  * can only compare communications retained in their own memory. A materially
@@ -182,6 +233,8 @@ export function assessSocialRepetition(
   }
   const subjectKey = socialSubjectKey(action);
   if (!subjectKey) return { score: 0, reasons: [], sourceFactIds: [], newEvidenceEventIds: [] };
+  const relationshipBoundary = recentRelationshipBoundaryCost(state, person, option);
+  if (relationshipBoundary) return relationshipBoundary;
   const previous = rememberedCommunications(state, person)
     .find((event) => event.action?.communication?.subjectKey === subjectKey);
   const currentSources = currentBasisSourceIds(option, action);

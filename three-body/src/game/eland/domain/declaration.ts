@@ -3,6 +3,8 @@ import { remember } from './memory';
 import { sameLocation } from './person';
 import { applyRelationEvidence } from './relation';
 import { intentById, personById } from './state-index';
+import { worldEventById } from './event-index';
+import { languageBroadcastFromDiff } from './language-perception';
 
 /**
  * A model utterance is not trust evidence by itself. When an audience member
@@ -10,20 +12,23 @@ import { intentById, personById } from './state-index';
  * intent, the declaration and action together become directional evidence.
  */
 export function recordWitnessedDeclarationFulfillment(state: SimulationState, fact: ActionFact): void {
-  if (fact.status !== 'completed' || fact.action.kind === 'communicate' || !fact.intentId) return;
+  if (fact.status !== 'completed' || fact.action.kind === 'talk' || !fact.intentId) return;
   const intent = intentById(state, fact.intentId);
   if (!intent?.openingActionCompleted
     || intent.declarationFulfilledAtEventId
-    || intent.openingAction?.kind !== 'communicate'
-    || intent.openingAction.content.kind !== 'claim') return;
+    || intent.openingAction?.kind !== 'talk'
+    || intent.openingAction.speakerMeaning.kind !== 'claim') return;
   const speaker = personById(state, fact.who);
   if (!speaker) return;
-  const witnesses = state.people.filter((person) => intent.openingAction?.kind === 'communicate'
-    && intent.openingAction.audience.includes(person.id)
-    && sameLocation(person, speaker));
-  if (!witnesses.length) return;
   const declarationEventId = intent.actionEventIds[0];
   if (!declarationEventId) return;
+  const declarationEvent = worldEventById(state, declarationEventId);
+  const understoodBy = declarationEvent?.kind === 'action'
+    ? languageBroadcastFromDiff(declarationEvent.diff)?.understoodByPersonIds ?? []
+    : [];
+  const witnesses = state.people.filter((person) => understoodBy.includes(person.id)
+    && sameLocation(person, speaker));
+  if (!witnesses.length) return;
   intent.declarationFulfilledAtEventId = fact.id;
   fact.diff = {
     ...fact.diff,

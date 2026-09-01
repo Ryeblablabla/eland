@@ -15,8 +15,7 @@ import { REPRODUCTION_CONSENT_WINDOW_MONTHS } from './population-capacity';
 import {
   compareWorldEventsInCanonicalOrder,
   completedActionFactsForPerson,
-  waterAssistanceEvidenceLeaseKey,
-  worldEventByIdWithRetainedLease,
+  worldEventById,
 } from './event-index';
 import {
   agreementsRequiringLifecycle,
@@ -35,11 +34,15 @@ import {
   recordAgreementNoResponseSocialLearning,
   recordAgreementResponseSocialLearning,
 } from './social-learning';
+import { invalidateFulfilledAgreementRelationshipEvidence } from './relationship-outcome-evidence';
+import { languageBroadcastFromDiff } from './language-perception';
 
 export type AgreementStatus = 'proposed' | 'active' | 'fulfilled' | 'rejected' | 'expired' | 'breached' | 'cancelled';
 
 export interface ResponseDeadlineSuspensionFact {
   kind: 'pause' | 'resume';
+  /** Missing on legacy facts means the pre-acceptance response clock. */
+  scope?: 'response' | 'fulfillment';
   responderId: PersonId;
   hibernationConditionId: string;
   atMonth: number;
@@ -89,14 +92,15 @@ export interface Agreement {
   responseDeadlineSuspensions?: ResponseDeadlineSuspensionFact[];
 }
 
-function responseDeadlineSuspensionState(
+function deadlineSuspensionState(
   agreement: Agreement,
   responderId: PersonId,
+  scope: 'response' | 'fulfillment',
 ): { extensionMonths: number; openConditionIds: Set<string> } {
   const pausedAtByCondition = new Map<string, number>();
   let extensionMonths = 0;
   for (const fact of agreement.responseDeadlineSuspensions ?? []) {
-    if (fact.responderId !== responderId) continue;
+    if (fact.responderId !== responderId || (fact.scope ?? 'response') !== scope) continue;
     if (fact.kind === 'pause') {
       if (!pausedAtByCondition.has(fact.hibernationConditionId)) {
         pausedAtByCondition.set(
@@ -115,10 +119,23 @@ function responseDeadlineSuspensionState(
 }
 
 export function agreementResponseDeadline(agreement: Agreement, responderId: PersonId): number {
-  const suspension = responseDeadlineSuspensionState(agreement, responderId);
+  const suspension = deadlineSuspensionState(agreement, responderId, 'response');
   return suspension.openConditionIds.size > 0
     ? Number.POSITIVE_INFINITY
     : agreement.acceptByMonth + suspension.extensionMonths;
+}
+
+export function agreementFulfillmentDeadline(agreement: Agreement): number {
+  const dueAtMonth = agreement.dueAtMonth ?? Number.POSITIVE_INFINITY;
+  if (agreement.proposal.kind !== 'assist') return dueAtMonth;
+  const suspension = deadlineSuspensionState(
+    agreement,
+    agreement.proposal.helperId,
+    'fulfillment',
+  );
+  return suspension.openConditionIds.size > 0
+    ? Number.POSITIVE_INFINITY
+    : dueAtMonth + suspension.extensionMonths;
 }
 
 function parties(proposal: SocialProposal): { proposerId: PersonId; responderId: PersonId; requiredResponderIds: PersonId[] } {
@@ -420,12 +437,12 @@ function verifiedStoredWaterAssistanceReceipt(
     || receipt.cellId !== fact.cellId) return undefined;
   if (role === 'helper') {
     if (fact.who !== proposal.helperId) return undefined;
-    if (fact.action.kind === 'move' || fact.action.kind === 'communicate') {
+    if (fact.action.kind === 'move' || fact.action.kind === 'talk') {
       if (receipt.evidenceKind !== 'adjacent-surface'
         || !Number.isSafeInteger(receipt.waterCellId)
         || !neighbors4(fact.cellId).includes(Number(receipt.waterCellId))) return undefined;
-      if (fact.action.kind === 'communicate'
-        && !fact.action.audience.includes(proposal.requesterId)) return undefined;
+      if (fact.action.kind === 'talk'
+        && !((fact.diff.understoodByPersonIds as string[] | undefined) ?? []).includes(proposal.requesterId)) return undefined;
     } else if (fact.action.kind === 'attend' && fact.action.target.kind === 'voxel') {
       if (receipt.evidenceKind !== 'attended-voxel'
         || !sameVoxelPosition(receipt.targetPosition, fact.action.target.position)) return undefined;
@@ -467,8 +484,9 @@ function helperWaterAssistanceEvidenceReceipt(
     return verifiedStoredWaterAssistanceReceipt(fact, proposal, 'helper', agreementId);
   }
   const action = fact.action;
-  if (action.kind === 'communicate' && !action.audience.includes(proposal.requesterId)) return undefined;
-  if (action.kind === 'move' || action.kind === 'communicate') {
+  if (action.kind === 'talk'
+    && !(languageBroadcastFromDiff(fact.diff)?.understoodByPersonIds ?? []).includes(proposal.requesterId)) return undefined;
+  if (action.kind === 'move' || action.kind === 'talk') {
     if (!allowCurrentWorldEvidence) return undefined;
     const water = neighbors4(fact.cellId)
       .map((waterCellId) => ({ waterCellId, materialId: surfaceMaterial(state.world.grid, waterCellId) }))
@@ -590,23 +608,10 @@ export function verifiedWaterAssistanceEvidenceAnchors(
 ): VerifiedWaterAssistanceEvidenceAnchors {
   let latestHelper: ActionFact | undefined;
   let latestRequester: ActionFact | undefined;
-  const helperLeaseKey = waterAssistanceEvidenceLeaseKey(
-    agreement.id,
-    proposal.requesterId,
-    proposal.helperId,
-    'helper',
-  );
-  const requesterLeaseKey = waterAssistanceEvidenceLeaseKey(
-    agreement.id,
-    proposal.requesterId,
-    proposal.helperId,
-    'requester',
-  );
   for (const eventId of new Set(agreement.fulfillmentEventIds)) {
     const event = currentFact?.id === eventId
       ? currentFact
-      : worldEventByIdWithRetainedLease(state, eventId, helperLeaseKey)
-        ?? worldEventByIdWithRetainedLease(state, eventId, requesterLeaseKey);
+      : worldEventById(state, eventId);
     if (event?.kind !== 'action') continue;
     if (isHelperWaterAssistanceEvidence(state, proposal, event, agreement.id)
       && (!latestHelper || compareWorldEventsInCanonicalOrder(latestHelper, event) < 0)) {
@@ -713,13 +718,11 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       return;
     }
   }
-  if (action.kind === 'communicate') {
-    const content = action.content;
+  if (action.kind === 'talk') {
+    const content = action.speakerMeaning;
     if ((content.kind === 'request' || content.kind === 'offer') && content.proposal && !agreementById(state, content.id)) {
       const pair = parties(content.proposal);
-      const reachedAudienceIds = Array.isArray(fact.diff.audience)
-        ? fact.diff.audience.filter((id): id is PersonId => typeof id === 'string')
-        : [];
+      const reachedAudienceIds = languageBroadcastFromDiff(fact.diff)?.understoodByPersonIds ?? [];
       if ((content.proposal.kind === 'membership' || content.proposal.kind === 'decision-rule' || content.proposal.kind === 'mandate')
         && !pair.requiredResponderIds.every((id) => reachedAudienceIds.includes(id))) return;
       const intentSources = fact.intentId ? intentById(state, fact.intentId)?.sourceFactIds ?? [] : [];
@@ -787,6 +790,34 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       agreement.status = 'rejected';
       agreement.resolvedAtMonth = fact.atMonth;
     }
+    if (agreement.proposal.kind === 'companion' || agreement.proposal.kind === 'reproduce') {
+      const responder = personById(state, fact.who);
+      const proposer = personById(state, agreement.proposerId);
+      if (responder && proposer) {
+        applyRelationEvidence(
+          responder,
+          proposer.id,
+          fact.id,
+          {},
+          {
+            atMonth: fact.atMonth,
+            kinds: ['decision-boundary'],
+            semanticKey: `decision:${agreement.proposal.kind}:self`,
+          },
+        );
+        applyRelationEvidence(
+          proposer,
+          responder.id,
+          fact.id,
+          {},
+          {
+            atMonth: fact.atMonth,
+            kinds: ['decision-boundary'],
+            semanticKey: `decision:${agreement.proposal.kind}:other`,
+          },
+        );
+      }
+    }
     recordAgreementResponseSocialLearning(
       state,
       agreement,
@@ -848,11 +879,18 @@ function fulfill(
   agreement.resolvedAtMonth = fact.atMonth;
   if (!agreement.fulfillmentEventIds.includes(fact.id)) agreement.fulfillmentEventIds.push(fact.id);
   if (!agreement.sourceEventIds.includes(fact.id)) agreement.sourceEventIds.push(fact.id);
+  invalidateFulfilledAgreementRelationshipEvidence(state);
   const trust = agreement.proposal.kind === 'assist' ? 8 : agreement.proposal.kind === 'exchange' ? 5 : 2;
   for (const personId of agreement.partyIds) {
     const person = personById(state, personId);
     const otherId = agreement.partyIds.find((candidate) => candidate !== personId);
-    if (person && otherId) applyRelationEvidence(person, otherId, fact.id, { trust, bond: 3 });
+    if (person && otherId) applyRelationEvidence(
+      person,
+      otherId,
+      fact.id,
+      { trust, bond: 3 },
+      { atMonth: fact.atMonth, kinds: ['substantive', 'direct-intimacy'] },
+    );
   }
   recordAgreementFulfillmentSocialLearning(
     state,
@@ -880,12 +918,14 @@ function appendResponseDeadlineSuspensionFact(
   cellId: number,
   sourceEventIds: string[],
   effectiveFromMonth?: number,
+  scope: 'response' | 'fulfillment' = 'response',
 ): AgreementFact {
   const change = kind === 'pause' ? 'response-deadline-paused' : 'response-deadline-resumed';
   const eventId = `e-${atMonth}-agreement-${change}-${agreement.id}-${responderId}-${hibernationConditionId}`;
   agreement.responseDeadlineSuspensions ??= [];
   agreement.responseDeadlineSuspensions.push({
     kind,
+    scope,
     responderId,
     hibernationConditionId,
     atMonth,
@@ -905,11 +945,16 @@ function appendResponseDeadlineSuspensionFact(
     partyIds: [...agreement.partyIds],
     responderId,
     hibernationConditionId,
+    deadlineScope: scope,
     effectiveFromMonth,
     sourceEventIds: [...new Set(sourceEventIds)],
-    result: kind === 'pause'
-      ? '一名必要响应者因脱水休眠暂停了自己的回应期限'
-      : '一名必要响应者结束脱水休眠，自己的回应期限从冻结处继续',
+    result: scope === 'fulfillment'
+      ? kind === 'pause'
+        ? '一名已接受协助义务的承担者因脱水休眠暂停了自己的履约期限'
+        : '一名协助义务承担者结束脱水休眠，自己的履约期限从冻结处继续'
+      : kind === 'pause'
+        ? '一名必要响应者因脱水休眠暂停了自己的回应期限'
+        : '一名必要响应者结束脱水休眠，自己的回应期限从冻结处继续',
   };
 }
 
@@ -926,12 +971,21 @@ export function synchronizeAgreementResponseDeadlineSuspensions(
 ): AgreementFact[] {
   const events: AgreementFact[] = [];
   for (const agreement of agreementsRequiringResponseDeadlineSynchronization(state)) {
-    for (const responderId of agreement.requiredResponderIds) {
+    const fulfillmentResponderIds = agreement.status === 'active' && agreement.proposal.kind === 'assist'
+      ? [agreement.proposal.helperId]
+      : [];
+    const responseResponderIds = agreement.status === 'proposed'
+      ? agreement.requiredResponderIds
+      : [];
+    for (const responderId of [...new Set([...responseResponderIds, ...fulfillmentResponderIds])]) {
       const responder = personById(state, responderId);
       if (!responder || !isAlive(responder)) continue;
+      const scope = fulfillmentResponderIds.includes(responderId)
+        ? 'fulfillment' as const
+        : 'response' as const;
       const activeEpisodes = responder.conditions.filter((condition) => condition.kind === 'dehydrated-hibernation');
       const activeEpisodeIds = new Set(activeEpisodes.map((condition) => condition.id));
-      const suspension = responseDeadlineSuspensionState(agreement, responderId);
+      const suspension = deadlineSuspensionState(agreement, responderId, scope);
       for (const openConditionId of suspension.openConditionIds) {
         if (activeEpisodeIds.has(openConditionId)) continue;
         const exitSourceEventIds = sourceEvents.flatMap((event) => event.kind === 'environment'
@@ -943,6 +997,7 @@ export function synchronizeAgreementResponseDeadlineSuspensions(
         const pauseSources = [...(agreement.responseDeadlineSuspensions ?? [])]
           .reverse()
           .find((fact) => fact.kind === 'pause'
+            && (fact.scope ?? 'response') === scope
             && fact.responderId === responderId
             && fact.hibernationConditionId === openConditionId)
           ?.sourceEventIds ?? [];
@@ -955,12 +1010,17 @@ export function synchronizeAgreementResponseDeadlineSuspensions(
           orderOffset + events.length,
           responder.position.cellId,
           exitSourceEventIds.length ? exitSourceEventIds : pauseSources,
+          undefined,
+          scope,
         ));
       }
-      const unresolved = agreement.status === 'proposed'
+      const unresolvedResponse = agreement.status === 'proposed'
         && !agreement.acceptedByPersonIds.includes(responderId)
         && !agreement.rejectedByPersonIds.includes(responderId);
-      if (!unresolved) continue;
+      const activeFulfillment = agreement.status === 'active'
+        && agreement.proposal.kind === 'assist'
+        && agreement.proposal.helperId === responderId;
+      if (!unresolvedResponse && !activeFulfillment) continue;
       for (const episode of activeEpisodes) {
         if (suspension.openConditionIds.has(episode.id)) continue;
         events.push(appendResponseDeadlineSuspensionFact(
@@ -972,7 +1032,13 @@ export function synchronizeAgreementResponseDeadlineSuspensions(
           orderOffset + events.length,
           responder.position.cellId,
           episode.sourceEventIds,
-          Math.max(agreement.proposedAtMonth, episode.sinceMonth),
+          Math.max(
+            scope === 'fulfillment'
+              ? agreement.acceptedAtMonth ?? agreement.proposedAtMonth
+              : agreement.proposedAtMonth,
+            episode.sinceMonth,
+          ),
+          scope,
         ));
       }
     }
@@ -1054,7 +1120,13 @@ export function advanceAgreementLifecycle(state: SimulationState, atMonth: numbe
       for (const personId of agreement.partyIds) {
         const person = personById(state, personId);
         const otherId = agreement.partyIds.find((candidate) => candidate !== personId);
-        if (person && otherId) applyRelationEvidence(person, otherId, fact.id, { trust: 3, bond: 5 });
+        if (person && otherId) applyRelationEvidence(
+          person,
+          otherId,
+          fact.id,
+          { trust: 3, bond: 5 },
+          { atMonth, kinds: ['substantive', 'direct-intimacy'] },
+        );
       }
       recordAgreementFulfillmentSocialLearning(state, agreement, atMonth, [fact.id]);
       events.push(fact);
@@ -1065,7 +1137,7 @@ export function advanceAgreementLifecycle(state: SimulationState, atMonth: numbe
     // it; continued relationship growth is settled from later shared-living
     // or joint-action facts.
     if (agreement.proposal.kind === 'companion' && agreement.companionEstablishedAtMonth !== undefined) continue;
-    if ((agreement.dueAtMonth ?? Number.POSITIVE_INFINITY) >= atMonth) continue;
+    if (agreementFulfillmentDeadline(agreement) >= atMonth) continue;
     if (agreement.proposal.kind === 'reproduce') {
       agreement.status = 'expired';
       agreement.resolvedAtMonth = atMonth;

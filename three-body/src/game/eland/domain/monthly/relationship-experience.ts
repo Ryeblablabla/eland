@@ -60,7 +60,7 @@ export function advanceSharedRelationshipExperience(
   for (const fact of currentMonthEvents) {
     if (fact.kind !== 'action'
       || (fact.status !== 'completed' && fact.status !== 'progressed')
-      || fact.action.kind === 'communicate'
+      || fact.action.kind === 'talk'
       || !peopleById.has(fact.who)) continue;
     const actions = actionsByTick.get(fact.actionTick) ?? [];
     actions.push(fact);
@@ -154,7 +154,7 @@ export function advanceSharedRelationshipExperience(
       applyRelationEvidence(observer, delta.otherPersonId, fact.id, {
         trust: delta.trustDelta,
         bond: delta.bondDelta,
-      });
+      }, { atMonth, kinds: ['substantive', 'shared-life'] });
     }
     facts.push(fact);
   }
@@ -201,8 +201,16 @@ export function advanceSharedRelationshipExperience(
     };
     agreement.lastCompanionRelationshipAtCoLocatedMonth = creditedThrough;
     agreement.sourceEventIds = [...new Set([...agreement.sourceEventIds, fact.id])];
-    applyRelationEvidence(participants[0], participants[1].id, fact.id, { trust: relationshipDelta, bond: relationshipDelta });
-    applyRelationEvidence(participants[1], participants[0].id, fact.id, { trust: relationshipDelta, bond: relationshipDelta });
+    applyRelationEvidence(
+      participants[0], participants[1].id, fact.id,
+      { trust: relationshipDelta, bond: relationshipDelta },
+      { atMonth, kinds: ['substantive', 'shared-life'] },
+    );
+    applyRelationEvidence(
+      participants[1], participants[0].id, fact.id,
+      { trust: relationshipDelta, bond: relationshipDelta },
+      { atMonth, kinds: ['substantive', 'shared-life'] },
+    );
     facts.push(fact);
   }
   return facts;

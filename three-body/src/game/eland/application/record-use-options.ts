@@ -15,6 +15,8 @@ import {
   exposureTechniqueId,
   inventoryCombinationFor,
   inventoryCombinationTechniqueId,
+  inventoryVoxelInteractionFor,
+  inventoryVoxelInteractionTechniqueId,
 } from '../domain/interaction-rules';
 import { Material, materialHas, type MaterialId } from '../domain/material';
 import type { DropState, SimulationState } from '../domain/model';
@@ -241,22 +243,12 @@ function resolveTechniqueAction(
   );
 
   if (action.operation === 'combine') {
-    let outputMaterialId: MaterialId | null = null;
-    const fertileSoils = new Set<MaterialId>([Material.WetSoil, Material.RichSoil, Material.ExhaustedSoil]);
-    if (stack.materialId === Material.Seed && fertileSoils.has(targetMaterialId)) {
-      outputMaterialId = Material.CropSprout;
-    }
-    if (targetMaterialId === Material.Air
-      && materialHas(stack.materialId, 'solid')
-      && (materialHas(stack.materialId, 'building') || materialHas(stack.materialId, 'placeable'))) {
-      outputMaterialId = stack.materialId === Material.Wood ? Material.Plank : stack.materialId;
-    }
-    if (outputMaterialId === null
-      || (materialHas(outputMaterialId, 'solid') && bodyOccupies(state, voxelRef.position))) return null;
+    const rule = inventoryVoxelInteractionFor(stack.materialId, targetMaterialId);
+    if (!rule || (materialHas(rule.outputMaterialId, 'solid') && bodyOccupies(state, voxelRef.position))) return null;
     return {
       action,
-      techniqueId: `technique:combine:${stack.materialId}:${targetMaterialId}:${outputMaterialId}`,
-      expectedOutputMaterialId: outputMaterialId,
+      techniqueId: inventoryVoxelInteractionTechniqueId(rule),
+      expectedOutputMaterialId: rule.outputMaterialId,
       inputSourceEventIds: unique(stack.sourceEventIds),
       inputWitnesses: [inputWitnessForStack(person, stack, 'input', 1)],
     };

@@ -24,8 +24,7 @@ export interface EvolutionCheckpoint {
  * The only prefix-history state consumed by `checkpointFor`.
  *
  * All other checkpoint fields are snapshots of the current authoritative
- * shell (plus the explicit token-usage input), so a bounded history reducer
- * must carry exactly these three scalars and no observer-facing stage data.
+ * shell plus the explicit token-usage input.
  */
 export interface EvolutionCheckpointDecisionAccumulator {
   readonly eventCount: number;
@@ -99,6 +98,12 @@ export interface EvolutionReport {
   socialIntents: number;
   survivalReflexActions: number;
   communications: number;
+  personMaterialTransfers: number;
+  personMaterialTransferReversals: number;
+  personMaterialSameMonthReversals: number;
+  permissionTransfers: number;
+  permissionTransferReversals: number;
+  permissionTransfersMissingUseBasis: number;
   containersBuilt: number;
   standingContainers: number;
   containerTransfers: number;
@@ -200,6 +205,12 @@ export interface EvolutionReport {
   groundedConversationOpenings: number;
   groundedConversationResponses: number;
   groundedConversationResponseCoverage: number;
+  groundedConversationSubstantiveResponses: number;
+  groundedConversationAcknowledgements: number;
+  groundedConversationGenericResponses: number;
+  groundedConversationClosedEpisodes: number;
+  groundedConversationMaxTurns: number;
+  groundedConversationMaxDurationMonths: number;
   groundedConversationUniqueTopics: number;
   groundedConversationParticipants: number;
   groundedConversationGenerationGtZeroParticipants: number;
@@ -450,8 +461,8 @@ function observerBehaviorMetrics(state: SimulationState): {
       if (objectRecord(event.diff)?.conceived === true) reproductionConceptions += 1;
       continue;
     }
-    if (event.status !== 'completed' || action.kind !== 'communicate') continue;
-    const content = objectRecord(action.content);
+    if (event.status !== 'completed' || action.kind !== 'talk') continue;
+    const content = objectRecord(action.speakerMeaning);
     if (!content) continue;
     if (content.kind === 'offer' && objectRecord(content.proposal)?.kind === 'reproduce') {
       reproductionOffers += 1;
@@ -831,14 +842,14 @@ function groundedConversationMetrics(state: SimulationState) {
   const eventIds = new Set(state.world.past.map((event) => event.id));
   const grounded = allActionEvents.flatMap((event) => {
     if (event.status !== 'completed'
-      || event.action.kind !== 'communicate'
-      || event.action.content.kind !== 'claim'
-      || !event.action.content.conversation) return [];
-    return [{ event, conversation: event.action.content.conversation }];
+      || event.action.kind !== 'talk'
+      || event.action.speakerMeaning.kind !== 'claim'
+      || !event.action.speakerMeaning.conversation) return [];
+    return [{ event, conversation: event.action.speakerMeaning.conversation }];
   });
   const openings = grounded.filter((entry) => entry.conversation.turn === 'opening');
   const responses = grounded.filter((entry) => entry.conversation.turn === 'response');
-  const openingById = new Map(openings.map((entry) => [entry.event.id, entry]));
+  const groundedById = new Map(grounded.map((entry) => [entry.event.id, entry]));
   const topicIds = new Set(grounded.map((entry) => entry.conversation.topic));
   const participantIds = new Set(grounded.flatMap((entry) => [entry.conversation.speakerId, entry.conversation.listenerId]));
   const generationGtZeroParticipants = state.people.filter((person) => participantIds.has(person.id) && person.generation > 0).length;
@@ -850,18 +861,27 @@ function groundedConversationMetrics(state: SimulationState) {
   for (const entry of openings) basisCounts.set(entry.conversation.basisKey, (basisCounts.get(entry.conversation.basisKey) ?? 0) + 1);
   const duplicateBases = [...basisCounts.values()].reduce((sum, count) => sum + Math.max(0, count - 1), 0);
   const participantMismatches = grounded.filter((entry) => entry.event.who !== entry.conversation.speakerId
-    || entry.event.action.kind !== 'communicate'
-    || entry.event.action.audience.length !== 1
-    || entry.event.action.audience[0] !== entry.conversation.listenerId).length;
+    || entry.event.action.kind !== 'talk'
+    || ((entry.event.diff.languageBroadcast as { understoodByPersonIds?: string[] } | undefined)
+      ?.understoodByPersonIds ?? []).length !== 1
+    || ((entry.event.diff.languageBroadcast as { understoodByPersonIds?: string[] } | undefined)
+      ?.understoodByPersonIds ?? [])[0] !== entry.conversation.listenerId).length;
   const responseMatchesOpening = (entry: typeof responses[number]) => {
     const referenceId = entry.conversation.referenceEventId;
-    const opening = referenceId ? openingById.get(referenceId) : undefined;
-    return Boolean(opening
-      && opening.conversation.speakerId === entry.conversation.listenerId
-      && opening.conversation.listenerId === entry.conversation.speakerId
-      && opening.conversation.topic === entry.conversation.topic
-      && opening.conversation.basisKey === entry.conversation.basisKey
-      && [...new Set(opening.conversation.sourceFactIds)].sort().join(',')
+    const previous = referenceId ? groundedById.get(referenceId) : undefined;
+    const previousPrecedesResponse = Boolean(previous && (
+      previous.event.atMonth < entry.event.atMonth
+      || (previous.event.atMonth === entry.event.atMonth
+        && previous.event.orderInMonth < entry.event.orderInMonth)
+    ));
+    return Boolean(previous
+      && previousPrecedesResponse
+      && previous.conversation.speakerId === entry.conversation.listenerId
+      && previous.conversation.listenerId === entry.conversation.speakerId
+      && previous.conversation.topic === entry.conversation.topic
+      && previous.conversation.basisKey === entry.conversation.basisKey
+      && previous.conversation.episodeId === entry.conversation.episodeId
+      && [...new Set(previous.conversation.sourceFactIds)].sort().join(',')
         === [...new Set(entry.conversation.sourceFactIds)].sort().join(','));
   };
   const validResponses = responses.filter(responseMatchesOpening);
@@ -870,29 +890,70 @@ function groundedConversationMetrics(state: SimulationState) {
     const referenceId = entry.conversation.referenceEventId;
     if (referenceId) responseReferenceCounts.set(referenceId, (responseReferenceCounts.get(referenceId) ?? 0) + 1);
   }
-  const responseReferences = new Set(responseReferenceCounts.keys());
+  const responseReferences = new Set(validResponses.flatMap((entry) => {
+    let current = entry;
+    const visited = new Set<string>();
+    while (current.conversation.referenceEventId && !visited.has(current.conversation.referenceEventId)) {
+      visited.add(current.conversation.referenceEventId);
+      const previous = groundedById.get(current.conversation.referenceEventId);
+      if (!previous) break;
+      if (previous.conversation.turn === 'opening') return [previous.event.id];
+      current = previous;
+    }
+    return [];
+  }));
   const duplicateResponses = [...responseReferenceCounts.values()].reduce((sum, count) => sum + Math.max(0, count - 1), 0);
   const responseMismatches = responses.length - validResponses.length + duplicateResponses;
   const relationshipEffectMismatches = grounded.filter((entry) => {
+    const lowStakes = ['open', 'everyday', 'reminiscence', 'playful'].includes(entry.conversation.topic);
+    const warm = ['care', 'gratitude', 'shared-work', 'family', 'loss'].includes(entry.conversation.topic);
+    const supportive = entry.conversation.stance === 'supportive'
+      && (entry.conversation.move === undefined || entry.conversation.move === 'support');
     const expected = entry.conversation.turn === 'opening'
-      ? {
-          trust: ['care', 'gratitude', 'shared-work', 'family'].includes(entry.conversation.topic) ? 1 : 0,
-          bond: entry.conversation.topic === 'discovery' ? 1 : 2,
-        }
-      : entry.conversation.stance === 'guarded'
-        ? { trust: 0, bond: 1 }
-        : { trust: 1, bond: 2 };
+      ? { trust: warm ? 1 : 0, bond: lowStakes ? 0 : entry.conversation.topic === 'discovery' ? 1 : 2 }
+      : { trust: supportive && !lowStakes ? 1 : 0, bond: supportive && !lowStakes ? 2 : 0 };
     return Number(entry.event.diff.relationTrustDelta) !== expected.trust
       || Number(entry.event.diff.relationBondDelta) !== expected.bond
       || entry.event.diff.groundedConversationBasisKey !== entry.conversation.basisKey;
   }).length;
   const blockedAttempts = allActionEvents.filter((event) => event.diff.groundedConversationBlocked === true).length;
+  const substantiveMoves = new Set(['support', 'question', 'challenge', 'share-fact', 'commit']);
+  const substantiveResponses = responses.filter((entry) => substantiveMoves.has(
+    entry.conversation.move ?? (entry.conversation.stance === 'supportive' ? 'support' : 'acknowledge'),
+  )).length;
+  const acknowledgements = responses.filter((entry) => (
+    entry.conversation.move ?? (entry.conversation.stance === 'supportive' ? 'support' : 'acknowledge')
+  ) === 'acknowledge').length;
+  const genericResponses = responses.filter((entry) => /^(?:回应.+刚才|接着回应)/u.test(entry.event.action.kind === 'talk'
+    && entry.event.action.speakerMeaning.kind === 'claim'
+    ? entry.event.action.speakerMeaning.summary
+    : '')).length;
+  const episodes = new Map<string, typeof grounded>();
+  for (const entry of grounded) {
+    const episodeId = entry.conversation.episodeId ?? entry.event.id;
+    const turns = episodes.get(episodeId) ?? [];
+    turns.push(entry);
+    episodes.set(episodeId, turns);
+  }
+  const episodeTurns = [...episodes.values()].map((entries) => entries.length);
+  const episodeDurations = [...episodes.values()].map((entries) => {
+    const months = entries.map((entry) => entry.event.atMonth);
+    return Math.max(...months) - Math.min(...months);
+  });
+  const closedEpisodes = (state.memoryStore?.conversations ?? [])
+    .filter((episode) => episode.status === 'closed').length;
   return {
     groundedConversationOpenings: openings.length,
     groundedConversationResponses: responses.length,
     groundedConversationResponseCoverage: openings.length
       ? Math.round(responseReferences.size / openings.length * 10_000) / 100
       : 100,
+    groundedConversationSubstantiveResponses: substantiveResponses,
+    groundedConversationAcknowledgements: acknowledgements,
+    groundedConversationGenericResponses: genericResponses,
+    groundedConversationClosedEpisodes: closedEpisodes,
+    groundedConversationMaxTurns: Math.max(0, ...episodeTurns),
+    groundedConversationMaxDurationMonths: Math.max(0, ...episodeDurations),
     groundedConversationUniqueTopics: topicIds.size,
     groundedConversationParticipants: participantIds.size,
     groundedConversationGenerationGtZeroParticipants: generationGtZeroParticipants,
@@ -906,6 +967,51 @@ function groundedConversationMetrics(state: SimulationState) {
     groundedConversationResponseMismatches: responseMismatches,
     groundedConversationRelationshipEffectMismatches: relationshipEffectMismatches,
     groundedConversationBlockedAttempts: blockedAttempts,
+  };
+}
+
+function materialTransferMetrics(state: SimulationState) {
+  const transfers = state.world.past.filter((event): event is Extract<WorldEvent, { kind: 'action' }> => (
+    event.kind === 'action'
+      && event.status === 'completed'
+      && event.action.kind === 'transfer'
+      && event.action.from.kind === 'person'
+      && event.action.to.kind === 'person'
+  ));
+  const lastByPairAndMaterial = new Map<string, (typeof transfers)[number]>();
+  let reversals = 0;
+  let sameMonthReversals = 0;
+  let permissionReversals = 0;
+  for (const event of transfers) {
+    if (event.action.kind !== 'transfer'
+      || event.action.from.kind !== 'person'
+      || event.action.to.kind !== 'person') continue;
+    const pair = [event.action.from.personId, event.action.to.personId].sort().join('|');
+    const key = `${event.action.materialId}|${pair}`;
+    const previous = lastByPairAndMaterial.get(key);
+    if (previous?.action.kind === 'transfer'
+      && previous.action.from.kind === 'person'
+      && previous.action.to.kind === 'person'
+      && previous.action.from.personId === event.action.to.personId
+      && previous.action.to.personId === event.action.from.personId) {
+      reversals += 1;
+      if (previous.atMonth === event.atMonth) sameMonthReversals += 1;
+      if (previous.diff.permissionAuthorized === true || event.diff.permissionAuthorized === true) {
+        permissionReversals += 1;
+      }
+    }
+    lastByPairAndMaterial.set(key, event);
+  }
+  const permissionTransfers = transfers.filter((event) => event.diff.permissionAuthorized === true);
+  return {
+    personMaterialTransfers: transfers.length,
+    personMaterialTransferReversals: reversals,
+    personMaterialSameMonthReversals: sameMonthReversals,
+    permissionTransfers: permissionTransfers.length,
+    permissionTransferReversals: permissionReversals,
+    permissionTransfersMissingUseBasis: permissionTransfers.filter((event) => (
+      event.action.kind !== 'transfer' || !event.action.permissionUseBasis
+    )).length,
   };
 }
 
@@ -1087,6 +1193,7 @@ export function buildEvolutionFactsReport(state: SimulationState, path: Evolutio
   const derivedInquiryOpportunityMetrics = inquiryOpportunityMetrics(state);
   const derivedTechniqueLearningMetrics = techniqueLearningMetrics(state);
   const derivedGroundedConversationMetrics = groundedConversationMetrics(state);
+  const derivedMaterialTransferMetrics = materialTransferMetrics(state);
   const derivedHypothesisMetrics = hypothesisMetrics(state);
   return {
     schemaVersion: 4,
@@ -1143,7 +1250,8 @@ export function buildEvolutionFactsReport(state: SimulationState, path: Evolutio
     strategicIntents: state.world.past.filter((event) => event.kind === 'decision' && event.domain === 'strategic').length,
     socialIntents: state.world.past.filter((event) => event.kind === 'decision' && event.domain === 'social').length,
     survivalReflexActions: state.world.past.filter((event) => event.kind === 'action' && event.cause === 'survival-reflex').length,
-    communications: state.world.past.filter((event) => event.kind === 'action' && event.action.kind === 'communicate' && event.status === 'completed').length,
+    communications: state.world.past.filter((event) => event.kind === 'action' && event.action.kind === 'talk' && event.status === 'completed').length,
+    ...derivedMaterialTransferMetrics,
     containersBuilt: state.world.past.filter((event) => event.kind === 'action' && event.status === 'completed' && typeof event.diff.containerId === 'string').length,
     standingContainers: state.containers.length,
     containerTransfers: state.world.past.filter((event) => event.kind === 'action'

@@ -49,6 +49,8 @@ export interface ItemStack {
   sourceEventIds: string[];
   /** Exact physical sources this stack descended from across transfers. */
   sourceLineageKeys?: string[];
+  /** Portable liquid is physically bound to one carried container stack. */
+  containedByStackId?: string;
   recordPayloadId?: string;
 }
 
@@ -76,6 +78,54 @@ export interface DirectedRelation {
   bond: number;
   fear: number;
   sourceEventIds: string[];
+  /**
+   * A few semantically representative relationship facts survive the rolling
+   * recent-source window. They prove why a relationship exists; they are not
+   * a permanent conversation blacklist or a second relationship score.
+   */
+  evidenceLedger?: RelationshipEvidenceLedger;
+}
+
+export interface RelationshipEvidenceAnchor {
+  eventId: string;
+  atMonth: number;
+  /** Optional bounded semantic lane; a newer fact replaces only the same lane. */
+  semanticKey?: string;
+}
+
+export interface RelationshipEvidenceLedger {
+  version: 'relationship-evidence-ledger-v1';
+  /** Any replayable interaction between this exact directed pair. */
+  substantive: RelationshipEvidenceAnchor[];
+  /** Care, fulfillment, co-parenting, or a meaningful grounded response. */
+  directIntimacy: RelationshipEvidenceAnchor[];
+  /** A real shared-action or established shared-living month. */
+  sharedLife: RelationshipEvidenceAnchor[];
+  /** Explicit accept/reject episodes used as decaying preference, never as a legality gate. */
+  decisionBoundaries?: RelationshipEvidenceAnchor[];
+}
+
+/**
+ * A synthetic response tendency attached to a founder prototype. It is a
+ * style/attention prior only: it never grants knowledge, history, ability, or
+ * a preselected action.
+ */
+export interface PrototypeReactionPattern {
+  id: string;
+  cue: string;
+  attention: string;
+  responseTendency: string;
+  speechTendency: string;
+  /** Synthetic cadence example, never a quotation or remembered utterance. */
+  exampleLine: string;
+}
+
+export interface PersonProfile {
+  description: string;
+  /** Optional for descendants and legacy saves. */
+  personalitySummary?: string;
+  /** Optional for descendants and legacy saves; founders receive three. */
+  reactionPatterns?: PrototypeReactionPattern[];
 }
 
 export type MemoryKind = 'episode' | 'dialogue' | 'commitment' | 'failure' | 'summary';
@@ -102,7 +152,7 @@ export type CognitiveOutcome = 'completed' | 'progressed' | 'blocked' | 'failed'
 export interface CausalMemoryTrace {
   /** Stable across transient option and intent ids. */
   basisKey: string;
-  actionKind: 'move' | 'transfer' | 'act' | 'attend' | 'communicate';
+  actionKind: 'move' | 'transfer' | 'act' | 'attend' | 'talk' | 'inscribe';
   operation?: string;
   goalKind?: string;
   outcome: CognitiveOutcome;
@@ -232,7 +282,7 @@ export interface PersonState {
   id: PersonId;
   name: string;
   color: string;
-  profile: { description: string };
+  profile: PersonProfile;
   bornAtMonth: number;
   lifespanMonths: number;
   diedAtMonth?: number;
@@ -276,6 +326,11 @@ export interface PersonState {
   knownPlaces: KnownPlace[];
   relations: DirectedRelation[];
   memories: MemoryRecord[];
+  /**
+   * This person's single persisted subjective document. Optional only while
+   * schema-v17 saves and small fixtures without the field are being hydrated.
+   */
+  mindMarkdown?: string;
   /** Sourced, person-local awareness of a death; optional for schema-v17 saves. */
   bereavements?: BereavementState[];
   /** Optional only so old schema-v17 states and small test fixtures can hydrate. */
@@ -283,6 +338,8 @@ export interface PersonState {
   /** Durable concerns above executable Intent episodes; optional for schema-v17 saves. */
   characterAgenda?: CharacterAgendaState;
   activeIntentId?: string;
+  /** Last primitive action attempt; observer-only timing, never a planning reward. */
+  lastActionAtMonth?: number;
   currentActionText: string;
   lastDecisionText: string;
 }

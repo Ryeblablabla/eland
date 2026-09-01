@@ -1,4 +1,4 @@
-import type { PrimitiveAction } from './action';
+import type { DependentTransportBasis, PrimitiveAction } from './action';
 import { materialHas } from './material';
 import type { DecisionAuthorityState, DropState, SimulationState, WorldEvent } from './model';
 import {
@@ -12,7 +12,7 @@ import {
   sameLocation,
   type PersonState,
 } from './person';
-import { compileBoundedWaterSearchMove, findReachableWater } from './water-access';
+import { compileBoundedWaterSearchMove, findReachableWater, moveTowardWaterAccess } from './water-access';
 import { findReachableShelter } from './shelter-access';
 import { shelterGeometryAt } from './structure';
 import { lifePlanningStage } from './life-stage';
@@ -20,6 +20,7 @@ import { cellsInRadius, findStandingPath } from '../world/grid';
 import { observedHibernationEntryEvidence } from './hibernation-entry';
 import { findCurrentVisibleStoredMaterialAccess, retrieveStoredMaterialOrMove } from './stored-food-access';
 import { relationTo } from './relation';
+import { intentById } from './state-index';
 
 const INFANT_MONTHS = 3 * 12;
 const DEPENDENT_MONTHS = 12 * 12;
@@ -50,8 +51,71 @@ function visibleYoungDependents(state: SimulationState, caregiver: PersonState):
   return dependentChildren(state, caregiver).filter((candidate) => visible.has(candidate.position.cellId));
 }
 
+function selectedDependentCareTarget(state: SimulationState, caregiver: PersonState): PersonState | undefined {
+  const intent = caregiver.activeIntentId ? intentById(state, caregiver.activeIntentId) : undefined;
+  if (!intent
+    || intent.ownerId !== caregiver.id
+    || intent.status !== 'active'
+    || intent.interruptionKind !== 'dependent-care') return undefined;
+  const directPersonId = intent.goal.kind === 'near-person' || intent.goal.kind === 'condition'
+    ? intent.goal.personId
+    : undefined;
+  const dependents = dependentChildren(state, caregiver);
+  if (directPersonId) return dependents.find((candidate) => candidate.id === directPersonId);
+  if (intent.goal.kind === 'at-cell') {
+    const targetCellId = intent.goal.cellId;
+    return dependents.find((candidate) => candidate.position.cellId === targetCellId);
+  }
+  return undefined;
+}
+
+/**
+ * A care trip starts from a locally visible child. Once selected, the child
+ * may cross the edge of current perception for one or more route steps; the
+ * stored child intent remains the source of that target until it resolves.
+ */
+function actionableYoungDependents(state: SimulationState, caregiver: PersonState): PersonState[] {
+  const selected = selectedDependentCareTarget(state, caregiver);
+  return [...new Map([
+    ...(selected ? [selected] : []),
+    ...visibleYoungDependents(state, caregiver),
+  ].map((dependent) => [dependent.id, dependent])).values()];
+}
+
 function coLocatedYoungDependents(state: SimulationState, caregiver: PersonState): PersonState[] {
   return dependentChildren(state, caregiver).filter((candidate) => sameLocation(candidate, caregiver));
+}
+
+function moveWithDependentTransport(
+  state: SimulationState,
+  caregiver: PersonState,
+  dependent: PersonState,
+  action: PrimitiveAction,
+  atMonth: number,
+  reason: DependentTransportBasis['reason'],
+): PrimitiveAction {
+  if (action.kind !== 'move'
+    || !sameLocation(caregiver, dependent)
+    || !isInfant(state, dependent, atMonth)
+    || isDormantDehydratedHibernating(dependent)) return action;
+  const relevantConditions = dependent.conditions.filter((condition) => (
+    reason === 'thermal-shelter'
+      ? condition.kind === 'cold' || condition.kind === 'heat'
+      : reason === 'hibernation-recovery'
+        ? condition.kind === 'dehydrated-hibernation' && hibernationPhase(condition) === 'recovering'
+        : false
+  ));
+  return {
+    ...action,
+    dependentTransportBasis: {
+      version: 'dependent-transport-v1',
+      dependentId: dependent.id,
+      observedAtMonth: atMonth,
+      reason,
+      conditionIds: relevantConditions.map((condition) => condition.id).sort(),
+      sourceFactIds: [...new Set(relevantConditions.flatMap((condition) => condition.sourceEventIds))].sort(),
+    },
+  };
 }
 
 /**
@@ -134,7 +198,7 @@ function nearestFood(state: SimulationState, caregiver: PersonState): DropState 
 
 /** Comparable urgency for choosing a child's crisis over a milder self reflex. */
 export function dependentCareUrgency(state: SimulationState, caregiver: PersonState): number {
-  return visibleYoungDependents(state, caregiver)
+  return actionableYoungDependents(state, caregiver)
     .filter((dependent) => !isDormantDehydratedHibernating(dependent))
     .reduce((maximum, dependent) => {
       const hydration = Math.max(0, 48 - dependent.body.hydration) * 3;
@@ -153,7 +217,7 @@ export function chooseDependentCareReflex(
   caregiver: PersonState,
   options: { suppressThermalShelter?: boolean; currentMonthEvents?: readonly WorldEvent[] } = {},
 ): PrimitiveAction | null {
-  const dependent = visibleYoungDependents(state, caregiver)
+  const dependent = actionableYoungDependents(state, caregiver)
     .find((candidate) => !isDormantDehydratedHibernating(candidate));
   if (!dependent) return null;
 
@@ -183,7 +247,8 @@ export function chooseDependentCareReflex(
   const canProvideCarriedFood = childNeedsFood && Boolean(carriedFood);
   const canCarryInfantToHelp = infant && (dependent.body.hydration < 40
     || dependent.body.nutrition < 40
-    || Boolean(thermalPressure));
+    || (Boolean(thermalPressure)
+      && !shelterGeometryAt(state.world.grid, dependent.position)));
   if (!together && (hibernationReady || canProvideCarriedFood || canCarryInfantToHelp || needsRecoveryWater)) {
     const path = findStandingPath(state.world.grid, caregiver.position, {
       cellId: dependent.position.cellId,
@@ -194,6 +259,11 @@ export function chooseDependentCareReflex(
       toCellId: dependent.position.cellId,
       toZ: dependent.position.z,
     };
+    // A thawed, flooded, or otherwise invalid target position can remain
+    // visible while no standing path exists. Never fall through to a direct
+    // transfer/dehydrate/carry action that the executor will reject for lack
+    // of proximity; wait for natural displacement or another legal route.
+    return null;
   }
 
   if (hibernationReady) {
@@ -211,15 +281,33 @@ export function chooseDependentCareReflex(
         && caregiver.position.z === water.bankPosition.z;
       return atBank
         ? { kind: 'act', operation: 'rehydrate', targets: [{ kind: 'person', personId: dependent.id }] }
-        : { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z };
+        : moveWithDependentTransport(
+          state,
+          caregiver,
+          dependent,
+          moveTowardWaterAccess(water, atMonth),
+          atMonth,
+          'hibernation-recovery',
+        );
     }
   }
 
   if (infant && dependent.body.hydration < 40) {
     const visible = cellsInRadius(caregiver.position.cellId, visibleRadius(caregiver));
     const water = findReachableWater(state, caregiver, visible);
-    if (water && (caregiver.position.cellId !== water.bankPosition.cellId || caregiver.position.z !== water.bankPosition.z)) {
-      return { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z };
+    if (water) {
+      const atBank = caregiver.position.cellId === water.bankPosition.cellId
+        && caregiver.position.z === water.bankPosition.z;
+      return atBank
+        ? { kind: 'act', operation: 'rehydrate', targets: [{ kind: 'person', personId: dependent.id }] }
+        : moveWithDependentTransport(
+          state,
+          caregiver,
+          dependent,
+          moveTowardWaterAccess(water, atMonth),
+          atMonth,
+          'hydration-access',
+        );
     }
     if (!water) {
       const search = compileBoundedWaterSearchMove(
@@ -229,7 +317,14 @@ export function chooseDependentCareReflex(
         visible,
         options.currentMonthEvents,
       );
-      if (search) return search;
+      if (search) return moveWithDependentTransport(
+        state,
+        caregiver,
+        dependent,
+        search,
+        atMonth,
+        'hydration-access',
+      );
     }
   }
 
@@ -241,18 +336,41 @@ export function chooseDependentCareReflex(
     const food = infant ? nearestFood(state, caregiver) : null;
     if (food) return caregiver.position.cellId === food.cellId && caregiver.position.z === food.z
       ? { kind: 'transfer', materialId: food.materialId, quantity: 1, from: { kind: 'ground', cellId: food.cellId, z: food.z }, to: { kind: 'person', personId: dependent.id }, dropId: food.id }
-      : { kind: 'move', toCellId: food.cellId, toZ: food.z };
+      : moveWithDependentTransport(
+        state,
+        caregiver,
+        dependent,
+        { kind: 'move', toCellId: food.cellId, toZ: food.z },
+        atMonth,
+        'food-access',
+      );
     const stored = findCurrentVisibleStoredMaterialAccess(
       state,
       caregiver,
       (stack) => materialHas(stack.materialId, 'edible'),
     );
-    if (stored) return retrieveStoredMaterialOrMove(caregiver, stored);
+    if (stored) return moveWithDependentTransport(
+      state,
+      caregiver,
+      dependent,
+      retrieveStoredMaterialOrMove(caregiver, stored),
+      atMonth,
+      'food-access',
+    );
   }
 
   if (infant && thermalPressure && !options.suppressThermalShelter) {
+    if (together && shelterGeometryAt(state.world.grid, caregiver.position)) return null;
+    if (!together && shelterGeometryAt(state.world.grid, dependent.position)) return null;
     const shelter = findReachableShelter(state, caregiver) ?? findReachableShelter(state, dependent);
-    if (shelter) return { kind: 'move', toCellId: shelter.position.cellId, toZ: shelter.position.z };
+    if (shelter) return moveWithDependentTransport(
+      state,
+      caregiver,
+      dependent,
+      { kind: 'move', toCellId: shelter.position.cellId, toZ: shelter.position.z },
+      atMonth,
+      'thermal-shelter',
+    );
   }
 
   return null;

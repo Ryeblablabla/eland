@@ -122,6 +122,18 @@ export interface ElandStepResult {
   authoritativeCivilizationIndexHistory?: CivilizationIndexHistoryPoint[];
 }
 
+export interface ElandObserverResult {
+  frame: Frame | null;
+  runner: {
+    status: 'paused' | 'waiting' | 'stepping';
+    activeObservers: number;
+    leaseTtlMs: number;
+  };
+  authoritativeHistory?: NarrativeEntryView[];
+  authoritativeHistoryTotalCount?: number;
+  authoritativeCivilizationIndexHistory?: CivilizationIndexHistoryPoint[];
+}
+
 export function createCivilizationCreationId(): string {
   civilizationCreationSequence += 1;
   return `${PAGE_LEASE_ID}:civilization:${Date.now().toString(36)}:${civilizationCreationSequence.toString(36)}`;
@@ -473,6 +485,95 @@ export const elandClient = {
       ...result,
       historyTotalCount: result.historyTotalCount ?? result.history.length,
     };
+  },
+  observe: async (
+    runId: string,
+    active: boolean,
+    playbackIntervalMs: number,
+    requestOptions?: ElandRequestOptions,
+  ): Promise<ElandObserverResult> => {
+    const requestAuthorityEpoch = authorityEpoch(runId);
+    const previous = latestFrames.get(runId) ?? null;
+    const result = await post<{
+      runner: ElandObserverResult['runner'];
+      payload: ElandStepPayload | null;
+      history?: NarrativeEntryView[];
+      historyTotalCount?: number;
+      civilizationIndexHistory?: CivilizationIndexHistoryPoint[];
+    }>('observe', {
+      runId,
+      observerId: PAGE_LEASE_ID,
+      active,
+      playbackIntervalMs,
+      ...(previous ? {
+        knownAuthorityRevision: previous.authorityRevision,
+        knownCivilizationId: previous.civilizationId,
+        knownBranchId: previous.branchId,
+        knownElapsedMonths: previous.elapsedMonths,
+      } : {}),
+    }, requestOptions);
+    if (authorityEpoch(runId) !== requestAuthorityEpoch) {
+      return { frame: latestFrames.get(runId) ?? null, runner: result.runner };
+    }
+    let frame = result.payload ? applyStepPayload(previous, result.payload) : previous;
+    let history = result.history;
+    let historyTotalCount = result.historyTotalCount;
+    let civilizationIndexHistory = result.civilizationIndexHistory;
+    if (result.payload && !frame) {
+      const refreshed = await get<{
+        playing: boolean;
+        model: 'local' | ModelProvider;
+        frame: Frame | null;
+        history: NarrativeEntryView[];
+        historyTotalCount?: number;
+        civilizationIndexHistory: CivilizationIndexHistoryPoint[];
+      }>(`state?runId=${encodeURIComponent(runId)}`, requestOptions);
+      frame = refreshed.frame;
+      history = refreshed.history;
+      historyTotalCount = refreshed.historyTotalCount ?? refreshed.history.length;
+      civilizationIndexHistory = refreshed.civilizationIndexHistory;
+    }
+    if (authorityEpoch(runId) !== requestAuthorityEpoch) {
+      return { frame: latestFrames.get(runId) ?? null, runner: result.runner };
+    }
+    if (frame && previous && frame.authorityRevision !== previous.authorityRevision) {
+      beginAuthoritySwitch(runId);
+    }
+    latestFrames.set(runId, frame);
+    reconcilePendingStep(runId, frame);
+    return {
+      frame,
+      runner: result.runner,
+      ...(history ? { authoritativeHistory: history } : {}),
+      ...(historyTotalCount !== undefined ? { authoritativeHistoryTotalCount: historyTotalCount } : {}),
+      ...(civilizationIndexHistory
+        ? { authoritativeCivilizationIndexHistory: civilizationIndexHistory }
+        : {}),
+    };
+  },
+  releaseObserver: (runId: string, playbackIntervalMs: number) => {
+    const previous = latestFrames.get(runId) ?? null;
+    const body = JSON.stringify({
+      runId,
+      observerId: PAGE_LEASE_ID,
+      active: false,
+      playbackIntervalMs,
+      ...(previous ? {
+        knownAuthorityRevision: previous.authorityRevision,
+        knownCivilizationId: previous.civilizationId,
+        knownBranchId: previous.branchId,
+        knownElapsedMonths: previous.elapsedMonths,
+      } : {}),
+    });
+    if (typeof navigator !== 'undefined' && navigator.sendBeacon?.('/api/eland/observe', body)) {
+      return Promise.resolve();
+    }
+    return post<{ runner: ElandObserverResult['runner']; payload: ElandStepPayload | null }>(
+      'observe',
+      JSON.parse(body),
+      undefined,
+      true,
+    ).then(() => undefined).catch(() => undefined);
   },
   embodimentState: (runId: string, requestOptions?: ElandRequestOptions) => get<{
     embodiment: EmbodimentView | null;

@@ -63,6 +63,7 @@ import {
   electricalPowerMaintenanceMaterialRequirement,
   electricalPowerMaintenanceProjectStep,
 } from '../electrical-power-maintenance-options';
+import { hibernationRescueProjectStep } from '../hibernation-rescue-options';
 import {
   currentMassMeasurementInstrument,
   currentMassMeasurementReference,
@@ -393,7 +394,7 @@ function containerUpgradeStep(
     && candidate.quantity >= 2);
   if (!hasPlacedContainer && plankStack) return {
     key: `make-container-for-upgrade-${plankStack.id}`,
-    summary: '先把两份木板结合成公共设施所需的木制容器',
+    summary: '先用两份木板组装公共设施所需的木制容器',
     reason: '项目不会绕过容器前置；人口或缺水压力只让人物主动解决这个可观察的结构缺口',
     action: {
       kind: 'act', operation: 'combine', targets: [
@@ -1115,9 +1116,8 @@ function durableRecordStep(state: SimulationState, person: PersonState, visibleD
       summary: `把“${knowledge.summary}”写入已有空白载体`,
       reason: '本人已经因经验中断风险形成保存目标；空白载体和已核验知识都在手中',
       action: {
-        kind: 'communicate',
-        content: { id: representationId, kind: 'claim', summary: knowledge.summary, factId: knowledge.id },
-        audience: [], channel: 'record', carrierStackId: carrier.id,
+        kind: 'inscribe',
+        inscriptionMeaning: { id: representationId, kind: 'claim', summary: knowledge.summary, factId: knowledge.id }, carrierStackId: carrier.id,
       },
       target: { kind: 'inventory-stack', personId: person.id, stackId: carrier.id },
       sourceFactIds: [...new Set([...project.triggerFactIds, ...knowledge.sourceEventIds, ...carrier.sourceEventIds])],
@@ -1634,8 +1634,8 @@ function projectKnowledgeRequestStep(
       summary: `向眼前的人询问怎样制作项目所需的${materialName}`,
       reason: '本人能够从亲身劳动与当前项目证据辨认目标产物，但尚无可靠制作经验；请求只说明产物，不包含本人未知的配方输入，也不预判谁会回答',
       action: {
-        kind: 'communicate',
-        content: {
+        kind: 'talk',
+        speakerMeaning: {
           id: representationId,
           kind: 'request',
           summary: `“${project.summary}”需要${materialName}，我还不知道怎样制作，谁能教我？`,
@@ -1647,8 +1647,6 @@ function projectKnowledgeRequestStep(
             expiresAtMonth: state.clock.elapsedMonths + 12,
           },
         },
-        audience: listeners.map((listener) => listener.id),
-        channel: 'gesture',
       },
       sourceFactIds: [...new Set([...project.triggerFactIds, ...prerequisiteSourceFactIds])],
       missingMaterialIds: [],
@@ -1800,8 +1798,8 @@ function materialContributionRequestStep(
       ? '项目已经记录具体缺口和固定设施；请求只发给眼前确实持有该材料的人，不会读取远处背包或追逐移动目标'
       : '项目已经记录具体缺口和固定地点；请求只发给眼前确实持有该材料的人，不会读取远处背包或追逐移动目标',
     action: {
-      kind: 'communicate',
-      content: {
+      kind: 'talk',
+      speakerMeaning: {
         id: `project-material-request:${project.id}:${selected.demand.materialId}`,
         kind: 'request',
         summary: `“${project.summary}”还缺${materialName} × ${quantity}，请送到工地`,
@@ -1815,8 +1813,6 @@ function materialContributionRequestStep(
           expiresAtMonth: state.clock.elapsedMonths + 12,
         },
       },
-      audience: selected.holders.map((holder) => holder.id),
-      channel: 'gesture',
     },
     sourceFactIds: [...new Set([
       ...project.triggerFactIds,
@@ -1961,6 +1957,9 @@ export function compileProjectStep(
   visibleDrops: DropState[],
   project: ProjectState,
 ): ProjectStep | null {
+  if (project.hibernationRescueBasis) {
+    return hibernationRescueProjectStep(state, person, visibleDrops, project);
+  }
   if (!projectIsLedBy(project, person.id)
     && projectSupportsMaterialContribution(project)) {
     return projectContributionStep(state, person, project);

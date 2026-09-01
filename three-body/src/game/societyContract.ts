@@ -45,6 +45,11 @@ export interface SocietyAgent {
   /** Read-only disposition of this dead person's authoritative remains. */
   bodyDisposition?: 'exposed' | 'carried' | 'placed' | 'interred';
   doing: string;
+  activity: {
+    kind: 'acting' | 'travelling' | 'waiting' | 'idle';
+    reason: string;
+    sinceMonth: number;
+  };
   activeIntentId?: string;
   sex: 'female' | 'male';
   lifespanMonths: number;
@@ -111,6 +116,9 @@ export interface AgentMemoryItemView {
 export interface AgentMemoryView {
   agentId: string;
   throughMonth: number;
+  /** The exact person-owned document rendered by the memory card. */
+  markdown: string;
+  /** Legacy structured projection kept for external protocol compatibility. */
   remembered: AgentMemoryItemView[];
 }
 
@@ -271,7 +279,7 @@ export interface ElectricalPowerNetworkView {
 }
 
 export interface ActionVisualView {
-  actionKind: 'move' | 'transfer' | 'act' | 'attend' | 'communicate';
+  actionKind: 'move' | 'transfer' | 'act' | 'attend' | 'talk' | 'inscribe';
   /** 仅真实 ActionFact 投影携带；意图预览没有来源事件，装饰层不得把它当成已发生动作。 */
   sourceEventId?: string;
   sourceOrderInMonth?: number;
@@ -301,7 +309,6 @@ export interface ActionVisualView {
   materialId?: number;
   materialIds?: number[];
   toolMaterialId?: number;
-  channel?: 'voice' | 'gesture' | 'record';
   communicationKind?: 'claim' | 'prediction' | 'request' | 'offer' | 'accept' | 'reject' | 'revoke-agreement' | 'revoke' | 'withdraw';
 }
 
@@ -316,19 +323,6 @@ export interface IntentView extends ActionVisualView {
 }
 
 /** 文明观察器给 UI 的只读快照；各分项是对总指数的实际点数贡献。 */
-export interface ModernCivilizationAchievementView {
-  /** 候选期、当前达成或历史达成均来自权威 development 观察，不是玩家任务。 */
-  status: 'candidate' | 'achieved' | 'historical-achievement';
-  observedFactCount: number;
-  requiredFactCount: 3;
-  progress: number;
-  facts: Array<{
-    key: 'stable-electricity' | 'reviewable-measurement' | 'independent-record-use';
-    label: string;
-    observed: boolean;
-  }>;
-}
-
 export interface CivilizationIndexView {
   formulaVersion: string;
   total: number;
@@ -341,8 +335,6 @@ export interface CivilizationIndexView {
     social: number;
     history: number;
   };
-  /** 只在 development 已进入现代候选、当前现代或历史现代时存在。 */
-  modernAchievement?: ModernCivilizationAchievementView;
 }
 
 /** 已提交月份的只读文明指数投影，用于展示当前分支的时间趋势。 */

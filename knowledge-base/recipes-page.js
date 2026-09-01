@@ -43,7 +43,7 @@ function formulaMarkup(recipe) {
 
 function summaryFor(recipe) {
   const inputs = recipe.inputs.map((item) => `${item.name}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`).join('与');
-  if (recipe.type === 'combine') return `${inputs}可结合为${recipe.output.name}${recipe.output.quantity > 1 ? ` × ${recipe.output.quantity}` : ''}`;
+  if (recipe.type === 'combine') return `用${inputs}可制成${recipe.output.name}${recipe.output.quantity > 1 ? ` × ${recipe.output.quantity}` : ''}`;
   if (recipe.type === 'exert') return `用${recipe.tools[0].name}向${recipe.inputs[0].name}施力，在${recipe.targets[0].name}处产生${recipe.output.name}`;
   if (recipe.type === 'expose') return `让${recipe.inputs[0].name}暴露于${recipe.targets[0].name}，可得到${recipe.output.name}`;
   const tool = recipe.tools.length > 0 ? `用${recipe.tools[0].name}` : '徒手';

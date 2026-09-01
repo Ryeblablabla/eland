@@ -4,9 +4,10 @@ import { materialHas } from '../../domain/material';
 import type { DecisionContext } from '../../domain/model';
 import { personalityScore } from '../../domain/personality';
 import { strongestBereavement } from '../../domain/mortuary';
-import { liveSocialEvidenceForPersonSources } from '../../domain/event-index';
+import { liveSocialEvidenceForPersonSources, worldEventById } from '../../domain/event-index';
 import { agreementsForPerson } from '../../domain/agreement';
-import { personById, projectById } from '../../domain/state-index';
+import { reproductiveResponsibility } from '../../domain/dependent-care';
+import { intentById, personById, projectById } from '../../domain/state-index';
 import { ageMonths } from '../../domain/person';
 import {
   companionLivingAnchor,
@@ -20,6 +21,7 @@ import { actionOptionSemantics } from '../../domain/action-option-semantics';
 import { recurringDutyMandateForExistingOption } from '../../domain/governance';
 import { currentRecordUseProject } from './record-use-project';
 import { characterAgendaStateOf, type CharacterAgendaItem } from '../../domain/character-agenda';
+import { PERSONAL_RESERVE_UNITS } from '../../domain/permission';
 
 export type NeedKind =
   | 'homeostasis'
@@ -49,6 +51,8 @@ export interface NeedSignal {
   projectId?: string;
   /** Durable concerns only activate an option compiled for this exact item. */
   characterAgendaItemId?: string;
+  /** Social pressure only activates an option about this exact person or agreement. */
+  subjectKey?: string;
   urgency: number;
   reasons: string[];
   sourceFactIds: string[];
@@ -58,7 +62,7 @@ export interface NeedSignal {
 export const COGNITIVE_POLICY = {
   bodyComfort: 72,
   bodyDeficitScale: 24,
-  personalReserveUnits: 4,
+  personalReserveUnits: PERSONAL_RESERVE_UNITS,
   failureExperienceScale: 4,
   staleCommitmentMonths: 4,
   minimumNeed: 0.035,
@@ -92,29 +96,48 @@ function signal(
   resource?: ReserveResource,
   projectId?: string,
   bodyField?: HomeostasisField,
+  subjectKey?: string,
 ): NeedSignal {
   return {
-    key: `need:${kind}${resource ? `:${resource}` : ''}${bodyField ? `:${bodyField}` : ''}${projectId ? `:project:${projectId}` : ''}`,
+    key: `need:${kind}${resource ? `:${resource}` : ''}${bodyField ? `:${bodyField}` : ''}${projectId ? `:project:${projectId}` : ''}${subjectKey ? `:subject:${subjectKey}` : ''}`,
     kind,
     ...(resource ? { resource } : {}),
     ...(bodyField ? { bodyField } : {}),
     ...(projectId ? { projectId } : {}),
+    ...(subjectKey ? { subjectKey } : {}),
     urgency: clamp(urgency),
     reasons: [...new Set(reasons)],
     sourceFactIds: [...new Set(sourceFactIds)].slice(-24),
   };
 }
 
-function isResponseOption(context: DecisionContext): boolean {
-  return context.options.some((option) => {
-    const action = option.nextAction.kind === 'communicate'
-      ? option.nextAction
-      : option.completionAction?.kind === 'communicate'
-        ? option.completionAction
-        : undefined;
-    return action?.content.kind === 'accept'
-      || action?.content.kind === 'reject';
-  });
+export function socialAgreementNeedSubject(agreementId: string): string {
+  return `agreement:${agreementId}`;
+}
+
+export function socialPersonNeedSubject(personId: string): string {
+  return `person:${personId}`;
+}
+
+function reproductionConsentReadiness(
+  context: DecisionContext,
+  agreement: DecisionContext['state']['agreements'][number],
+): number | undefined {
+  if (agreement.proposal.kind !== 'reproduce') return undefined;
+  const actionEventId = agreement.proposerId === context.person.id
+    ? agreement.proposalEventId
+    : agreement.responseEventId;
+  const action = actionEventId ? worldEventById(context.state, actionEventId) : undefined;
+  if (action?.kind !== 'action' || !action.intentId) return undefined;
+  const intent = intentById(context.state, action.intentId);
+  const decision = intent ? worldEventById(context.state, intent.sourceDecisionEventId) : undefined;
+  const readiness = decision?.kind === 'decision'
+    && decision.reproductionEvidence?.direction === 'proceed'
+    ? decision.reproductionEvidence.familyReadiness?.readiness
+    : undefined;
+  return typeof readiness === 'number' && Number.isFinite(readiness)
+    ? clamp(readiness)
+    : undefined;
 }
 
 function durableAgendaNeedKind(item: CharacterAgendaItem): NeedKind {
@@ -508,14 +531,19 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
     ));
   }
 
-  const waitingForResponse = isResponseOption(context);
+  const responseOptions = context.options.flatMap((option) => {
+    const action = option.nextAction.kind === 'talk'
+      ? option.nextAction
+      : option.completionAction?.kind === 'talk'
+        ? option.completionAction
+        : undefined;
+    return action && (action.speakerMeaning.kind === 'accept' || action.speakerMeaning.kind === 'reject')
+      ? [{ option, referenceId: action.speakerMeaning.referenceId }]
+      : [];
+  });
   const adverseRelations = visibleSourcedRelations.filter(({ relation }) => (
     relation.fear >= Math.max(relation.trust, relation.bond) + 10
   ));
-  const adverseRelationshipUrgency = adverseRelations.reduce((maximum, { relation }) => Math.max(
-    maximum,
-    clamp(0.35 + (relation.fear - Math.max(relation.trust, relation.bond)) / 100),
-  ), 0);
   const activeAgreements = agreementsForPerson(context.state, person.id).filter((agreement) => agreement.status === 'active'
     && agreement.partyIds.includes(person.id));
   const severeBodyUrgency = activeAgreements.length
@@ -526,27 +554,86 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
         person.conditions.reduce((maximum, condition) => Math.max(maximum, condition.stage >= 3 ? 0.65 : 0), 0),
       )
     : 0;
-  const responseUrgency = waitingForResponse ? 0.45 + person.motiveSensitivity.control / 200 : 0;
-  const readinessWithdrawalUrgency = reproductiveWithdrawalOptions.length && familyReadiness
-    ? 0.18 + (1 - familyReadiness.readiness) * 0.42
-    : 0;
-  const autonomyUrgency = Math.max(responseUrgency, adverseRelationshipUrgency, severeBodyUrgency, readinessWithdrawalUrgency);
-  if (autonomyUrgency > 0) needs.push(signal(
-    'autonomy',
-    autonomyUrgency,
+  const scopedAutonomy = new Map<string, { urgency: number; reasons: string[]; sourceFactIds: string[] }>();
+  const addScopedAutonomy = (subjectKey: string, urgency: number, reasons: string[], sourceFactIds: string[]) => {
+    if (urgency <= 0) return;
+    const previous = scopedAutonomy.get(subjectKey);
+    scopedAutonomy.set(subjectKey, {
+      urgency: Math.max(previous?.urgency ?? 0, urgency),
+      reasons: [...new Set([...(previous?.reasons ?? []), ...reasons])],
+      sourceFactIds: [...new Set([...(previous?.sourceFactIds ?? []), ...sourceFactIds])].slice(-24),
+    });
+  };
+  const responseUrgency = 0.45 + person.motiveSensitivity.control / 200;
+  for (const { option, referenceId } of responseOptions) addScopedAutonomy(
+    socialAgreementNeedSubject(referenceId),
+    responseUrgency,
+    ['这一项具体提议正在等待本人接受或拒绝'],
+    option.sourceFactIds,
+  );
+  for (const { relation, sourceFactIds } of adverseRelations) addScopedAutonomy(
+    socialPersonNeedSubject(relation.personId),
+    clamp(0.35 + (relation.fear - Math.max(relation.trust, relation.bond)) / 100),
+    ['本人和这个人的有来源关系中，恐惧已经明显压过信任与羁绊'],
+    sourceFactIds,
+  );
+  if (severeBodyUrgency > 0) for (const agreement of activeAgreements) addScopedAutonomy(
+    socialAgreementNeedSubject(agreement.id),
+    severeBodyUrgency,
+    ['本人正处于严重身体状态，需要重新判断这项仍在生效的承诺'],
     [
-      ...(waitingForResponse ? ['一项具体提议正在等待本人接受或拒绝'] : []),
-      ...(adverseRelations.length ? ['本人眼前一段有来源的关系中，恐惧已经明显压过信任与羁绊'] : []),
-      ...(severeBodyUrgency > 0 ? ['本人正处于严重身体状态，需要重新判断仍在生效的承诺'] : []),
-      ...(readinessWithdrawalUrgency > 0 ? ['当前家庭准备度使本人有理由重新判断生殖提议或已给出的单次同意'] : []),
-    ],
-    [
-      ...context.options.flatMap((option) => option.sourceFactIds),
-      ...adverseRelations.flatMap(({ sourceFactIds }) => sourceFactIds),
-      ...activeAgreements.flatMap((agreement) => agreement.sourceEventIds),
-      ...(familyReadiness?.sourceFactIds ?? []),
+      ...agreement.sourceEventIds,
       ...person.conditions.filter((condition) => condition.stage >= 3).flatMap((condition) => condition.sourceEventIds),
     ],
+  );
+  for (const agreement of activeAgreements.filter((candidate) => candidate.proposal.kind === 'reproduce')) {
+    const acceptedAtMonth = agreement.acceptedAtMonth ?? agreement.proposedAtMonth;
+    const newDependents = context.state.people.filter((candidate) => (
+      candidate.geneticParents.includes(person.id)
+        && candidate.bornAtMonth >= acceptedAtMonth
+        && candidate.bornAtMonth <= atMonth
+    ));
+    if (!newDependents.length) continue;
+    const responsibility = reproductiveResponsibility(context.state, person, atMonth);
+    addScopedAutonomy(
+      socialAgreementNeedSubject(agreement.id),
+      clamp(responsibility.pressure / 100),
+      [`本人同意这项尝试后新增了${newDependents.length}名子女照护责任`],
+      [...agreement.sourceEventIds, ...responsibility.sourceFactIds],
+    );
+  }
+  if (familyReadiness) {
+    for (const option of reproductiveWithdrawalOptions) {
+      const referenceId = actionOptionSemantics(option).socialContext?.referenceId;
+      if (!referenceId) continue;
+      const agreement = activeAgreements.find((candidate) => candidate.id === referenceId);
+      const consentReadiness = agreement
+        ? reproductionConsentReadiness(context, agreement)
+        : undefined;
+      if (consentReadiness === undefined) continue;
+      // Revocability is always legal, but the rule planner needs new adverse
+      // evidence before changing its own decision. Compare with this person's
+      // sourced proposal/acceptance appraisal instead of treating the same low
+      // readiness twice as opposite motives.
+      const readinessDecline = Math.max(0, consentReadiness - familyReadiness.readiness);
+      const readinessWithdrawalUrgency = readinessDecline * 0.8;
+      addScopedAutonomy(
+        socialAgreementNeedSubject(referenceId),
+        readinessWithdrawalUrgency,
+        [`家庭准备度从本人同意时的 ${Math.round(consentReadiness * 100)}% 降至 ${Math.round(familyReadiness.readiness * 100)}%，形成了新的撤回依据`],
+        [...option.sourceFactIds, ...familyReadiness.sourceFactIds, ...(agreement?.sourceEventIds ?? [])],
+      );
+    }
+  }
+  for (const [subjectKey, autonomy] of scopedAutonomy) needs.push(signal(
+    'autonomy',
+    autonomy.urgency,
+    autonomy.reasons,
+    autonomy.sourceFactIds,
+    undefined,
+    undefined,
+    undefined,
+    subjectKey,
   ));
 
   const inquiryOptions = context.options.filter((option) => option.goal.kind === 'knowledge'

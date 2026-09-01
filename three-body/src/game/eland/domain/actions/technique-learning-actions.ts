@@ -66,10 +66,10 @@ export function validateTechniqueLearningAction(
     const requestEvent = worldEventById(state, ref.requestEventId);
     const historicalRequest = requestEvent?.kind === 'action'
       && requestEvent.status === 'completed'
-      && requestEvent.action.kind === 'communicate'
-      && requestEvent.action.content.kind === 'request'
-      && requestEvent.action.content.techniqueDemonstration
-      ? requestEvent.action.content.techniqueDemonstration
+      && requestEvent.action.kind === 'talk'
+      && requestEvent.action.speakerMeaning.kind === 'request'
+      && requestEvent.action.speakerMeaning.techniqueDemonstration
+      ? requestEvent.action.speakerMeaning.techniqueDemonstration
       : null;
     const requestProject = projectById(state, ref.projectId);
     const pendingRequest = requestProject?.techniqueDemonstrationRequests?.find((candidate) => (
@@ -83,8 +83,8 @@ export function validateTechniqueLearningAction(
       ? requestEvent.who
       : pendingRequest?.requesterId;
     const addressedTeacherIds = historicalRequest && requestEvent?.kind === 'action'
-      && requestEvent.action.kind === 'communicate'
-      ? requestEvent.action.audience
+      && requestEvent.action.kind === 'talk'
+      ? ((requestEvent.diff.understoodByPersonIds as string[] | undefined) ?? [])
       : pendingRequest?.teacherIds ?? [];
     if (requesterId !== request.requesterId
       || !addressedTeacherIds.includes(person.id)

@@ -356,7 +356,7 @@ function concisePlayerText(value: string, max = 96): string {
     .replaceAll('近身范围', '身边')
     .replaceAll('施力', '加工')
     .replace(/([\p{Script=Han}A-Za-z]+)\s*×\s*(\d+)/gu, '$2份$1')
-    .replaceAll('可结合为', '可以合成为')
+    .replaceAll('可结合为', '可以制成')
     .replaceAll('是否愿意共同生育后代', '愿不愿意一起要个孩子')
     .trim();
   if (clean.length <= max) return clean;
@@ -493,9 +493,9 @@ function groundedConversationHistoryText(
 }
 
 function dialogueText(state: SimulationState, event: ActionEvent, actor: string): string {
-  if (event.action.kind !== 'communicate') return event.result;
-  const audience = event.action.audience.map((id) => personName(state, id)).join('、') || '身边的人';
-  const content = event.action.content;
+  if (event.action.kind !== 'talk') return event.result;
+  const audience = ((event.diff.understoodByPersonIds as string[] | undefined) ?? []).map((id) => personName(state, id)).join('、') || '身边的人';
+  const content = event.action.speakerMeaning;
   if (content.kind === 'accept') return `${actor}接受了${audience}的提议`;
   if (content.kind === 'reject') return `${actor}拒绝了${audience}的提议`;
   if (content.kind === 'revoke-agreement') return `${actor}向${audience}撤回了尚未执行的生殖同意`;
@@ -511,12 +511,12 @@ function dialogueText(state: SimulationState, event: ActionEvent, actor: string)
 }
 
 function communicationHistoryDetail(event: ActionEvent): string {
-  if (event.action.kind !== 'communicate') return event.result;
+  if (event.action.kind !== 'talk') return event.result;
   const channel = event.action.channel === 'voice'
     ? '当面交谈'
     : event.action.channel === 'gesture' ? '手势' : '记录';
-  const conversation = event.action.content.kind === 'claim'
-    ? event.action.content.conversation
+  const conversation = event.action.speakerMeaning.kind === 'claim'
+    ? event.action.speakerMeaning.conversation
     : undefined;
   if (!conversation) return `这次沟通已通过${channel}完成。`;
   const turn = conversation.turn === 'opening' ? '开场' : '回应';
@@ -675,7 +675,7 @@ function actionText(state: SimulationState, event: ActionEvent): string {
   if (event.action.kind === 'move') return event.status === 'completed' ? `${actor}抵达了目的地` : `${actor}正在赶往目的地`;
   if (event.action.kind === 'transfer') return transferText(state, event, actor);
   if (event.action.kind === 'attend') return attendText(state, event, actor);
-  if (event.action.kind === 'communicate') return dialogueText(state, event, actor);
+  if (event.action.kind === 'talk') return dialogueText(state, event, actor);
   return actText(state, event, actor);
 }
 
@@ -715,9 +715,9 @@ function decisionText(state: SimulationState, event: DecisionEvent): string {
 function actionImportance(event: ActionEvent): number {
   if (event.status === 'blocked' || event.status === 'failed') return 104;
   if (event.diff.victimId || event.diff.restrainedPersonId) return 102;
-  if (event.action.kind === 'communicate') {
-    const conversation = event.action.content.kind === 'claim'
-      ? event.action.content.conversation
+  if (event.action.kind === 'talk') {
+    const conversation = event.action.speakerMeaning.kind === 'claim'
+      ? event.action.speakerMeaning.conversation
       : undefined;
     if (conversation?.turn === 'response'
       && ['everyday', 'reminiscence', 'playful'].includes(conversation.topic)) return 66;
@@ -956,11 +956,11 @@ function isMajorHistoricalAction(state: SimulationState, event: ActionEvent): bo
     || typeof event.diff.restrainedPersonId === 'string'
     || typeof event.diff.releasedPersonId === 'string') return true;
   if (event.diff.verifiedTechnique === true) return true;
-  if (event.action.kind === 'communicate'
-    && event.action.content.kind === 'claim'
-    && event.action.content.conversation?.turn === 'response'
+  if (event.action.kind === 'talk'
+    && event.action.speakerMeaning.kind === 'claim'
+    && event.action.speakerMeaning.conversation?.turn === 'response'
     && ['everyday', 'reminiscence', 'playful'].includes(
-      event.action.content.conversation.topic,
+      event.action.speakerMeaning.conversation.topic,
     )) return true;
   if (event.action.kind !== 'act') return false;
   if (event.action.operation === 'reproduce') return event.diff.conceived === true;
@@ -1023,7 +1023,7 @@ function projectCompletionDetail(
   if (actions.some((event) => event.action.kind === 'attend' || event.diff.verifiedTechnique === true)) {
     phases.push('观察并核验相关方法');
   }
-  if (actions.some((event) => event.action.kind === 'communicate')) phases.push('协调参与者');
+  if (actions.some((event) => event.action.kind === 'talk')) phases.push('协调参与者');
   const observedStart = Math.min(...sourceEvents.map((event) => event.atMonth));
   const startedAt = Math.min(project.createdAtMonth ?? observedStart, observedStart);
   const endedAt = project.completedAtMonth ?? Math.max(...sourceEvents.map((event) => event.atMonth));

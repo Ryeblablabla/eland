@@ -18,7 +18,7 @@ import { createCognitionState, recordIntentGoalOutcome } from './cognition';
 import { createCharacterAgendaState } from './character-agenda';
 import { inventoryQuantity } from './person';
 import { addDrop } from './action-executor';
-import { WORLD_CELL_COUNT, cellId, cellX, cellY, cellsInRadius, neighbors4, setVoxel, surfaceMaterial, surfaceStandingPosition, topZ, voxelAt } from '../world/grid';
+import { WORLD_CELL_COUNT, cellId, cellX, cellY, cellsInRadius, isStandingPosition, neighbors4, setVoxel, surfaceMaterial, surfaceStandingPosition, topZ, voxelAt } from '../world/grid';
 import { seededFraction } from '../world/generator';
 import { shelterGeometryAt, shelterHeatRelief } from './structure';
 import { geneticKinshipRisk, inheritedGeneticLoad, KINSHIP_RISK_KNOWLEDGE_ID } from './kinship';
@@ -51,6 +51,8 @@ import {
 import { advanceSharedRelationshipExperience } from './monthly/relationship-experience';
 import { advanceAnimals } from './monthly/wildlife';
 import { applyRelationEvidence } from './relation';
+import { findReachableWater } from './water-access';
+import { createEmptyPersonMindMarkdown } from './person-mind';
 
 export {
   advanceEraPredictions,
@@ -68,6 +70,21 @@ function clamp(value: number, min = 0, max = 100): number {
 const HIBERNATION_HYDRATION_COST = 0.35;
 const HIBERNATION_NUTRITION_COST = 0.3;
 const HIBERNATION_HEALTH_COST = 0.25;
+
+function hasImmediateHibernationHydrationRecovery(
+  state: SimulationState,
+  person: PersonState,
+): boolean {
+  if (person.body.hydration >= HIBERNATION_RECOVERY_SAFE_RESERVE) return true;
+  if (person.inventory.some((stack) => stack.quantity > 0
+    && materialHas(stack.materialId, 'drinkable'))) return true;
+  const radius = 4 + Math.floor(person.baselineCapacities.perception / 25);
+  return Boolean(findReachableWater(
+    state,
+    person,
+    cellsInRadius(person.position.cellId, radius),
+  ));
+}
 
 function event(state: SimulationState, atMonth: number, events: EnvironmentFact[], change: EnvironmentFact['change'], result: string, diff: Record<string, unknown>, person?: PersonState): EnvironmentFact {
   void state;
@@ -142,41 +159,59 @@ export function advanceWorldProcesses(state: SimulationState, atMonth: number): 
       : 0;
   for (let cell = 0; cell < WORLD_CELL_COUNT; cell += 1) {
     const surface = surfaceMaterial(state.world.grid, cell);
-    const sample = seededFraction(state.seed, `world-process:${atMonth}:${cell}:${surface}`);
     if (surface === Material.CropSprout) {
+      const sample = seededFraction(state.seed, `world-process:${atMonth}:${cell}:${surface}`);
       const weatherGrowth = weather.kind === 'rain' ? 1.35 : weather.kind === 'drought' ? 0.28 : weather.kind === 'storm' ? 0.75 : 1;
       const rate = (climate.kind === 'temperate' ? 0.2 : climate.kind === 'cold' ? 0.055 : 0.1) * weatherGrowth;
       if (sample < rate) pending.push({ cell, to: Material.CropMature, process: 'plant-growth' });
       else if (weather.kind === 'drought' && sample < 0.035 * weather.intensity) pending.push({ cell, to: Material.ExhaustedSoil, process: 'crop-drought-loss' });
-    } else if (surface === Material.Shrub && sample < (climate.kind === 'temperate' ? 0.025 : 0.008)) {
+    } else if (surface === Material.Shrub
+      && seededFraction(state.seed, `world-process:${atMonth}:${cell}:${surface}`) < (climate.kind === 'temperate' ? 0.025 : 0.008)) {
       pending.push({ cell, to: Material.BerryBush, process: 'berry-growth' });
-    } else if (surface === Material.BerryBush && weather.kind === 'drought' && sample < weather.intensity * 0.025) {
+    } else if (surface === Material.BerryBush
+      && weather.kind === 'drought'
+      && seededFraction(state.seed, `world-process:${atMonth}:${cell}:${surface}`) < weather.intensity * 0.025) {
       pending.push({ cell, to: Material.Shrub, process: 'berry-drought-loss' });
-    } else if (surface === Material.Water && (climate.kind === 'cold' || weather.kind === 'snow') && sample < Math.min(0.42, climate.severity * 0.08 + weather.intensity * 0.025)) {
+    } else if (surface === Material.Water
+      && (climate.kind === 'cold' || weather.kind === 'snow')
+      && seededFraction(state.seed, `world-process:${atMonth}:${cell}:${surface}`) < Math.min(0.42, climate.severity * 0.08 + weather.intensity * 0.025)) {
       pending.push({ cell, to: Material.Ice, process: 'freeze' });
-    } else if (surface === Material.Water && weather.kind === 'drought' && sample < weather.intensity * 0.004) {
+    } else if (surface === Material.Water
+      && weather.kind === 'drought'
+      && seededFraction(state.seed, `world-process:${atMonth}:${cell}:${surface}`) < weather.intensity * 0.004) {
       pending.push({ cell, to: Material.Sand, process: 'evaporation' });
-    } else if (surface === Material.Ice && climate.kind !== 'cold' && sample < 0.35) {
+    } else if (surface === Material.Ice
+      && climate.kind !== 'cold'
+      && seededFraction(state.seed, `world-process:${atMonth}:${cell}:${surface}`) < 0.35) {
       pending.push({ cell, to: Material.Water, process: 'thaw' });
     } else if (surface === Material.Sand
       && riverRechargeRate > 0
       && riverPositionsByCell.has(cell)
       && neighbors4(cell).some(riverCellHasWater)
-      && sample < riverRechargeRate) {
+      && seededFraction(state.seed, `world-process:${atMonth}:${cell}:${surface}`) < riverRechargeRate) {
       pending.push({ cell, to: Material.Water, process: 'river-recharge' });
-    } else if (surface === Material.WetSoil && (climate.kind === 'heat' || climate.kind === 'fire') && sample < climate.severity * 0.045) {
+    } else if (surface === Material.WetSoil
+      && (climate.kind === 'heat' || climate.kind === 'fire')
+      && seededFraction(state.seed, `world-process:${atMonth}:${cell}:${surface}`) < climate.severity * 0.045) {
       pending.push({ cell, to: Material.Soil, process: 'drying' });
-    } else if (surface === Material.ExhaustedSoil && neighbors4(cell).some((neighbor) => surfaceMaterial(state.world.grid, neighbor) === Material.Water) && sample < 0.045) {
+    } else if (surface === Material.ExhaustedSoil
+      && neighbors4(cell).some((neighbor) => surfaceMaterial(state.world.grid, neighbor) === Material.Water)
+      && seededFraction(state.seed, `world-process:${atMonth}:${cell}:${surface}`) < 0.045) {
       pending.push({ cell, to: Material.WetSoil, process: 'soil-recovery' });
-    } else if (surface === Material.Fire && (sample < 0.28 || weather.kind === 'rain' || weather.kind === 'storm' || weather.kind === 'snow')) {
-      pending.push({ cell, to: Material.Ash, process: 'burn-out' });
-      for (const neighbor of neighbors4(cell)) {
-        const nearby = surfaceMaterial(state.world.grid, neighbor);
-        if (materialHas(nearby, 'flammable') && seededFraction(state.seed, `fire-spread:${atMonth}:${cell}:${neighbor}`) < climate.severity * 0.12) {
-          pending.push({ cell: neighbor, to: Material.Fire, process: 'fire-spread' });
+    } else if (surface === Material.Fire) {
+      const sample = seededFraction(state.seed, `world-process:${atMonth}:${cell}:${surface}`);
+      if (sample < 0.28 || weather.kind === 'rain' || weather.kind === 'storm' || weather.kind === 'snow') {
+        pending.push({ cell, to: Material.Ash, process: 'burn-out' });
+        for (const neighbor of neighbors4(cell)) {
+          const nearby = surfaceMaterial(state.world.grid, neighbor);
+          if (materialHas(nearby, 'flammable') && seededFraction(state.seed, `fire-spread:${atMonth}:${cell}:${neighbor}`) < climate.severity * 0.12) {
+            pending.push({ cell: neighbor, to: Material.Fire, process: 'fire-spread' });
+          }
         }
       }
-    } else if ((surface === Material.Soil || surface === Material.ExhaustedSoil) && weather.kind === 'rain' && sample < weather.intensity * 0.022) {
+    } else if ((surface === Material.Soil || surface === Material.ExhaustedSoil)
+      && weather.kind === 'rain'
+      && seededFraction(state.seed, `world-process:${atMonth}:${cell}:${surface}`) < weather.intensity * 0.022) {
       pending.push({ cell, to: Material.WetSoil, process: 'rain-soak' });
     }
   }
@@ -185,6 +220,48 @@ export function advanceWorldProcesses(state: SimulationState, atMonth: number): 
     if (from === change.to) continue;
     setVoxel(state.world.grid, cellX(change.cell), cellY(change.cell), topZ(state.world.grid, change.cell), change.to);
     changes.push({ cellId: change.cell, from, to: change.to, process: change.process });
+  }
+  if (changes.length) event(state, atMonth, events, 'material', `${changes.length} 个格子的物质因自然过程发生变化`, { changes });
+  const naturallyChangedCells = new Set(changes.map((change) => change.cellId));
+  for (const person of livingPeople(state)) {
+    if (!naturallyChangedCells.has(person.position.cellId)
+      || isStandingPosition(state.world.grid, person.position)) continue;
+    const from = { cellId: person.position.cellId, z: person.position.z };
+    const destination = cellsInRadius(from.cellId, 2)
+      .flatMap((candidateCellId) => {
+        const position = surfaceStandingPosition(state.world.grid, candidateCellId);
+        return position ? [position] : [];
+      })
+      .sort((left, right) => (
+        Math.abs(cellX(left.cellId) - cellX(from.cellId))
+          + Math.abs(cellY(left.cellId) - cellY(from.cellId))
+          + Math.abs(left.z - from.z) * 0.5
+      ) - (
+        Math.abs(cellX(right.cellId) - cellX(from.cellId))
+          + Math.abs(cellY(right.cellId) - cellY(from.cellId))
+          + Math.abs(right.z - from.z) * 0.5
+      ) || left.cellId - right.cellId || left.z - right.z)[0];
+    if (!destination) continue;
+    person.position.cellId = destination.cellId;
+    person.position.z = destination.z;
+    person.position.lastPath = [from.cellId, destination.cellId];
+    person.position.tickPath = [destination.cellId];
+    event(
+      state,
+      atMonth,
+      events,
+      'material',
+      `${person.name}脚下的自然支撑发生变化，身体移到附近可站立位置`,
+      {
+        process: 'natural-support-displacement',
+        fromCellId: from.cellId,
+        fromZ: from.z,
+        toCellId: destination.cellId,
+        toZ: destination.z,
+        sourceCellChanges: changes.filter((change) => change.cellId === from.cellId),
+      },
+      person,
+    );
   }
   const destroyedContainers = state.containers.filter((container) => {
     const materialId = voxelAt(state.world.grid, container.position.x, container.position.y, container.position.z);
@@ -202,8 +279,6 @@ export function advanceWorldProcesses(state: SimulationState, atMonth: number): 
     }
   }
   if (destroyedContainers.length) state.containers = state.containers.filter((container) => !destroyedContainers.includes(container));
-  if (changes.length) event(state, atMonth, events, 'material', `${changes.length} 个格子的物质因自然过程发生变化`, { changes });
-
   advanceAnimals(state, atMonth, events);
   return events;
 }
@@ -424,6 +499,7 @@ function newborn(state: SimulationState, mother: PersonState, fatherId: string, 
     cognition: createCognitionState(),
     characterAgenda: createCharacterAgendaState(),
     conditions: [], inventory: [], knowledge: [], knownPlaces: [], memories: [],
+    mindMarkdown: createEmptyPersonMindMarkdown(id, atMonth),
     bereavements: [],
     relations: [],
     currentActionText: '依赖身边人的照护', lastDecisionText: '尚不能独立决策',
@@ -903,6 +979,14 @@ export function advanceHibernationRecoveryPhases(
     if (!episode) continue;
     const suspension = maintainHibernationIntentSuspension(state, person, episode.id, atMonth);
     const phase = hibernationPhase(episode);
+    const triggerPrediction = episode.triggerPredictionId
+      ? state.eraPredictions.find((prediction) => prediction.id === episode.triggerPredictionId)
+      : undefined;
+    const predictionInvalidated = Boolean(triggerPrediction
+      && (triggerPrediction.status !== 'pending' || atMonth > triggerPrediction.expiresAtMonth));
+    const bodyEmergency = person.body.health < 35
+      || person.body.hydration < 28
+      || person.body.nutrition < 28;
     let result: string | undefined;
     let diff: Record<string, unknown> | undefined;
     if (state.civilization.epoch === 'chaotic' && phase === 'recovering') {
@@ -926,11 +1010,28 @@ export function advanceHibernationRecoveryPhases(
       };
     } else if (state.civilization.epoch === 'stable'
       && phase === 'dormant'
-      && episode.sinceMonth < state.civilization.era.sinceMonth) {
+      && (episode.sinceMonth < state.civilization.era.sinceMonth
+        || predictionInvalidated
+        || bodyEmergency)
+      // Waking restores ordinary metabolism but does not conjure water. A
+      // severely dehydrated sleeper may wake only when it can immediately
+      // drink carried liquid or reach a currently perceived water access.
+      // Otherwise it stays dormant while a visible helper can still form a
+      // source-backed rescue project; a stable era alone is not hydration.
+      && hasImmediateHibernationHydrationRecovery(state, person)) {
       episode.hibernationPhase = 'recovering';
       episode.recoveryStartedAtMonth = atMonth;
       episode.recoverySourceEventIds = [];
-      result = `${person.name}在恒纪元中从低代谢休眠转入受限恢复`;
+      const recoveryBasis = episode.sinceMonth < state.civilization.era.sinceMonth
+        ? 'new-stable-era'
+        : predictionInvalidated
+          ? 'prediction-invalidated'
+          : 'body-emergency';
+      result = recoveryBasis === 'prediction-invalidated'
+        ? `${person.name}因支撑休眠的预言已经失效，从低代谢休眠转入受限恢复`
+        : recoveryBasis === 'body-emergency'
+          ? `${person.name}因身体储备已经危及继续休眠，在恒纪元中转入受限恢复`
+          : `${person.name}在恒纪元中从低代谢休眠转入受限恢复`;
       diff = {
         condition: 'dehydrated-hibernation',
         hibernationConditionId: episode.id,
@@ -939,6 +1040,12 @@ export function advanceHibernationRecoveryPhases(
         originalSinceMonth: episode.sinceMonth,
         stage: episode.stage,
         reserveIncrease: 0,
+        recoveryBasis,
+        ...(triggerPrediction ? {
+          hibernationPredictionId: triggerPrediction.id,
+          predictionStatus: triggerPrediction.status,
+          predictionExpiresAtMonth: triggerPrediction.expiresAtMonth,
+        } : {}),
         ...(suspension.intentId ? { suspendedIntentId: suspension.intentId } : {}),
         ...(suspension.intentChainIds.length > 1 ? { suspendedIntentChainIds: suspension.intentChainIds } : {}),
       };
@@ -1034,8 +1141,14 @@ export function synchronizeHibernationIntentSuspensions(
 
 export function advanceBodies(state: SimulationState, atMonth: number): EnvironmentFact[] {
   const events: EnvironmentFact[] = [];
-  const peopleAtStart = [...livingPeople(state)];
-  const resourceCompetition = humanResourceCompetitionMultiplier(peopleAtStart.length);
+  // A primitive action can reduce health to zero after the month's opening
+  // living-person index was built. Such a person is correctly excluded from
+  // further actions, but must still enter this settlement pass exactly once
+  // so death, remains, estate and intent outcomes become authoritative facts.
+  const peopleAtStart = state.people.filter((person) => person.diedAtMonth === undefined);
+  const resourceCompetition = humanResourceCompetitionMultiplier(
+    peopleAtStart.filter(isAlive).length,
+  );
   for (const person of peopleAtStart) {
     if (person.diedAtMonth !== undefined) continue;
     if (person.body.health <= 0) {

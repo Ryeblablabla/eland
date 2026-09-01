@@ -45,7 +45,7 @@ function semanticGoal(goal: ActionOption['goal']): unknown {
 }
 
 function semanticAction(action: PrimitiveAction): unknown {
-  if (action.kind !== 'communicate') return structuredClone(action);
+  if (action.kind !== 'talk') return structuredClone(action);
   const normalized = structuredClone(action) as unknown as Record<string, unknown>;
   const content = normalized.content as Record<string, unknown>;
   delete content.id;

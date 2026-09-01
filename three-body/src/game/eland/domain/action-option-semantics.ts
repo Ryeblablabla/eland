@@ -183,7 +183,7 @@ function executionAction(option: Pick<ActionOption, 'nextAction' | 'completionAc
 
 function communicationAction(option: Pick<ActionOption, 'nextAction' | 'completionAction'>) {
   const action = executionAction(option);
-  return action.kind === 'communicate' ? action : undefined;
+  return action.kind === 'talk' ? action : undefined;
 }
 
 function acceptedAuthorization(option: Pick<ActionOption, 'nextAction' | 'completionAction'>): string | undefined {
@@ -202,8 +202,8 @@ function inferredReproduction(
     phase: 'attempt',
     mode: action.authorizationRef ? 'mutual' : 'unilateral-trait',
   };
-  if (action.kind !== 'communicate') return undefined;
-  const content = action.content;
+  if (action.kind !== 'talk') return undefined;
+  const content = action.speakerMeaning;
   if ((content.kind === 'request' || content.kind === 'offer')
     && content.proposal?.kind === 'reproduce') return {
     direction: 'proceed',
@@ -255,7 +255,7 @@ function inferredSocialContext(
     referenceId: action.authorizationRef,
     materialId: action.materialId,
   });
-  if (action.kind !== 'communicate') {
+  if (action.kind !== 'talk') {
     if (!reproduction) return undefined;
     return normalizedSocialContext({
       cooperationKind: 'reproduction',
@@ -264,8 +264,12 @@ function inferredSocialContext(
       ...(acceptedAuthorization(option) ? { referenceId: acceptedAuthorization(option) } : {}),
     });
   }
-  const content = action.content;
-  const counterpartIds = [...action.audience, ...(targetId ? [targetId] : [])];
+  const content = action.speakerMeaning;
+  const counterpartIds = [...new Set([
+    ...(option.target?.kind === 'person' ? [option.target.personId] : []),
+    ...(targetId ? [targetId] : []),
+    ...(content.kind === 'claim' && content.conversation ? [content.conversation.listenerId] : []),
+  ])];
   if (content.kind === 'claim' && content.conversation) return normalizedSocialContext({
     cooperationKind: 'conversation',
     phase: content.conversation.turn === 'opening' ? 'opening' : 'response',
@@ -362,7 +366,7 @@ function inferredMinimumLifeStage(
   reproduction: ActionOptionSemanticsV1['reproduction'],
 ): ActionOptionSemanticsV1['minimumLifeStage'] {
   const action = executionAction(option);
-  const content = action.kind === 'communicate' ? action.content : undefined;
+  const content = action.kind === 'talk' ? action.speakerMeaning : undefined;
   const adultSocialKind = (content?.kind === 'request' || content?.kind === 'offer')
     ? content.proposal?.kind
     : undefined;
@@ -403,7 +407,9 @@ function inferredPurpose(
     || option.goal.kind === 'remains-interred'
     || option.goal.kind === 'memorial-marked') return 'mortuary-care';
   if (option.goal.kind === 'inventory-at-least' || option.goal.kind === 'container-inventory-at-least') return 'resource';
-  if (option.goal.kind === 'near-person' || option.goal.kind === 'representation-made') return 'social-coordination';
+  if (option.goal.kind === 'near-person'
+    || option.goal.kind === 'representation-made'
+    || option.goal.kind === 'agreement-contribution-recorded') return 'social-coordination';
   if (option.goal.kind === 'at-cell') return 'movement';
   if (option.goal.kind === 'voxel-is') return 'production';
   return 'other';
@@ -428,7 +434,7 @@ function inferredNeeds(
   if (purpose === 'mortuary-care') needs.add('bereavement');
   if (reproduction) needs.add('generativity');
   const action = communicationAction(option);
-  if (action && ['accept', 'reject', 'revoke-agreement', 'revoke', 'withdraw'].includes(action.content.kind)) needs.add('autonomy');
+  if (action && ['accept', 'reject', 'revoke-agreement', 'revoke', 'withdraw'].includes(action.speakerMeaning.kind)) needs.add('autonomy');
   return NEED_ORDER.filter((need) => needs.has(need));
 }
 
@@ -450,20 +456,21 @@ export function inferActionOptionSemantics(
   override: ActionOptionSemanticOverride = {},
 ): ActionOptionSemanticsV1 {
   const action = communicationAction(option);
-  const conversation = action?.content.kind === 'claim' && action.content.conversation
+  const conversation = action?.speakerMeaning.kind === 'claim' && action.speakerMeaning.conversation
     ? {
-        turn: action.content.conversation.turn,
-        topic: action.content.conversation.topic,
+        turn: action.speakerMeaning.conversation.turn,
+        topic: action.speakerMeaning.conversation.topic,
       } satisfies NonNullable<ActionOptionSemanticsV1['conversation']>
     : undefined;
   const reproduction = override.reproduction ?? inferredReproduction(option);
   const socialContext = normalizedSocialContext(override.socialContext
     ?? inferredSocialContext(option, reproduction));
-  const typedRequiredResponse = action?.content.kind === 'accept'
-    || action?.content.kind === 'reject';
+  const typedRequiredResponse = action?.speakerMeaning.kind === 'accept'
+    || action?.speakerMeaning.kind === 'reject';
   const execution = executionAction(option);
   const acceptedCommitment = Boolean(acceptedAuthorization(option)
     || option.goal.kind === 'agreement-fulfilled'
+    || option.goal.kind === 'agreement-contribution-recorded'
     || (execution.kind === 'act' && execution.operation === 'reproduce'));
   const obligation = override.obligation
     ?? (typedRequiredResponse ? 'required-response' : acceptedCommitment ? 'commitment-action' : 'optional');
@@ -476,7 +483,7 @@ export function inferActionOptionSemantics(
           ? 'record-use'
           : execution.kind === 'act' && execution.techniqueDemonstration
             ? 'technique-demonstration'
-            : action?.content.kind === 'claim' && action.content.projectKnowledgeResponse
+            : action?.speakerMeaning.kind === 'claim' && action.speakerMeaning.projectKnowledgeResponse
               ? 'project-knowledge-response'
               : conversation?.turn === 'response'
                 ? 'conversation-response'
@@ -629,9 +636,11 @@ export function validateActionOptionSemantics(value: unknown): ActionOptionSeman
   if (reproduction?.phase === 'response' && obligation !== 'required-response') {
     throw new Error('Reproduction response must be classified as required-response');
   }
-  if ((reproduction?.phase === 'attempt' || reproduction?.phase === 'withdrawal')
-    && obligation !== 'commitment-action') {
-    throw new Error('Reproduction attempt or withdrawal must be a commitment action');
+  if (reproduction?.phase === 'attempt' && obligation !== 'commitment-action') {
+    throw new Error('Reproduction attempt must be a commitment action');
+  }
+  if (reproduction?.phase === 'withdrawal' && obligation !== 'optional') {
+    throw new Error('Reproduction withdrawal must remain optional');
   }
   if (reproduction?.phase === 'proposal' && obligation !== 'optional') {
     throw new Error('Reproduction proposal must remain optional');
@@ -680,12 +689,12 @@ function validateSemanticConsistency(
   semantics: ActionOptionSemanticsV1,
 ): ActionOptionSemanticsV1 {
   const execution = executionAction(option);
-  const communication = execution.kind === 'communicate' ? execution : undefined;
-  const conversation = communication?.content.kind === 'claim'
-    ? communication.content.conversation
+  const communication = execution.kind === 'talk' ? execution : undefined;
+  const conversation = communication?.speakerMeaning.kind === 'claim'
+    ? communication.speakerMeaning.conversation
     : undefined;
-  const typedRequiredResponse = communication?.content.kind === 'accept'
-    || communication?.content.kind === 'reject';
+  const typedRequiredResponse = communication?.speakerMeaning.kind === 'accept'
+    || communication?.speakerMeaning.kind === 'reject';
   if (typedRequiredResponse && semantics.obligation !== 'required-response') {
     throw new Error('Typed response action must be classified as required-response');
   }
@@ -701,15 +710,15 @@ function validateSemanticConsistency(
     }
   }
   if (option.relationshipBasis?.kind === 'reproduce'
-    && (communication?.content.kind === 'accept' || communication?.content.kind === 'reject')
+    && (communication?.speakerMeaning.kind === 'accept' || communication?.speakerMeaning.kind === 'reject')
     && !semantics.reproduction) {
     throw new Error('Reproduction response must carry explicit consent direction');
   }
   const optionalTechniqueEdge = execution.kind === 'act'
     && Boolean(execution.techniqueDemonstration)
     && !execution.authorizationRef;
-  const optionalKnowledgeEdge = communication?.content.kind === 'claim'
-    && Boolean(communication.content.projectKnowledgeResponse);
+  const optionalKnowledgeEdge = communication?.speakerMeaning.kind === 'claim'
+    && Boolean(communication.speakerMeaning.projectKnowledgeResponse);
   if ((optionalTechniqueEdge || optionalKnowledgeEdge)
     && (semantics.obligation !== 'optional' || semantics.planningChannel !== 'edge')) {
     throw new Error('Unaccepted teaching response must remain an optional edge');
@@ -795,7 +804,7 @@ export function isPreselectedConversationOpeningOption(option: ActionOption): bo
 export function isModelOwnedVoluntarySocialOption(option: ActionOption): boolean {
   const semantics = actionOptionSemantics(option);
   if (semantics.obligation !== 'optional') return false;
-  if (executionAction(option).kind !== 'communicate') return false;
+  if (executionAction(option).kind !== 'talk') return false;
   const social = semantics.socialContext;
   return !(social?.cooperationKind === 'assist'
     && social.phase === 'proposal'

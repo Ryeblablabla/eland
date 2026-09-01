@@ -1,7 +1,8 @@
 import { Material, materialHas, type MaterialId } from './material';
 import type { KnownPlace, PersonState } from './person';
 
-const MAX_KNOWN_PLACES = 24;
+const MAX_KNOWN_RESOURCE_PLACES = 24;
+const MAX_KNOWN_FACILITY_PLACES = 24;
 
 function placeId(materialId: MaterialId, position: { x: number; y: number; z: number }): string {
   return `place:${materialId}:${position.x}:${position.y}:${position.z}`;
@@ -39,9 +40,21 @@ export function rememberMaterialPlace(
       sourceEventIds: [sourceEventId],
     });
   }
-  person.knownPlaces.sort((a, b) => survivalPriority(b.materialId) - survivalPriority(a.materialId)
+  const ordered = [...person.knownPlaces].sort((a, b) => survivalPriority(b.materialId) - survivalPriority(a.materialId)
     || b.lastConfirmedAtMonth - a.lastConfirmedAtMonth
     || a.id.localeCompare(b.id));
-  person.knownPlaces = person.knownPlaces.slice(0, MAX_KNOWN_PLACES);
+  // Durable facilities and renewable resource patches answer different future
+  // questions. A crowded list of mineral or food locations must not erase a
+  // facility that the person personally discovered and can still revalidate
+  // against the world when planning later work.
+  const facilities = ordered
+    .filter((place) => materialHas(place.materialId, 'facility'))
+    .slice(0, MAX_KNOWN_FACILITY_PLACES);
+  const resources = ordered
+    .filter((place) => !materialHas(place.materialId, 'facility'))
+    .slice(0, MAX_KNOWN_RESOURCE_PLACES);
+  person.knownPlaces = [...facilities, ...resources].sort((a, b) => survivalPriority(b.materialId) - survivalPriority(a.materialId)
+    || b.lastConfirmedAtMonth - a.lastConfirmedAtMonth
+    || a.id.localeCompare(b.id));
   return person.knownPlaces.find((place) => place.id === id) ?? existing!;
 }

@@ -21,6 +21,7 @@ import {
   migrateMechanicalPowerWorldState,
 } from '../../domain/mechanical-power';
 import { initialEraSchedule } from '../../domain/monthly-processes';
+import { canonicalTechniqueSummary } from '../../domain/interaction-rules';
 import {
   copyPhysicalStructures,
   derivePhysicalStructureIndex,
@@ -32,7 +33,10 @@ import type {
   SimulationState,
 } from '../../domain/model';
 import type { PersonState } from '../../domain/person';
-import { createMotiveSensitivity, createPersonality } from '../../domain/personality';
+import {
+  createFounderMotiveSensitivity,
+  createFounderPersonality,
+} from '../../domain/personality';
 import { FOUNDER_INITIAL_RELATION } from '../../domain/relation';
 import {
   applyTraitCapacityModifiers,
@@ -71,11 +75,49 @@ import {
   createAgentMemoryStore,
   ensureAgentMemoryStore,
 } from '../../domain/agent-memory';
+import {
+  createEmptyPersonMindMarkdown,
+  refreshPersonMindMarkdown,
+} from '../../domain/person-mind';
 
 export const MAX_SIMULATION_YEARS = 1_000;
 export const MAX_SIMULATION_MONTHS = MAX_SIMULATION_YEARS * MONTHS_PER_YEAR;
 const MIN_FOUNDER_COUNT = 5;
 const MAX_FOUNDER_COUNT = 12;
+
+function normalizeStoredTechniqueLanguage(state: SimulationState): void {
+  const replacements = new Map<string, string>();
+  for (const person of state.people) {
+    for (const fact of person.knowledge) {
+      if (fact.kind !== 'technique') continue;
+      const canonical = canonicalTechniqueSummary(fact.id);
+      if (!canonical || canonical === fact.summary) continue;
+      replacements.set(fact.summary, canonical);
+      fact.summary = canonical;
+    }
+  }
+  for (const record of state.records) {
+    const canonical = canonicalTechniqueSummary(record.knowledgeId);
+    if (!canonical || canonical === record.summary) continue;
+    replacements.set(record.summary, canonical);
+    record.summary = canonical;
+  }
+  const codebookSummaries = new Map(state.records.map((record) => [
+    `codebook:record:${record.authorId}:${record.knowledgeId}`,
+    `这组刻痕表示“${record.summary}”`,
+  ]));
+  const rewrite = (text: string) => [...replacements]
+    .sort(([left], [right]) => right.length - left.length)
+    .reduce((result, [legacy, canonical]) => result.replaceAll(legacy, canonical), text);
+  for (const person of state.people) {
+    for (const fact of person.knowledge) {
+      const codebook = codebookSummaries.get(fact.id);
+      if (codebook) fact.summary = codebook;
+    }
+    for (const memory of person.memories) memory.summary = rewrite(memory.summary);
+  }
+  for (const item of state.memoryStore?.items ?? []) item.gist = rewrite(item.gist);
+}
 
 function projectObservations(
   state: SimulationState,
@@ -152,7 +194,7 @@ export function createDefaultSimulationConfig(overrides: Partial<SimulationConfi
 
 const FOUNDER_COHORT_EVENT_ID = 'e-0-environment-founding-0';
 const LEGACY_REQUIRED_SOCIAL_OPTION = /^(?:(?:accept|reject)-(?:assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):|respond-conversation:)/;
-const LEGACY_FULFILLMENT_OPTION = /^(?:settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|return-shared-living|contribute-mandate|distribute-mandate|use-permission|reproduce|withdraw-reproduce):/;
+const LEGACY_FULFILLMENT_OPTION = /^(?:settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|return-shared-living|contribute-mandate|distribute-mandate|reproduce|withdraw-reproduce):/;
 
 function legacyDecisionCreatedObligationIntent(
   state: SimulationState,
@@ -177,7 +219,11 @@ function initialPerson(seed: number, profile: CharacterProfile, spawnCell: numbe
     id: profile.id,
     name: profile.name,
     color: profile.color,
-    profile: { description: profile.description },
+    profile: {
+      description: profile.description,
+      personalitySummary: profile.personalitySummary,
+      reactionPatterns: structuredClone(profile.reactionPatterns),
+    },
     bornAtMonth: -founderAge,
     lifespanMonths: applyTraitLifespanModifier(createLifespanMonths(seed, profile.id, founderAge), traits),
     sex: profile.sex,
@@ -196,15 +242,16 @@ function initialPerson(seed: number, profile: CharacterProfile, spawnCell: numbe
       communication: capacity('communication', 42, 40),
       cognition: capacity('cognition', 42, 40),
     }, traits),
-    personality: createPersonality(seed, profile.id),
+    personality: createFounderPersonality(seed, profile.id, profile.personalityPrior),
     cognition: createCognitionState(),
     characterAgenda: createCharacterAgendaState(),
-    motiveSensitivity: createMotiveSensitivity(seed, profile.id),
+    motiveSensitivity: createFounderMotiveSensitivity(seed, profile.id, profile.motivePrior),
     conditions: [],
     inventory: [{ id: `stack-${profile.id}-ration`, materialId: Material.Food, quantity: 2, sourceEventIds: [] }],
     knowledge: [],
     knownPlaces: [],
     memories: [],
+    mindMarkdown: createEmptyPersonMindMarkdown(profile.id, 0),
     relations: profiles.filter((other) => other.id !== profile.id).map((other) => ({
       personId: other.id,
       trust: FOUNDER_INITIAL_RELATION,
@@ -213,6 +260,7 @@ function initialPerson(seed: number, profile: CharacterProfile, spawnCell: numbe
       sourceEventIds: [FOUNDER_COHORT_EVENT_ID],
     })),
     bereavements: [],
+    lastActionAtMonth: 0,
     currentActionText: '观察身边的物质',
     lastDecisionText: '尚未作出关键决定',
   };
@@ -299,6 +347,7 @@ export function createInitialState(
   state.world.physicalStructureIndex = physicalStructureIndex;
   refreshStructureCompatibilityMirror(state, physicalStructureIndex);
   projectObservations(state, observationProjector, 'development-only');
+  for (const person of state.people) refreshPersonMindMarkdown(state, person, 0);
   return state;
 }
 
@@ -384,6 +433,7 @@ export function adoptSimulationState(
   } else migrateMechanicalPowerWorldState(state.world.mechanicalPower);
   ensureNamingMetadata(state.people);
   ensureAgentMemoryStore(state);
+  normalizeStoredTechniqueLanguage(state);
   for (const drop of state.world.drops) {
     drop.z = Number.isInteger(drop.z) ? drop.z : surfaceStandingPosition(state.world.grid, drop.cellId)?.z ?? 1;
   }
@@ -426,6 +476,7 @@ export function adoptSimulationState(
     person.position.tickPath = person.position.tickPath?.length
       ? person.position.tickPath
       : Array.from({ length: PLANNING_TICKS_PER_MONTH + 1 }, (_, index) => index === PLANNING_TICKS_PER_MONTH ? person.position.cellId : start);
+    refreshPersonMindMarkdown(state, person, state.clock.elapsedMonths);
   }
   for (const collective of state.collectives) {
     collective.decisionRules ??= [];

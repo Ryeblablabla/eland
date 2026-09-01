@@ -1,5 +1,5 @@
 import type { RelationshipCausalBasis } from './action';
-import type { SimulationState } from './model';
+import type { DecisionAuthorityState, SimulationState } from './model';
 import { ageMonths, type PersonState } from './person';
 import {
   liveSocialEvidenceForPersonSources,
@@ -14,11 +14,21 @@ import { reproductiveResponsibility } from './dependent-care';
 import {
   COMPANION_RELATION_THRESHOLD,
   relationTo,
+  relationshipEvidenceSourceEventIds,
   relationshipPairKey,
 } from './relation';
 import { reproductiveUpperAgeMonths } from './trait';
 import { agreementsForPerson } from './agreement';
 import { intentsOwnedBy } from './state-index';
+import {
+  completedJointProjectRelationshipEvidence,
+  fulfilledAgreementRelationshipEvidence,
+} from './relationship-outcome-evidence';
+
+type RelationshipEvidenceReadState = Pick<
+  DecisionAuthorityState,
+  'agreements' | 'intents' | 'people' | 'projects' | 'world'
+>;
 
 export type RelationshipProposalKind = RelationshipCausalBasis['kind'];
 
@@ -45,6 +55,7 @@ function femaleAgeBand(person: PersonState, partner: PersonState, atMonth: numbe
 }
 
 function qualifiesAsRelationshipEvidence(
+  state: RelationshipEvidenceReadState,
   event: LiveSocialEvidenceDescriptor | undefined,
   proposerId: string,
   partnerId: string,
@@ -53,7 +64,9 @@ function qualifiesAsRelationshipEvidence(
   if (!event) return false;
   if (event.action) {
     if (!event.action.completed) return false;
-    if (event.action.actionKind !== 'communicate') {
+    if (fulfilledAgreementRelationshipEvidence(state, event.eventId, proposerId, partnerId)
+      || completedJointProjectRelationshipEvidence(state, event.eventId, proposerId, partnerId)) return true;
+    if (event.action.actionKind !== 'talk') {
       return (event.action.actorId === partnerId
           && event.action.supportRecipientIds.includes(proposerId))
         || (event.action.actorId === proposerId
@@ -78,7 +91,7 @@ function qualifiesAsRelationshipEvidence(
 }
 
 function relationshipEvidenceDescriptors(
-  state: SimulationState,
+  state: RelationshipEvidenceReadState,
   proposer: PersonState,
   partner: PersonState,
   includeFounding = false,
@@ -87,8 +100,9 @@ function relationshipEvidenceDescriptors(
   return liveSocialEvidenceForPersonSources(
     state,
     proposer,
-    relation?.sourceEventIds ?? [],
+    relationshipEvidenceSourceEventIds(relation),
   ).filter((event) => qualifiesAsRelationshipEvidence(
+      state,
       event,
       proposer.id,
       partner.id,
@@ -100,7 +114,7 @@ function relationshipEvidenceDescriptors(
 }
 
 function relationshipEvidenceIds(
-  state: SimulationState,
+  state: RelationshipEvidenceReadState,
   proposer: PersonState,
   partner: PersonState,
   includeFounding = false,
@@ -125,14 +139,16 @@ export function substantiveRelationshipEvidenceIds(
 }
 
 function isDirectIntimacyEvidence(
-  state: SimulationState,
+  state: RelationshipEvidenceReadState,
   event: LiveSocialEvidenceDescriptor,
   proposer: PersonState,
   partner: PersonState,
 ): boolean {
+  if (event.agreementFulfilled
+    || fulfilledAgreementRelationshipEvidence(state, event.eventId, proposer.id, partner.id)) return true;
   if (event.action) {
     if (!event.action.completed) return false;
-    if (event.action.actionKind !== 'communicate') {
+    if (event.action.actionKind !== 'talk') {
       return (event.action.actorId === partner.id
           && event.action.supportRecipientIds.includes(proposer.id))
         || (event.action.actorId === proposer.id
@@ -145,7 +161,6 @@ function isDirectIntimacyEvidence(
     const participants = new Set([conversation.speakerId, conversation.listenerId]);
     return participants.has(proposer.id) && participants.has(partner.id);
   }
-  if (event.agreementFulfilled) return true;
   const childId = event.environment?.change === 'body'
     ? event.environment.bornPersonId
     : undefined;
@@ -161,12 +176,81 @@ function evidenceMonths(events: readonly LiveSocialEvidenceDescriptor[]): Set<nu
 }
 
 function directIntimacyEvidence(
-  state: SimulationState,
+  state: RelationshipEvidenceReadState,
   proposer: PersonState,
   partner: PersonState,
 ): LiveSocialEvidenceDescriptor[] {
   return relationshipEvidenceDescriptors(state, proposer, partner)
     .filter((event) => isDirectIntimacyEvidence(state, event, proposer, partner));
+}
+
+function occursAfter(
+  event: LiveSocialEvidenceDescriptor,
+  boundary: NonNullable<ReturnType<typeof worldEventById>>,
+): boolean {
+  return event.atMonth > boundary.atMonth
+    || (event.atMonth === boundary.atMonth
+      && (event.orderInMonth > boundary.orderInMonth
+        || (event.orderInMonth === boundary.orderInMonth
+          && (event.planningTick > (boundary.planningTick ?? 0)
+            || (event.planningTick === (boundary.planningTick ?? 0)
+              && event.orderInTick > (boundary.orderInTick ?? 0))))));
+}
+
+function relationshipRenewalWeight(
+  state: RelationshipEvidenceReadState,
+  event: LiveSocialEvidenceDescriptor,
+  proposer: PersonState,
+  partner: PersonState,
+): number {
+  if (event.agreementFulfilled
+    || fulfilledAgreementRelationshipEvidence(state, event.eventId, proposer.id, partner.id)) return 1.5;
+  if (event.environment?.change === 'body') return 1.5;
+  if (event.environment?.change === 'relationship') return 1;
+  if (event.action && event.action.actionKind !== 'talk') return 0.9;
+  const conversation = event.action?.communication?.groundedConversation;
+  if (event.action?.completed && conversation?.basisVerified) {
+    return conversation.turn === 'response' ? 0.35 : 0.15;
+  }
+  return 0;
+}
+
+export interface RelationshipDecisionRenewal {
+  strength: number;
+  sourceFactIds: string[];
+}
+
+/**
+ * Measure replayable experience after an explicit relationship decision.
+ * Evidence changes the weight continuously: no topic unlocks a proposal and
+ * no remembered rejection removes a legal candidate. A later fulfilled
+ * obligation or shared-life consequence carries more information than one
+ * additional conversational turn; same-month evidence is weaker because it
+ * belongs to the still-unfolding decision episode.
+ */
+export function relationshipDecisionRenewalAfter(
+  state: RelationshipEvidenceReadState,
+  proposer: PersonState,
+  partner: PersonState,
+  boundaryEventId: string,
+): RelationshipDecisionRenewal {
+  const boundary = worldEventById(state, boundaryEventId);
+  if (!boundary) return { strength: 0, sourceFactIds: [] };
+  const evidence = relationshipEvidenceDescriptors(state, proposer, partner)
+    .filter((event) => event.eventId !== boundaryEventId && occursAfter(event, boundary));
+  let strength = 0;
+  const sourceFactIds: string[] = [];
+  for (const event of evidence) {
+    const weight = relationshipRenewalWeight(state, event, proposer, partner)
+      * (event.atMonth === boundary.atMonth ? 0.25 : 1);
+    if (weight <= 0) continue;
+    strength += weight;
+    sourceFactIds.push(event.eventId);
+  }
+  return {
+    strength: Math.min(2.5, strength),
+    sourceFactIds: [...new Set(sourceFactIds)],
+  };
 }
 
 export function buildRelationshipCausalBasis(

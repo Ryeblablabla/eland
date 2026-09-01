@@ -111,11 +111,14 @@ function optionProgressKinds(option: ActionOption): Set<ProjectProgressEvidence[
       kinds.add('logistics-advance');
       continue;
     }
-    if (action.kind === 'communicate') {
-      if (action.content.kind === 'claim' && action.content.projectKnowledgeResponse) {
+    if (action.kind === 'talk') {
+      if (action.speakerMeaning.kind === 'claim' && action.speakerMeaning.projectKnowledgeResponse) {
         kinds.add('knowledge-contribution');
       }
-      if (action.channel === 'record') kinds.add('material-contribution');
+      continue;
+    }
+    if (action.kind === 'inscribe') {
+      kinds.add('material-contribution');
       continue;
     }
     // These existing project actions are recorded as material contribution on
@@ -315,9 +318,9 @@ export function recordGovernanceAction(state: SimulationState, fact: ActionFact)
     mandate.sourceEventIds = [...new Set([...mandate.sourceEventIds, fact.id])];
     return;
   }
-  if (fact.action.kind !== 'communicate' || fact.action.content.kind !== 'accept') return;
+  if (fact.action.kind !== 'talk' || fact.action.speakerMeaning.kind !== 'accept') return;
 
-  const ruleAgreement = activeProposal(state, fact.action.content.referenceId, 'decision-rule');
+  const ruleAgreement = activeProposal(state, fact.action.speakerMeaning.referenceId, 'decision-rule');
   if (ruleAgreement?.proposal.kind === 'decision-rule') {
     const match = matchesCurrentMembers(state, ruleAgreement);
     if (!match || ruleAgreement.proposal.method !== 'unanimous') return;
@@ -351,7 +354,7 @@ export function recordGovernanceAction(state: SimulationState, fact: ActionFact)
     return;
   }
 
-  const mandateAgreement = activeProposal(state, fact.action.content.referenceId, 'mandate');
+  const mandateAgreement = activeProposal(state, fact.action.speakerMeaning.referenceId, 'mandate');
   if (mandateAgreement?.proposal.kind !== 'mandate') return;
   const match = matchesCurrentMembers(state, mandateAgreement);
   const rule = match?.collective.decisionRules.find((candidate) => candidate.id === mandateAgreement.proposal.decisionRuleId && candidate.status === 'active');

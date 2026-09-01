@@ -109,7 +109,6 @@ export function buildDecisionProbeHandleMap(context: DecisionRequestContext): De
       basisKey: item.basisKey,
     })),
     memories: context.person.memories
-      .filter((memory) => memory.id.startsWith('agent-memory:'))
       .slice(0, 6)
       .map((memory, index) => ({
         handle: `m${index + 1}`,

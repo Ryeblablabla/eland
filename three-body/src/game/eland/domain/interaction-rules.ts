@@ -31,23 +31,90 @@ export interface ExposureRule {
   outputMaterialId: MaterialId;
 }
 
-/** Shared rule for a carried material acting on one world voxel. */
+export interface InventoryVoxelInteractionRule {
+  id: string;
+  process: 'sow' | 'retrofit' | 'install';
+  inputMaterialId: MaterialId;
+  targetMaterialId: MaterialId;
+  outputMaterialId: MaterialId;
+}
+
+/**
+ * A carried material acting on a world location. `Air` is an empty installation
+ * slot here, never a material ingredient that a person can combine with.
+ */
+export function inventoryVoxelInteractionFor(
+  inputMaterialId: MaterialId,
+  targetMaterialId: MaterialId,
+): InventoryVoxelInteractionRule | null {
+  if (inputMaterialId === Material.Seed
+    && (targetMaterialId === Material.WetSoil
+      || targetMaterialId === Material.RichSoil
+      || targetMaterialId === Material.ExhaustedSoil)) return {
+    id: 'sow-seed',
+    process: 'sow',
+    inputMaterialId,
+    targetMaterialId,
+    outputMaterialId: Material.CropSprout,
+  };
+  if (targetMaterialId === Material.Container && inputMaterialId === Material.Plank) return {
+    id: 'retrofit-granary',
+    process: 'retrofit',
+    inputMaterialId,
+    targetMaterialId,
+    outputMaterialId: Material.Granary,
+  };
+  if (targetMaterialId === Material.Container && inputMaterialId === Material.Stone) return {
+    id: 'retrofit-cistern',
+    process: 'retrofit',
+    inputMaterialId,
+    targetMaterialId,
+    outputMaterialId: Material.Cistern,
+  };
+  if (targetMaterialId === Material.Air
+    && materialHas(inputMaterialId, 'solid')
+    && (materialHas(inputMaterialId, 'building') || materialHas(inputMaterialId, 'placeable'))) {
+    return {
+      id: 'install-in-open-slot',
+      process: 'install',
+      inputMaterialId,
+      targetMaterialId,
+      outputMaterialId: inputMaterialId === Material.Wood ? Material.Plank : inputMaterialId,
+    };
+  }
+  return null;
+}
+
+/** Compatibility adapter for planning code that only needs the resulting material. */
 export function inventoryVoxelCombinationOutput(
   inputMaterialId: MaterialId,
   targetMaterialId: MaterialId,
 ): MaterialId | null {
-  if (inputMaterialId === Material.Seed
-    && (targetMaterialId === Material.WetSoil
-      || targetMaterialId === Material.RichSoil
-      || targetMaterialId === Material.ExhaustedSoil)) return Material.CropSprout;
-  if (targetMaterialId === Material.Container && inputMaterialId === Material.Plank) return Material.Granary;
-  if (targetMaterialId === Material.Container && inputMaterialId === Material.Stone) return Material.Cistern;
-  if (targetMaterialId === Material.Air
-    && materialHas(inputMaterialId, 'solid')
-    && (materialHas(inputMaterialId, 'building') || materialHas(inputMaterialId, 'placeable'))) {
-    return inputMaterialId === Material.Wood ? Material.Plank : inputMaterialId;
-  }
-  return null;
+  return inventoryVoxelInteractionFor(inputMaterialId, targetMaterialId)?.outputMaterialId ?? null;
+}
+
+export function inventoryVoxelInteractionTechniqueId(rule: InventoryVoxelInteractionRule): string {
+  return `technique:combine:${rule.inputMaterialId}:${rule.targetMaterialId}:${rule.outputMaterialId}`;
+}
+
+export function inventoryVoxelInteractionSummary(rule: InventoryVoxelInteractionRule): string {
+  const input = materialDefinition(rule.inputMaterialId).name;
+  const target = materialDefinition(rule.targetMaterialId).name;
+  const output = materialDefinition(rule.outputMaterialId).name;
+  if (rule.process === 'sow') return `把${input}播入${target}可长出${output}`;
+  if (rule.process === 'retrofit') return `用${input}改造${target}可做成${output}`;
+  if (rule.inputMaterialId === rule.outputMaterialId) return `${input}可安装在有支撑的空位`;
+  return `搭建时可把${input}加工并安装为${output}`;
+}
+
+export function inventoryVoxelInteractionResult(rule: InventoryVoxelInteractionRule): string {
+  const input = materialDefinition(rule.inputMaterialId).name;
+  const target = materialDefinition(rule.targetMaterialId).name;
+  const output = materialDefinition(rule.outputMaterialId).name;
+  if (rule.process === 'sow') return `把${input}播入${target}，长出了${output}`;
+  if (rule.process === 'retrofit') return `用${input}改造${target}，做成了${output}`;
+  if (rule.inputMaterialId === rule.outputMaterialId) return `把${input}安装在有支撑的空位`;
+  return `加工${input}并安装为${output}`;
 }
 
 const INVENTORY_COMBINATIONS: readonly InventoryCombinationRule[] = [
@@ -325,15 +392,51 @@ const EXERTION_RULES: readonly ExertionRule[] = [
 
 const GROUND_TOOL_INTERACTION_RULES: readonly GroundToolInteractionRule[] = [
   {
+    id: 'clear-grass-with-stone-field-tool',
+    toolMaterialId: Material.StoneHoe,
+    targetMaterialId: Material.Grass,
+    outputMaterialId: Material.Soil,
+  },
+  {
+    id: 'loosen-soil-with-stone-field-tool',
+    toolMaterialId: Material.StoneHoe,
+    targetMaterialId: Material.Soil,
+    outputMaterialId: Material.ExhaustedSoil,
+  },
+  {
     id: 'loosen-packed-soil-with-stone-field-tool',
     toolMaterialId: Material.StoneHoe,
     targetMaterialId: Material.PackedSoil,
     outputMaterialId: Material.ExhaustedSoil,
   },
   {
+    id: 'clear-grass-with-bronze-field-tool',
+    toolMaterialId: Material.BronzeTool,
+    targetMaterialId: Material.Grass,
+    outputMaterialId: Material.Soil,
+  },
+  {
+    id: 'loosen-soil-with-bronze-field-tool',
+    toolMaterialId: Material.BronzeTool,
+    targetMaterialId: Material.Soil,
+    outputMaterialId: Material.ExhaustedSoil,
+  },
+  {
     id: 'loosen-packed-soil-with-bronze-field-tool',
     toolMaterialId: Material.BronzeTool,
     targetMaterialId: Material.PackedSoil,
+    outputMaterialId: Material.ExhaustedSoil,
+  },
+  {
+    id: 'clear-grass-with-iron-field-tool',
+    toolMaterialId: Material.IronTool,
+    targetMaterialId: Material.Grass,
+    outputMaterialId: Material.Soil,
+  },
+  {
+    id: 'loosen-soil-with-iron-field-tool',
+    toolMaterialId: Material.IronTool,
+    targetMaterialId: Material.Soil,
     outputMaterialId: Material.ExhaustedSoil,
   },
   {
@@ -468,17 +571,23 @@ export function inventoryCombinationFor(materialIds: MaterialId[]): InventoryCom
     && rule.inputs.every((input) => actual.get(input.materialId) === input.quantity));
 }
 
+const inventoryCombinationTechniqueIds = new WeakMap<InventoryCombinationRule, string>();
+
 export function inventoryCombinationTechniqueId(rule: InventoryCombinationRule): string {
+  const cached = inventoryCombinationTechniqueIds.get(rule);
+  if (cached) return cached;
   const inputKey = [...rule.inputs]
     .sort((a, b) => a.materialId - b.materialId)
     .map((input) => `${input.materialId}x${input.quantity}`)
     .join('+');
-  return `technique:combine-inventory:${inputKey}:${rule.output.materialId}`;
+  const techniqueId = `technique:combine-inventory:${inputKey}:${rule.output.materialId}`;
+  inventoryCombinationTechniqueIds.set(rule, techniqueId);
+  return techniqueId;
 }
 
 export function inventoryCombinationSummary(rule: InventoryCombinationRule): string {
   const inputs = rule.inputs.map((input) => `${materialDefinition(input.materialId).name}${input.quantity > 1 ? ` × ${input.quantity}` : ''}`).join('与');
-  return `${inputs}可结合为${materialDefinition(rule.output.materialId).name}`;
+  return `用${inputs}可制成${materialDefinition(rule.output.materialId).name}`;
 }
 
 export function exertionRuleFor(toolMaterialId: MaterialId, inputMaterialId: MaterialId, targetMaterialId: MaterialId): ExertionRule | undefined {
@@ -494,7 +603,9 @@ export function exertionTechniqueId(rule: ExertionRule): string {
 export function exertionTechniqueSummary(rule: ExertionRule): string {
   return rule.outputLocation === 'inventory'
     ? `用${materialDefinition(rule.toolMaterialId).name}向${materialDefinition(rule.inputMaterialId).name}施力，可得到${materialDefinition(rule.outputMaterialId).name}`
-    : rule.outputPlacement === 'support'
+    : rule.outputPlacement === 'support' && rule.targetMaterialId === Material.Air
+      ? `用${materialDefinition(rule.toolMaterialId).name}加工${materialDefinition(rule.inputMaterialId).name}，可在有承托的位置产生${materialDefinition(rule.outputMaterialId).name}`
+      : rule.outputPlacement === 'support'
       ? `用${materialDefinition(rule.toolMaterialId).name}向${materialDefinition(rule.inputMaterialId).name}施力，可在${materialDefinition(rule.targetMaterialId).name}的承托表面产生${materialDefinition(rule.outputMaterialId).name}`
       : `用${materialDefinition(rule.toolMaterialId).name}向${materialDefinition(rule.inputMaterialId).name}施力，可使${materialDefinition(rule.targetMaterialId).name}转化为${materialDefinition(rule.outputMaterialId).name}`;
 }
@@ -509,4 +620,32 @@ export function exposureTechniqueId(rule: ExposureRule): string {
 
 export function exposureTechniqueSummary(rule: ExposureRule): string {
   return `让${materialDefinition(rule.inputMaterialId).name}暴露于${materialDefinition(rule.targetMaterialId).name}，可得到${materialDefinition(rule.outputMaterialId).name}`;
+}
+
+/** Re-renders legacy stored technique prose from its stable factual ID. */
+export function canonicalTechniqueSummary(techniqueId: string): string | undefined {
+  const inventory = INVENTORY_COMBINATIONS.find((rule) => inventoryCombinationTechniqueId(rule) === techniqueId);
+  if (inventory) return inventoryCombinationSummary(inventory);
+
+  const voxel = techniqueId.match(/^technique:combine:(\d+):(\d+):(\d+)$/u);
+  if (voxel) {
+    const [, inputMaterialId, targetMaterialId, outputMaterialId] = voxel.map(Number);
+    const rule = inventoryVoxelInteractionFor(inputMaterialId, targetMaterialId);
+    if (rule?.outputMaterialId === outputMaterialId) return inventoryVoxelInteractionSummary(rule);
+  }
+
+  const exertion = techniqueId.match(/^technique:exert:(\d+):(\d+):(\d+):(\d+)$/u);
+  if (exertion) {
+    const [, toolMaterialId, inputMaterialId, targetMaterialId, outputMaterialId] = exertion.map(Number);
+    const rule = exertionRuleFor(toolMaterialId, inputMaterialId, targetMaterialId);
+    if (rule?.outputMaterialId === outputMaterialId) return exertionTechniqueSummary(rule);
+  }
+
+  const exposure = techniqueId.match(/^technique:expose:(\d+):(\d+):(\d+)$/u);
+  if (exposure) {
+    const [, inputMaterialId, targetMaterialId, outputMaterialId] = exposure.map(Number);
+    const rule = exposureRuleFor(inputMaterialId, targetMaterialId);
+    if (rule?.outputMaterialId === outputMaterialId) return exposureTechniqueSummary(rule);
+  }
+  return undefined;
 }

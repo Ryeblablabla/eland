@@ -2,7 +2,7 @@ import type { ActionFact, EnvironmentFact, EraSchedule, SimulationState, Weather
 import type { PersonState } from '../person';
 import { remember } from '../memory';
 import { applyRelationEvidence } from '../relation';
-import { retainedColdWorldEventsForLease, worldEventById } from '../event-index';
+import { worldEventById } from '../event-index';
 import { seededFraction } from '../../world/generator';
 import { personById } from '../state-index';
 
@@ -15,22 +15,11 @@ function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function pendingEraPredictionWakeLeaseKey(predictionId: string): string {
-  return `gameplay:pending-era-prediction:${predictionId}:disputed-wake`;
-}
-
 function disputedWakeFactsForPendingPrediction(
   state: SimulationState,
   prediction: SimulationState['eraPredictions'][number],
 ): ActionFact[] {
-  if ((state.world.historyCursor?.hotStartIndex ?? 0) > 0
-    && prediction.sourceEventIds.some((eventId) => !worldEventById(state, eventId))) {
-    throw new Error(`pending era prediction ${prediction.id} 缺少已验证来源事实`);
-  }
-  return [
-    ...retainedColdWorldEventsForLease(state, pendingEraPredictionWakeLeaseKey(prediction.id)),
-    ...state.world.past,
-  ].filter((candidate): candidate is ActionFact => (
+  return state.world.past.filter((candidate): candidate is ActionFact => (
     candidate.kind === 'action'
       && candidate.status === 'completed'
       && candidate.action.kind === 'act'

@@ -1,5 +1,8 @@
 import type { ActionOption } from '../domain/action';
-import { agreementsForPerson, reproductionAttemptedBetweenInMonth } from '../domain/agreement';
+import {
+  agreementsForPerson,
+  reproductionAttemptedBetweenInMonth,
+} from '../domain/agreement';
 import { hasReproductiveRecoveryCondition } from '../domain/dependent-care';
 import type { SimulationState } from '../domain/model';
 import { ageMonths, isAlive, sameLocation, type PersonState } from '../domain/person';
@@ -60,20 +63,18 @@ export function buildReproductionOptions(
     const together = sameLocation(activeReproductionPartner, person);
     const revokeId = `revoke-reproduce:${activeReproductionAgreement.id}:${person.id}:${atMonth}`;
     const revokeAction = {
-      kind: 'communicate' as const,
-      content: {
+      kind: 'talk' as const,
+      speakerMeaning: {
         id: revokeId,
         kind: 'revoke-agreement' as const,
         referenceId: activeReproductionAgreement.id,
         summary: '撤回这一次生殖尝试的同意',
       },
-      audience: [activeReproductionPartner.id],
-      channel: 'voice' as const,
     };
     options.push({
       id: `withdraw-reproduce:${activeReproductionAgreement.id}`,
-      summary: `向${activeReproductionPartner.name}撤回本次生殖同意`,
-      reason: '已经接受的单次生殖尝试在实际发生前仍可重新评估并撤回',
+      summary: `向${activeReproductionPartner.name}撤回生殖尝试窗口的同意`,
+      reason: '已经接受的多月生殖尝试窗口仍可依据身体、关系或家庭准备变化重新评估并撤回',
       goal: { kind: 'representation-made', representationId: revokeId },
       nextAction: together
         ? revokeAction
@@ -83,13 +84,12 @@ export function buildReproductionOptions(
       estimatedDuration: together ? 'one-month' : 'several-months',
       sourceFactIds: [...activeReproductionAgreement.sourceEventIds],
       semantics: defineActionOptionSemantics({
-        obligation: 'commitment-action',
-        planningChannel: 'edge',
+        obligation: 'optional',
+        planningChannel: 'ordinary',
         purpose: 'reproduction',
         minimumLifeStage: 'adult',
         needKinds: ['commitment', 'generativity', 'autonomy'],
         reproduction: { direction: 'refuse', phase: 'withdrawal', mode: 'mutual' },
-        edgeTrigger: 'commitment-action',
         socialContext: {
           cooperationKind: 'reproduction', phase: 'withdrawal',
           counterpartIds: [activeReproductionPartner.id], referenceId: activeReproductionAgreement.id,
@@ -122,7 +122,7 @@ export function buildReproductionOptions(
       const responseBasis = buildRelationshipCausalBasis(state, person, proposer, 'reproduce', atMonth);
       const representationId = `accept:${incomingOffer.content.id}:${person.id}`;
       const together = sameLocation(proposer, person);
-      const acceptAction = { kind: 'communicate' as const, content: { id: representationId, kind: 'accept' as const, referenceId: incomingOffer.content.id }, audience: [proposer.id], channel: 'voice' as const };
+      const acceptAction = { kind: 'talk' as const, speakerMeaning: { id: representationId, kind: 'accept' as const, referenceId: incomingOffer.content.id } };
       const perceivedRisk = perceivedKinshipRisk(state, person, proposer);
       const learnedRisk = perceivedRisk.cost > 0;
       const responseSourceFactIds = [...new Set([
@@ -153,7 +153,7 @@ export function buildReproductionOptions(
         }),
       });
       const rejectId = `reject:${incomingOffer.content.id}:${person.id}`;
-      const rejectAction = { kind: 'communicate' as const, content: { id: rejectId, kind: 'reject' as const, referenceId: incomingOffer.content.id }, audience: [proposer.id], channel: 'voice' as const };
+      const rejectAction = { kind: 'talk' as const, speakerMeaning: { id: rejectId, kind: 'reject' as const, referenceId: incomingOffer.content.id } };
       options.push({
         id: `reject-reproduce:${incomingOffer.content.id}`,
         summary: '拒绝共同生殖提议',
@@ -235,14 +235,12 @@ export function buildReproductionOptions(
             : '彼此已有可追溯的共同经历，对方可见且身体条件允许本人考虑生殖',
         goal: { kind: 'representation-made', representationId },
         nextAction: together ? {
-          kind: 'communicate',
-          content: { id: representationId, kind: 'offer', summary: '是否愿意共同生育后代', proposal: { kind: 'reproduce', proposerId: person.id, partnerId: reproductivePartner.id, expiresAtMonth: atMonth + 4, basis } },
-          audience: [reproductivePartner.id], channel: 'voice',
+          kind: 'talk',
+          speakerMeaning: { id: representationId, kind: 'offer', summary: '是否愿意共同生育后代', proposal: { kind: 'reproduce', proposerId: person.id, partnerId: reproductivePartner.id, expiresAtMonth: atMonth + 4, basis } },
         } : { kind: 'move', toCellId: reproductivePartner.position.cellId, toZ: reproductivePartner.position.z },
         ...(!together ? { completionAction: {
-          kind: 'communicate' as const,
-          content: { id: representationId, kind: 'offer' as const, summary: '是否愿意共同生育后代', proposal: { kind: 'reproduce' as const, proposerId: person.id, partnerId: reproductivePartner.id, expiresAtMonth: atMonth + 4, basis } },
-          audience: [reproductivePartner.id], channel: 'voice' as const,
+          kind: 'talk' as const,
+          speakerMeaning: { id: representationId, kind: 'offer' as const, summary: '是否愿意共同生育后代', proposal: { kind: 'reproduce' as const, proposerId: person.id, partnerId: reproductivePartner.id, expiresAtMonth: atMonth + 4, basis } },
         } } : {}),
         target: { kind: 'person', personId: reproductivePartner.id },
         estimatedDuration: together ? 'one-month' : 'several-months',

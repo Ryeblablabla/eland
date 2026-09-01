@@ -16,8 +16,7 @@ function envFiles(): string[] {
   const envFile = process.env.THREEBODY_ENV_FILE
     ? path.resolve(process.env.THREEBODY_ENV_FILE)
     : path.resolve(process.cwd(), '.env.local');
-  const legacyFile = path.resolve(process.cwd(), '../demo/.env.local');
-  return [envFile, legacyFile];
+  return [envFile];
 }
 
 /** 读取服务端环境值；不会进入前端 bundle。 */

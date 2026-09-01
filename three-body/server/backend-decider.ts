@@ -130,8 +130,8 @@ export function isLiveModelDecisionContext(context: DecisionContext, atMonth: nu
       .filter((option) => followUpSemanticallyMatches(only, option)).length > 1);
   }
   if (hasFulfillmentOpportunity(context)) return false;
-  const hasDialogueChoice = context.options.some((option) => option.nextAction.kind === 'communicate'
-    || option.completionAction?.kind === 'communicate');
+  const hasDialogueChoice = context.options.some((option) => option.nextAction.kind === 'talk'
+    || option.completionAction?.kind === 'talk');
   const active = context.activeIntent;
   const progressAnchor = active
     ? Math.max(active.lastProgressAtMonth, active.lastResumedAtMonth ?? active.lastProgressAtMonth)
@@ -143,8 +143,10 @@ export function isLiveModelDecisionContext(context: DecisionContext, atMonth: nu
   );
   if (turningPoint || characterAgendaModelReviewDue(context, atMonth)) return true;
   if (context.options.some(isModelOwnedVoluntarySocialOption)) return true;
-  if (context.options.length < 2) return false;
-  return hasDialogueChoice || !active;
+  // The model owns formation of a new subjective direction. A single current
+  // affordance is only a possible first step, not a reason to skip cognition.
+  if (!active) return true;
+  return hasDialogueChoice;
 }
 
 export function createServerLlmDecider(
@@ -191,6 +193,7 @@ export function createServerLlmDecider(
         const direct = decisionFromPlayerInteraction(context, interaction);
         decisions[index] = direct.decision;
         interactionAttempts.push(direct.attempt);
+        interactions.delete(context.person.id);
       });
 
       if (!remoteContexts.length) return decisions;
@@ -240,7 +243,12 @@ export function createServerLlmDecider(
         decisions[remoteContexts[resultIndex].index] = decision;
       });
       usage = addTokenUsage(usage, remoteUsage);
-      metadata = remoteMetadata;
+      metadata = remoteMetadata
+        ? {
+            ...remoteMetadata,
+            providerRequests: (metadata?.providerRequests ?? 0) + providerRequests,
+          }
+        : metadata;
       return decisions;
     },
     takeUsage() {

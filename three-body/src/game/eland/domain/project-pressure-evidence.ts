@@ -11,9 +11,6 @@ export const PROJECT_PRESSURE_BODY_WITNESS_LIMIT =
   + PROJECT_PRESSURE_DEHYDRATION_LIMIT
   + PROJECT_PRESSURE_DEVELOPMENT_PROVENANCE_LIMIT;
 
-export const LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY =
-  'gameplay:live-person-project-pressure:remembered-sources' as const;
-
 export function rememberedProjectPressureSourceEventIds(person: PersonState): string[] {
   const sourceEventIds = new Set<string>();
   for (const memory of person.memories) {
@@ -66,11 +63,6 @@ export interface ProjectPressureEvidenceDescriptor {
   developmentEligible: boolean;
 }
 
-export interface RetainedProjectPressureEvidenceDescriptor {
-  absoluteIndex: number;
-  descriptor: ProjectPressureEvidenceDescriptor;
-}
-
 export interface ProjectPressureEvidenceSelection {
   huntFailures: ProjectPressureEvidenceDescriptor[];
   animalAttacks: ProjectPressureEvidenceDescriptor[];
@@ -121,51 +113,6 @@ export function projectPressureEvidenceDescriptorFromWorldEvent(
     ...(personalDehydration ? { dehydrateOwnerId: event.who } : {}),
     developmentEligible: event.kind === 'environment'
       || (event.kind === 'action' && event.status === 'completed'),
-  });
-}
-
-/** Copy only the scalar descriptor schema; never retain an event/diff object by reference. */
-export function cloneValidatedProjectPressureEvidenceDescriptor(
-  input: ProjectPressureEvidenceDescriptor,
-): ProjectPressureEvidenceDescriptor {
-  if (!input
-    || typeof input.eventId !== 'string'
-    || input.eventId.length === 0
-    || !Number.isSafeInteger(input.atMonth)
-    || input.atMonth < 0
-    || !Number.isSafeInteger(input.orderInMonth)
-    || input.orderInMonth < 0
-    || !Number.isSafeInteger(input.planningTick)
-    || input.planningTick < 0
-    || !Number.isSafeInteger(input.orderInTick)
-    || input.orderInTick < 0
-    || typeof input.developmentEligible !== 'boolean'
-    || (input.huntFailure !== undefined
-      && (typeof input.huntFailure.ownerId !== 'string'
-        || input.huntFailure.ownerId.length === 0
-        || typeof input.huntFailure.animalId !== 'string'
-        || input.huntFailure.animalId.length === 0))
-    || (input.attackVictimId !== undefined
-      && (typeof input.attackVictimId !== 'string' || input.attackVictimId.length === 0))
-    || (input.dehydrateOwnerId !== undefined
-      && (typeof input.dehydrateOwnerId !== 'string' || input.dehydrateOwnerId.length === 0))) {
-    throw new Error('project-pressure descriptor scalar schema 无效');
-  }
-  return Object.freeze({
-    eventId: input.eventId,
-    atMonth: input.atMonth,
-    orderInMonth: input.orderInMonth,
-    planningTick: input.planningTick,
-    orderInTick: input.orderInTick,
-    ...(input.huntFailure ? {
-      huntFailure: Object.freeze({
-        ownerId: input.huntFailure.ownerId,
-        animalId: input.huntFailure.animalId,
-      }),
-    } : {}),
-    ...(input.attackVictimId ? { attackVictimId: input.attackVictimId } : {}),
-    ...(input.dehydrateOwnerId ? { dehydrateOwnerId: input.dehydrateOwnerId } : {}),
-    developmentEligible: input.developmentEligible,
   });
 }
 

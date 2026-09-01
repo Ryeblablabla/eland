@@ -136,6 +136,7 @@ function agreementLifecycleIndex(state: SimulationState): AgreementLifecycleInde
       || agreement.status === 'active'
       || (agreement.status === 'fulfilled' && agreement.proposal.kind === 'companion')),
     responseDeadlineCandidates: agreements.filter((agreement) => agreement.status === 'proposed'
+      || (agreement.status === 'active' && agreement.proposal.kind === 'assist')
       || Boolean(agreement.responseDeadlineSuspensions?.length)),
   };
   agreementLifecycleIndexes.set(agreements, index);

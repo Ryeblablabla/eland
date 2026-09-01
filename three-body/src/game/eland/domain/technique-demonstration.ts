@@ -41,17 +41,26 @@ export interface CompiledTechniquePractice extends TechniqueActionDescriptor {
   action: Extract<PrimitiveAction, { kind: 'act' }>;
 }
 
+const techniqueRuleCache = new Map<string, TechniqueRule | null>();
+
 function techniqueRule(techniqueId: string): TechniqueRule | null {
+  if (techniqueRuleCache.has(techniqueId)) return techniqueRuleCache.get(techniqueId) ?? null;
   const combination = inventoryCombinationRules()
     .find((candidate) => inventoryCombinationTechniqueId(candidate) === techniqueId);
-  if (combination) return { operation: 'combine', rule: combination };
+  if (combination) {
+    const parsed = { operation: 'combine' as const, rule: combination };
+    techniqueRuleCache.set(techniqueId, parsed);
+    return parsed;
+  }
 
   const exertion = techniqueId.match(/^technique:exert:(\d+):(\d+):(\d+):(\d+)$/);
   if (exertion) {
     const [toolMaterialId, inputMaterialId, targetMaterialId, outputMaterialId] = exertion.slice(1).map(Number);
     const rule = exertionRuleFor(toolMaterialId, inputMaterialId, targetMaterialId);
     if (rule && rule.outputMaterialId === outputMaterialId && exertionTechniqueId(rule) === techniqueId) {
-      return { operation: 'exert', rule };
+      const parsed = { operation: 'exert' as const, rule };
+      techniqueRuleCache.set(techniqueId, parsed);
+      return parsed;
     }
   }
 
@@ -60,9 +69,12 @@ function techniqueRule(techniqueId: string): TechniqueRule | null {
     const [inputMaterialId, targetMaterialId, outputMaterialId] = exposure.slice(1).map(Number);
     const rule = exposureRuleFor(inputMaterialId, targetMaterialId);
     if (rule && rule.outputMaterialId === outputMaterialId && exposureTechniqueId(rule) === techniqueId) {
-      return { operation: 'expose', rule };
+      const parsed = { operation: 'expose' as const, rule };
+      techniqueRuleCache.set(techniqueId, parsed);
+      return parsed;
     }
   }
+  techniqueRuleCache.set(techniqueId, null);
   return null;
 }
 

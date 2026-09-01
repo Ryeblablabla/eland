@@ -77,7 +77,7 @@ export type EmbodimentOptionCategory =
   | 'build'
   | 'transfer'
   | 'attend'
-  | 'communicate'
+  | 'talk'
   | 'survival'
   | 'project'
   | 'wait';

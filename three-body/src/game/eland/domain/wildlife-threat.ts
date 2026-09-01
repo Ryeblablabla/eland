@@ -1,8 +1,9 @@
 import type { AnimalSpeciesId, AnimalState } from './animal';
 import { animalSpecies, isAnimalAlive } from './animal';
-import type { SimulationState } from './model';
+import type { SimulationState, WorldEvent } from './model';
 import { isAlive, isDormantDehydratedHibernating, type PersonState } from './person';
 import { lifePlanningStage } from './life-stage';
+import { intentById } from './state-index';
 import { findReachableShelter } from './shelter-access';
 import { shelterGeometryAt } from './structure';
 import {
@@ -98,6 +99,44 @@ function protectedByCoLocatedParent(
     && candidate.position.z === person.position.z);
 }
 
+/**
+ * The exact animals that started the person's still-active escape episode.
+ * This is short-lived intent evidence, not remote tracking: an animal must
+ * still be physically visible from the person's new position to continue the
+ * episode.
+ */
+function continuingThreatAnimalIds(state: SimulationState, person: PersonState): Set<string> {
+  const intent = person.activeIntentId ? intentById(state, person.activeIntentId) : undefined;
+  if (intent?.status !== 'active'
+    || intent.interruptionKind !== 'survival-reflex'
+    || intent.nextAction.kind !== 'move'
+    || !intent.nextAction.wildlifeThreatBasis
+    // A completed hold has no escape route to continue. On the next planning
+    // tick the animal must independently remain inside its alarm radius or be
+    // visibly pursuing a protected person. Otherwise an old animal identity
+    // can monopolize every later survival action while the person starves in
+    // place despite carrying food.
+    || intent.nextAction.wildlifeThreatBasis.response === 'hold') return new Set();
+  return new Set(intent.nextAction.wildlifeThreatBasis.threats.map((threat) => threat.animalId));
+}
+
+function continuingShelterChoice(
+  state: SimulationState,
+  person: PersonState,
+): WildlifeThreatBasis['shelter'] | undefined {
+  const intent = person.activeIntentId ? intentById(state, person.activeIntentId) : undefined;
+  const basis = intent?.status === 'active'
+    && intent.interruptionKind === 'survival-reflex'
+    && intent.nextAction.kind === 'move'
+    ? intent.nextAction.wildlifeThreatBasis
+    : undefined;
+  const shelter = basis?.response === 'shelter-step' ? basis.shelter : undefined;
+  if (!shelter
+    || !shelterGeometryAt(state.world.grid, shelter.position)
+    || shelterGeometryAt(state.world.grid, person.position)) return undefined;
+  return shelter;
+}
+
 /** Current visible danger only; no remembered remote animal or hidden hunger. */
 export function visibleWildlifeThreats(
   state: SimulationState,
@@ -107,6 +146,7 @@ export function visibleWildlifeThreats(
   const radius = personVisibleRadius(person);
   const visible = new Set(cellsInRadius(person.position.cellId, radius));
   const protectedIds = new Set(protectedPersonIds(state, person));
+  const continuingThreats = continuingThreatAnimalIds(state, person);
   return state.world.animals
     .filter((animal) => isAnimalAlive(animal)
       && visible.has(animal.position.cellId)
@@ -117,7 +157,9 @@ export function visibleWildlifeThreats(
       const distance = standingDistance(person.position, animal.position);
       const targetingPersonId = behaviorTargetPerson(animal, atMonth);
       const targetsProtectedPerson = targetingPersonId !== undefined && protectedIds.has(targetingPersonId);
-      if (!targetsProtectedPerson && distance > species.alarmRadius) return [];
+      if (!targetsProtectedPerson
+        && distance > species.alarmRadius
+        && !continuingThreats.has(animal.id)) return [];
       return [{
         animalId: animal.id,
         speciesId: animal.speciesId,
@@ -134,6 +176,49 @@ export function visibleWildlifeThreats(
     .sort((left, right) => Number(Boolean(right.targetingPersonId)) - Number(Boolean(left.targetingPersonId))
       || left.distance - right.distance
       || animalSpecies(right.speciesId).aggression - animalSpecies(left.speciesId).aggression
+      || left.animalId.localeCompare(right.animalId))
+    .slice(0, 8);
+}
+
+/**
+ * Aggressive animals that the person can currently see and whose caution area
+ * physically covers a planned work/source position. This is narrower than an
+ * emergency around the person: it lets planning recognize that a destination
+ * is unsafe before walking into the animal's alarm radius, without revealing a
+ * remote animal or remembering a stale position across monthly ecology steps.
+ */
+export function visibleWildlifeThreatsGuardingPosition(
+  state: SimulationState,
+  person: PersonState,
+  position: StandingPosition,
+  atMonth = state.clock.elapsedMonths + 1,
+): VisibleWildlifeThreatObservation[] {
+  const radius = personVisibleRadius(person);
+  const visible = new Set(cellsInRadius(person.position.cellId, radius));
+  return state.world.animals
+    .filter((animal) => isAnimalAlive(animal)
+      && animalSpecies(animal.speciesId).aggression > 0
+      && visible.has(animal.position.cellId)
+      && Math.abs(animal.position.z - person.position.z) <= radius)
+    .flatMap((animal) => {
+      const species = animalSpecies(animal.speciesId);
+      if (standingDistance(position, animal.position) > species.alarmRadius) return [];
+      const targetingPersonId = behaviorTargetPerson(animal, atMonth);
+      return [{
+        animalId: animal.id,
+        speciesId: animal.speciesId,
+        cellId: animal.position.cellId,
+        z: animal.position.z,
+        distance: standingDistance(person.position, animal.position),
+        alarmRadius: species.alarmRadius,
+        ...(targetingPersonId ? { targetingPersonId } : {}),
+        ...(animal.ecology?.currentBehavior?.atMonth === atMonth
+          ? { behaviorMode: animal.ecology.currentBehavior.mode }
+          : {}),
+      }];
+    })
+    .sort((left, right) => standingDistance(position, left) - standingDistance(position, right)
+      || Number(Boolean(right.targetingPersonId)) - Number(Boolean(left.targetingPersonId))
       || left.animalId.localeCompare(right.animalId))
     .slice(0, 8);
 }
@@ -178,9 +263,9 @@ function responseBasis(
 }
 
 /**
- * Compile exactly one adjacent refuge/flee step. A completed primitive action
- * lets the existing interruption machinery return to the same parent before
- * the next tick recomputes the still-current danger.
+ * Compile exactly one adjacent refuge/flee step. The active interruption keeps
+ * the triggering animal identity while every tick recomputes current, locally
+ * visible danger and the next physical step from the new position.
  */
 export function compileWildlifeThreatResponse(
   state: SimulationState,
@@ -192,7 +277,30 @@ export function compileWildlifeThreatResponse(
   // same action tick after the parent has already moved it to safety.
   if (protectedByCoLocatedParent(state, person, atMonth)) return null;
   const threats = visibleWildlifeThreats(state, person, atMonth);
-  if (!threats.length || shelterGeometryAt(state.world.grid, person.position)) return null;
+  if (shelterGeometryAt(state.world.grid, person.position)) return null;
+  // Finish the already selected, locally known shelter route even when the
+  // triggering animal drops just beyond the current alarm/visibility boundary
+  // midway. Otherwise the parent resumes toward the same risky target and
+  // re-enters danger every few ticks.
+  const continuingShelter = continuingShelterChoice(state, person);
+  if (continuingShelter) {
+    const path = findStandingPath(state.world.grid, person.position, continuingShelter.position);
+    const next = path[1];
+    if (next) return {
+      toCellId: next.cellId,
+      toZ: next.z,
+      basis: responseBasis(
+        state,
+        person,
+        atMonth,
+        threats,
+        'shelter-step',
+        next,
+        continuingShelter,
+      ),
+    };
+  }
+  if (!threats.length) return null;
   const radius = personVisibleRadius(person);
   const visibleCells = cellsInRadius(person.position.cellId, radius);
   const shelter = findReachableShelter(state, person, visibleCells);
@@ -295,7 +403,19 @@ export function shouldRemainShelteredFromWildlifeThreat(
   state: SimulationState,
   person: PersonState,
   atMonth = state.clock.elapsedMonths + 1,
+  currentMonthEvents: readonly WorldEvent[] = [],
 ): boolean {
-  return Boolean(shelterGeometryAt(state.world.grid, person.position)
-    && visibleWildlifeThreats(state, person, atMonth).length);
+  if (!shelterGeometryAt(state.world.grid, person.position)) return false;
+  if (visibleWildlifeThreats(state, person, atMonth).length) return true;
+  // Entering cover can put the triggering animal just outside its alarm
+  // radius. Keep that source-backed refuge episode through this month instead
+  // of resuming an old outward intent on the next tick and seeing the same
+  // animal again. The next month performs a fresh local observation.
+  return currentMonthEvents.some((event) => event.kind === 'action'
+    && event.atMonth === atMonth
+    && event.who === person.id
+    && event.status === 'completed'
+    && event.action.kind === 'move'
+    && event.action.wildlifeThreatBasis?.response === 'shelter-step'
+    && event.diff.wildlifeThreatResponse === true);
 }

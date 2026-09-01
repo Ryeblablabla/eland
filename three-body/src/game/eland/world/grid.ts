@@ -26,6 +26,7 @@ export interface StandingPosition {
 
 interface SpatialCache {
   standingZByCell: Array<number[] | undefined>;
+  topZByCell: Int8Array;
   paths: Map<string, Int32Array>;
 }
 
@@ -36,6 +37,7 @@ interface VoxelWorldRevisionState {
 
 const spatialCaches = new WeakMap<VoxelWorld, SpatialCache>();
 const voxelWorldRevisions = new WeakMap<VoxelWorld, VoxelWorldRevisionState>();
+const UNKNOWN_TOP_Z = -2;
 // A 50-person planning month can compile several thousand distinct routes.
 // Keep the month-local cache from clearing itself midway through compilation.
 const MAX_CACHED_PATHS = 8_192;
@@ -68,7 +70,9 @@ const standingPathScratch: StandingPathScratch = {
 function spatialCache(world: VoxelWorld): SpatialCache {
   let cache = spatialCaches.get(world);
   if (!cache) {
-    cache = { standingZByCell: new Array(WORLD_CELL_COUNT), paths: new Map() };
+    const topZByCell = new Int8Array(WORLD_CELL_COUNT);
+    topZByCell.fill(UNKNOWN_TOP_Z);
+    cache = { standingZByCell: new Array(WORLD_CELL_COUNT), topZByCell, paths: new Map() };
     spatialCaches.set(world, cache);
   }
   return cache;
@@ -99,10 +103,27 @@ export function voxelAt(world: VoxelWorld, x: number, y: number, z: number): Mat
   return world.voxels[voxelIndex(x, y, z)] ?? Material.Air;
 }
 
+function standingMovementModifier(materialId: MaterialId): number {
+  const material = materialDefinition(materialId);
+  const plantPenalty = material.tags.includes('plant') && materialId !== Material.Grass ? 1 : 0;
+  const roadRelief = materialId === Material.PackedSoil || materialId === Material.Plank ? 1 : 0;
+  return plantPenalty - roadRelief;
+}
+
+function preservesStandingPathSemantics(previous: MaterialId, next: MaterialId): boolean {
+  if ((previous === Material.Air) !== (next === Material.Air)) return false;
+  const previousSupports = supportsStanding(previous);
+  const nextSupports = supportsStanding(next);
+  if (previousSupports !== nextSupports) return false;
+  return !previousSupports || standingMovementModifier(previous) === standingMovementModifier(next);
+}
+
 export function setVoxel(world: VoxelWorld, x: number, y: number, z: number, materialId: MaterialId): void {
   if (x < 0 || x >= world.width || y < 0 || y >= world.depth || z < 0 || z >= world.levels) return;
   const index = voxelIndex(x, y, z);
-  if (world.voxels[index] === materialId) return;
+  const previousMaterialId = world.voxels[index] ?? Material.Air;
+  if (previousMaterialId === materialId) return;
+  const pathSemanticsPreserved = preservesStandingPathSemantics(previousMaterialId, materialId);
   world.voxels[index] = materialId;
   let revisionState = voxelWorldRevisions.get(world);
   if (!revisionState) {
@@ -112,8 +133,10 @@ export function setVoxel(world: VoxelWorld, x: number, y: number, z: number, mat
   revisionState.revision += 1;
   revisionState.cellRevisions[cellId(x, y)] = revisionState.revision;
   const cache = spatialCaches.get(world);
-  if (cache) {
-    cache.standingZByCell[cellId(x, y)] = undefined;
+  if (cache && !pathSemanticsPreserved) {
+    const changedCellId = cellId(x, y);
+    cache.standingZByCell[changedCellId] = undefined;
+    cache.topZByCell[changedCellId] = UNKNOWN_TOP_Z;
     cache.paths.clear();
   }
 }
@@ -140,11 +163,16 @@ export function voxelWorldChangedCellsSince(world: VoxelWorld, revision: number)
 
 export function topZ(world: VoxelWorld, id: number): number {
   if (!isCellId(id)) return -1;
-  const x = cellX(id);
-  const y = cellY(id);
+  const cache = spatialCache(world);
+  const cached = cache.topZByCell[id];
+  if (cached !== UNKNOWN_TOP_Z) return cached;
   for (let z = world.levels - 1; z >= 0; z -= 1) {
-    if (voxelAt(world, x, y, z) !== Material.Air) return z;
+    if ((world.voxels[z * WORLD_CELL_COUNT + id] ?? Material.Air) !== Material.Air) {
+      cache.topZByCell[id] = z;
+      return z;
+    }
   }
+  cache.topZByCell[id] = -1;
   return -1;
 }
 

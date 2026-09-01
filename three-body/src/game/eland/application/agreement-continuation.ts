@@ -4,8 +4,8 @@ import { materialHas } from '../domain/material';
 import type { SimulationState } from '../domain/model';
 import { sameLocation, type PersonId, type PersonState } from '../domain/person';
 import { personById } from '../domain/state-index';
-import { findReachableWater } from '../domain/water-access';
-import { cellsInRadius, findStandingPath } from '../world/grid';
+import { findSharedReachableWater, moveTowardWaterAccess } from '../domain/water-access';
+import { cellsInRadius } from '../world/grid';
 
 export interface AgreementContinuation {
   agreementId: string;
@@ -17,13 +17,14 @@ export interface AgreementContinuation {
   sourceFactIds: string[];
 }
 
-function reachableWater(state: SimulationState, person: PersonState) {
-  const radius = 4 + Math.floor(person.baselineCapacities.perception / 25);
-  return findReachableWater(state, person, cellsInRadius(person.position.cellId, radius));
+function sharedReachableWater(state: SimulationState, helper: PersonState, requester: PersonState) {
+  const radius = 4 + Math.floor(helper.baselineCapacities.perception / 25);
+  return findSharedReachableWater(state, helper, requester, cellsInRadius(helper.position.cellId, radius));
 }
 
 export function canAcceptAssist(state: SimulationState, helper: PersonState, requester: PersonState, need: 'water' | 'food' | 'shelter' | 'company'): boolean {
-  if (need === 'water') return requester.body.hydration < 45 && Boolean(reachableWater(state, helper));
+  if (need === 'water') return requester.body.hydration < 45
+    && Boolean(sharedReachableWater(state, helper, requester));
   if (need === 'food') return requester.body.nutrition < 45 && helper.inventory.some((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'edible'));
   if (need === 'company') return true;
   return false;
@@ -73,32 +74,30 @@ export function compileAgreementContinuations(
       }];
     }
     if (proposal.need === 'water') {
-      const water = reachableWater(state, helper);
+      const water = sharedReachableWater(state, helper, requester);
       if (!water) return [];
-      const representationId = `show-water:${agreement.id}:${helper.id}`;
       const helperAtWater = helper.position.cellId === water.bankPosition.cellId && helper.position.z === water.bankPosition.z;
       const requesterAtWater = requester.position.cellId === water.bankPosition.cellId && requester.position.z === water.bankPosition.z;
-      const continuations: AgreementContinuation[] = [{
+      const continuations: AgreementContinuation[] = [];
+      if (!agreement.fulfilledByPersonIds.includes(helper.id)) continuations.push({
         agreementId: agreement.id,
         personId: helper.id,
-        summary: `履行承诺，带${requester.name}前往并确认水源`,
-        goal: { kind: 'representation-made', representationId },
+        summary: `履行承诺，确认一条${requester.name}也能到达的水源路线`,
+        goal: { kind: 'agreement-contribution-recorded', agreementId: agreement.id, personId: helper.id },
         nextAction: helperAtWater
-          ? requesterAtWater
-            ? { kind: 'communicate', content: { id: representationId, kind: 'claim', summary: '水就在这里，可以饮用' }, audience: [requester.id], channel: 'voice' }
-            : { kind: 'attend', target: { kind: 'voxel', position: water.waterPosition } }
-          : { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z },
+          ? { kind: 'attend', target: { kind: 'voxel', position: water.waterPosition } }
+          : moveTowardWaterAccess(water, atMonth),
         target: { kind: 'person', personId: requester.id },
         sourceFactIds,
-      }];
-      if (findStandingPath(state.world.grid, requester.position, water.bankPosition).length) continuations.push({
+      });
+      if (!agreement.fulfilledByPersonIds.includes(requester.id)) continuations.push({
         agreementId: agreement.id,
         personId: requester.id,
         summary: `沿${helper.name}确认的路线去水边并实际饮水`,
         goal: { kind: 'body-at-least', field: 'hydration', value: Math.min(100, Math.max(60, requester.body.hydration + 35)) },
         nextAction: requesterAtWater
           ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: water.waterPosition }] }
-          : { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z },
+          : moveTowardWaterAccess(water, atMonth),
         target: { kind: 'person', personId: helper.id },
         sourceFactIds,
       });

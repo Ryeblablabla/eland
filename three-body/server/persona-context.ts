@@ -1,4 +1,5 @@
 import type {
+  PersonExperienceLayer,
   PersonSoul,
   PersonSoulFacetId,
   PersonSoulSceneFacet,
@@ -156,6 +157,7 @@ function facetById(soul: PersonSoul, id: PersonSoulFacetId): PersonSoulSceneFace
 
 function chooseFacetId(input: {
   message: string;
+  experience: PersonExperienceLayer;
   actionChoiceRequested: boolean;
   body?: { health?: number; hydration?: number; nutrition?: number };
   conditions?: readonly { kind: string; stage: number }[];
@@ -172,7 +174,7 @@ function chooseFacetId(input: {
   if (input.actionChoiceRequested || /建议|请求|命令|应该|必须|愿不愿意|答应|拒绝|交换|控制|逼|suggest|request|must|should|refuse/iu.test(text)) {
     return 'autonomy-and-proposals';
   }
-  if (input.playerIdentityQuestion || /信任|喜欢|讨厌|朋友|家人|亲人|感谢|关系|记得我|trust|friend|family|thank/iu.test(text)) {
+  if (input.playerIdentityQuestion || /信任|喜欢|讨厌|朋友|家人|亲人|感谢|关系|记得我|还记得|记不记得|trust|friend|family|thank|remember/iu.test(text)) {
     return 'trust-and-closeness';
   }
   if (/不知道|是什么|为什么|怎么|如何|发现|学习|陌生|试试|unknown|why|how|learn|discover/iu.test(text)) {
@@ -181,11 +183,17 @@ function chooseFacetId(input: {
   if (input.hasCurrentCommitment || /承诺|答应|完成|继续|工作|计划|责任|项目|promise|finish|work|plan/iu.test(text)) {
     return 'commitment-and-work';
   }
+  const experienceKinds = new Set(input.experience.activeCues.map((cue) => cue.kind));
+  if (experienceKinds.has('loss-or-harm')) return 'danger-and-loss';
+  if (experienceKinds.has('unresolved-obligation')) return 'commitment-and-work';
+  if (experienceKinds.has('earned-closeness')) return 'trust-and-closeness';
+  if (experienceKinds.has('repeated-success')) return 'uncertainty-and-change';
   return 'trust-and-closeness';
 }
 
 export function buildPersonaFrame(input: {
   soul: PersonSoul;
+  experience: PersonExperienceLayer;
   message: string;
   actionChoiceRequested: boolean;
   choiceEnabled: boolean;

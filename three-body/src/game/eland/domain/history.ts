@@ -4,22 +4,13 @@ import type {
   WorldEvent,
   WorldHistoryCursorV1,
 } from './model';
-import {
-  hasPlanningEventOverlay,
-  invalidateHotEventIndexAfterCommittedHistoryTrim,
-} from './event-index';
-
-export interface PersistedCommittedHistorySeal {
-  readonly eventCount: number;
-  readonly tailEventId: string | null;
-}
 
 export interface CommittedHistoryView {
-  /** Absolute ordinal of `events[0]` in the authoritative ledger. */
+  /** Always zero on the full-state runtime path. */
   hotStartIndex: number;
-  /** Number of committed events represented by the hot array prefix. */
+  /** Number of committed events represented by the array prefix. */
   hotEventCount: number;
-  /** Absolute number of committed events, including future cold history. */
+  /** Absolute number of committed events. */
   eventCount: number;
   /**
    * Backing array. Planning may temporarily append an uncommitted overlay, so
@@ -46,17 +37,16 @@ function assertHistoryCursor(
     || !Number.isSafeInteger(cursor.eventCount)
     || cursor.eventCount < 0
     || !Number.isSafeInteger(cursor.hotStartIndex)
-    || cursor.hotStartIndex < 0
-    || cursor.hotStartIndex > cursor.eventCount
+    || cursor.hotStartIndex !== 0
     || (cursor.eventCount === 0 ? cursor.tailEventId !== null : typeof cursor.tailEventId !== 'string')) {
     throw new Error('运行历史 cursor 内容无效');
   }
-  const hotEventCount = cursor.eventCount - cursor.hotStartIndex;
+  const hotEventCount = cursor.eventCount;
   if (events.length < hotEventCount) {
-    throw new Error('运行历史热窗口缺少已提交事件');
+    throw new Error('运行历史缺少已提交事件');
   }
   if (hotEventCount > 0 && events[hotEventCount - 1]?.id !== cursor.tailEventId) {
-    throw new Error('运行历史热窗口末事件与 cursor 不一致');
+    throw new Error('运行历史末事件与 cursor 不一致');
   }
   return hotEventCount;
 }
@@ -95,7 +85,7 @@ export function historyEventCount(
 
 /**
  * Return a zero-copy committed view. Any temporary planning suffix in the same
- * array is excluded by `hotEventCount` and is not part of the absolute cursor.
+ * array is excluded by `hotEventCount` and is not part of the cursor.
  */
 export function committedHistoryView(
   state: Pick<DecisionAuthorityState, 'world'>,
@@ -109,8 +99,7 @@ export function committedHistoryView(
     eventCount: cursor.eventCount,
     events,
     atAbsoluteIndex(index: number): WorldEvent | undefined {
-      const offset = index - cursor.hotStartIndex;
-      return offset >= 0 && offset < hotEventCount ? events[offset] : undefined;
+      return index >= 0 && index < hotEventCount ? events[index] : undefined;
     },
   };
 }
@@ -129,7 +118,7 @@ export function assertCommittedHistoryAppendable(
 
 /**
  * The only authoritative event-ledger append. It rejects a planning overlay or
- * stale/truncated hot array before mutating either the array or the cursor.
+ * stale array before mutating either the array or the cursor.
  */
 export function appendCommittedEvents(
   state: SimulationState,
@@ -142,53 +131,5 @@ export function appendCommittedEvents(
   state.world.past.push(...events);
   cursor.eventCount = nextEventCount;
   cursor.tailEventId = events.at(-1)!.id;
-  return cursor;
-}
-
-/**
- * Drop an already persisted committed prefix while preserving the authoritative
- * hot-array identity. The caller must invoke this only after its exact state
- * root/history CAS has committed successfully; this domain helper neither
- * performs nor guesses persistence.
- *
- * Selective cold evidence is process-local infrastructure keyed by the same
- * array identity. It is intentionally left untouched: lease ownership and cold
- * pin expiry remain responsibilities of the verified adoption/retention layer.
- * In particular, this helper neither proves a CAS token, provisions leases for
- * facts becoming newly cold, nor reconciles `lastStep`; the future production
- * wrapper must close those authority seams before calling it.
- */
-export function trimCommittedHistoryAfterPersistedCursor(
-  state: SimulationState,
-  persistedSeal: PersistedCommittedHistorySeal,
-  hotEventLimit: number,
-): WorldHistoryCursorV1 {
-  if (!Number.isSafeInteger(hotEventLimit) || hotEventLimit < 0) {
-    throw new Error('运行历史 hotEventLimit 必须是非负安全整数');
-  }
-  if (!persistedSeal
-    || !Number.isSafeInteger(persistedSeal.eventCount)
-    || persistedSeal.eventCount < 0
-    || (persistedSeal.eventCount === 0
-      ? persistedSeal.tailEventId !== null
-      : typeof persistedSeal.tailEventId !== 'string')) {
-    throw new Error('已持久化运行历史 seal 内容无效');
-  }
-  if (hasPlanningEventOverlay(state)) {
-    throw new Error('当前存在 planning overlay，不能裁剪已提交历史');
-  }
-  const cursor = assertCommittedHistoryAppendable(state);
-  if (persistedSeal.eventCount !== cursor.eventCount
-    || persistedSeal.tailEventId !== cursor.tailEventId) {
-    throw new Error('已持久化运行历史 seal 与当前 committed cursor 不一致');
-  }
-
-  const hotEventCount = cursor.eventCount - cursor.hotStartIndex;
-  const retainedEventCount = Math.min(hotEventLimit, hotEventCount);
-  const removedEventCount = hotEventCount - retainedEventCount;
-  if (removedEventCount === 0) return cursor;
-  state.world.past.splice(0, removedEventCount);
-  cursor.hotStartIndex += removedEventCount;
-  invalidateHotEventIndexAfterCommittedHistoryTrim(state);
   return cursor;
 }

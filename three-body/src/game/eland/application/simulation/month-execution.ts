@@ -34,7 +34,7 @@ import {
   type PersonId,
   type PersonState,
 } from '../../domain/person';
-import { intentById, livingPeople, personById } from '../../domain/state-index';
+import { intentById, livingPeople, personById, projectById } from '../../domain/state-index';
 import {
   chooseHibernationRecoveryReflex,
   chooseSurvivalReflex,
@@ -49,17 +49,20 @@ import { RulePlanner } from '../rule-planner';
 import {
   activeIntent,
   applyDecision,
+  continuesSelfCareAfterCaregiverReturn,
   decisionPlanningChannel,
   drainInterruptedIntentReturns,
   executeActiveIntent,
   executeDependentCareReflex,
   executeProtectiveInterruption,
   recordShelterMaintenanceInterruption,
+  resolveClearedProtectiveInterruption,
 } from './intent-execution';
 import { currentRollingLedgers, finishMonth, type PreparedMonth } from './month-boundary';
 import type { ObservationProjector } from './observation-projector';
 import { clamp } from './state-utils';
 import { hasCoLocatedLivingParent, planLocallyForTick } from './tick-planner';
+import { refreshPersonMindMarkdown } from '../../domain/person-mind';
 
 export interface ModelAttemptSummary {
   total: number;
@@ -98,6 +101,7 @@ export interface MonthExecution {
   ordinaryDeliberationCounts: Map<PersonId, number>;
   ordinaryReplanPermits: Set<PersonId>;
   plannedAtTickOne: Set<PersonId>;
+  plannedAtTicks: Map<PersonId, number>;
   participantIds: PersonId[];
   completedTick: number;
   finished: boolean;
@@ -131,6 +135,7 @@ export function createMonthExecution(input: {
   const ordinaryDeliberationCounts = new Map<PersonId, number>();
   const ordinaryReplanPermits = new Set<PersonId>();
   const plannedAtTickOne = new Set<PersonId>();
+  const plannedAtTicks = new Map<PersonId, number>();
   // `prepareMonth` preserves the old public no-op contract for an authority
   // head that had already ended: no new month, ledger, or history entry exists.
   const alreadyEnded = prepared.state.civilization.status === 'ended'
@@ -167,6 +172,7 @@ export function createMonthExecution(input: {
         ));
       }
       plannedAtTickOne.add(person.id);
+      plannedAtTicks.set(person.id, 1);
       reviewedPeople.add(person.id);
     }
   }
@@ -183,10 +189,47 @@ export function createMonthExecution(input: {
     ordinaryDeliberationCounts,
     ordinaryReplanPermits,
     plannedAtTickOne,
+    plannedAtTicks,
     participantIds: livingPeople(prepared.state).map((person) => person.id),
     completedTick: alreadyEnded ? PLANNING_TICKS_PER_MONTH : 0,
     finished: alreadyEnded,
   };
+}
+
+export function applyPlanningDecisions(
+  execution: MonthExecution,
+  inputs: Array<{ context: DecisionContext; decision: Decision; usedModel: boolean }>,
+  planningTick: number,
+): void {
+  const { state, events, atMonth } = execution.prepared;
+  for (const { context, decision, usedModel } of inputs) {
+    const person = personById(state, context.person.id);
+    if (!person || !isAlive(person) || person.id === execution.controlledPersonId) continue;
+    const planningChannel = decisionPlanningChannel(context, decision);
+    if (planningChannel === 'ordinary') {
+      const count = execution.ordinaryDeliberationCounts.get(person.id) ?? 0;
+      execution.ordinaryDeliberationCounts.set(person.id, count + 1);
+      execution.ordinaryReplanPermits.delete(person.id);
+    }
+    if (decision.kind !== 'idle' || usedModel || Boolean(decision.characterAgendaUpdate)) {
+      events.push(applyDecision(
+        state,
+        person,
+        context,
+        decision,
+        usedModel,
+        atMonth,
+        events.length,
+        planningTick,
+        planningChannel,
+        decision.kind === 'start' || decision.kind === 'revise'
+          ? context.options.find((option) => option.id === decision.optionId)
+          : undefined,
+      ));
+    }
+    execution.plannedAtTicks.set(person.id, planningTick);
+    execution.reviewedPeople.add(person.id);
+  }
 }
 
 function isTerminalIntent(intent: Intent | undefined): intent is Intent {
@@ -214,6 +257,31 @@ function rootIntentForPerson(state: SimulationState, person: PersonState): RootI
     current = parent;
   }
   return undefined;
+}
+
+function continuesShelterAdaptationProject(
+  state: SimulationState,
+  intent: Intent | undefined,
+): boolean {
+  const interruptedParent = intent?.returnToIntentId
+    ? intentById(state, intent.returnToIntentId)
+    : undefined;
+  const projectId = intent?.projectId ?? interruptedParent?.projectId;
+  const project = projectId ? projectById(state, projectId) : undefined;
+  return project?.status === 'active'
+    && (project.desiredFunction === 'weather-shelter'
+      || Boolean(project.shelterRequirement));
+}
+
+/** A sourced self-dehydrate step is itself immediate shelter protection. */
+export function continuesImmediateShelterProtection(
+  intent: Intent | undefined,
+  person: PersonState,
+): boolean {
+  if (!intent || intent.status !== 'active' || intent.nextAction.kind !== 'act'
+    || intent.nextAction.operation !== 'dehydrate') return false;
+  return intent.nextAction.targets.some((target) => target.kind === 'person'
+    && target.personId === person.id);
 }
 
 function grantTerminalReplanPermit(
@@ -247,6 +315,18 @@ function executeIntentStep(
   const fact = executeActiveIntent(state, person, atMonth, events.length, actionTick, events);
   if (fact) events.push(fact);
   drainInterruptedIntentReturns(state, person, atMonth);
+  const spoke = fact?.kind === 'action'
+    && fact.status === 'completed'
+    && fact.action.kind === 'talk';
+  const resumed = spoke ? activeIntent(state, person) : undefined;
+  const compatibleBodyAction = resumed?.nextAction.kind !== 'talk'
+    && !(resumed?.nextAction.kind === 'act'
+      && ['hunt', 'dehydrate', 'rehydrate', 'reproduce'].includes(resumed.nextAction.operation));
+  if (spoke && resumed && compatibleBodyAction) {
+    const bodyFact = executeActiveIntent(state, person, atMonth, events.length, actionTick, events);
+    if (bodyFact) events.push(bodyFact);
+    drainInterruptedIntentReturns(state, person, atMonth);
+  }
   grantTerminalReplanPermit(execution, person, rootBeforeStep);
   return fact;
 }
@@ -346,12 +426,20 @@ export function executePlanningTick(
         }
         continue;
       }
-      const causalShelterWork = hasCausalShelterAdaptationNeed(state, person);
+      const queuedIntent = activeIntent(state, person);
+      // A contributor may be executing another person's shelter project. That
+      // exact intent is itself causal adaptation work even though the helper
+      // does not own the Project aggregate. Without this check, each outward
+      // construction step loses the owner-only predicate and immediately
+      // triggers a retreat to the old shelter on the next planning tick.
+      const continuesShelterProject = continuesShelterAdaptationProject(state, queuedIntent);
+      const perceivesShelterAdaptation = hasCausalShelterAdaptationNeed(state, person);
+      const causalShelterWork = continuesShelterProject
+        || (!queuedIntent && perceivesShelterAdaptation);
       const reflex = chooseSurvivalReflex(state, person, {
         suppressThermalShelter: causalShelterWork,
         currentMonthEvents: events,
       });
-      const queuedIntent = activeIntent(state, person);
       const queuedDehydrateTarget = queuedIntent?.nextAction.kind === 'act'
         && queuedIntent.nextAction.operation === 'dehydrate'
         ? queuedIntent.nextAction.targets.find((target) => target.kind === 'person')
@@ -371,8 +459,35 @@ export function executePlanningTick(
             suppressThermalShelter: causalShelterWork,
             currentMonthEvents: events,
           });
+      if (!reflex) resolveClearedProtectiveInterruption(
+        state,
+        person,
+        'survival-reflex',
+        atMonth,
+      );
+      if (!dependentCare) resolveClearedProtectiveInterruption(
+        state,
+        person,
+        'dependent-care',
+        atMonth,
+      );
+      const wildlifeShelter = shouldRemainShelteredFromWildlifeThreat(state, person, atMonth, events);
+      const selfShelterMaintenance = shouldRemainSheltered(state, person, reflex);
+      const dependentShelterMaintenance = shouldRemainShelteredForDependent(state, person);
+      const maintainingShelter = wildlifeShelter
+        || selfShelterMaintenance
+        || dependentShelterMaintenance;
+      // Reaching shelter can clear the primitive move reflex while the causal
+      // danger is still active. Treat that maintenance state as an ongoing
+      // self-protection response when comparing it with care urgency; otherwise
+      // a milder child need pulls the caregiver out and the same thermal reflex
+      // sends them straight back on the next tick.
+      const hasActiveSelfProtection = Boolean(reflex)
+        || wildlifeShelter
+        || selfShelterMaintenance;
       const careIsMoreUrgent = Boolean(dependentCare)
-        && (!reflex || dependentCareUrgency(state, person) > survivalReflexUrgency(state, person));
+        && (!hasActiveSelfProtection
+          || dependentCareUrgency(state, person) > survivalReflexUrgency(state, person));
       if (careIsMoreUrgent && dependentCare) {
         const rootBeforeInterruption = rootIntentForPerson(state, person);
         const fact = executeDependentCareReflex(state, person, dependentCare, atMonth, actionTick, events);
@@ -381,11 +496,46 @@ export function executePlanningTick(
         grantTerminalReplanPermit(execution, person, rootBeforeInterruption);
         continue;
       }
+      if (selfShelterMaintenance
+        && !causalShelterWork
+        && reflex?.kind === 'move'
+        && !reflex.wildlifeThreatBasis) {
+        // The body thresholds inside shouldRemainSheltered already decide
+        // whether thirst or hunger is urgent enough to leave. When they are
+        // not, a second ordinary survival move must not outrank the existing
+        // real shelter and bounce the person across its doorway every tick.
+        // Non-movement emergency acts, wildlife responses and genuinely more
+        // urgent dependent care retain their normal paths above/below.
+        const rootBeforeInterruption = rootIntentForPerson(state, person);
+        recordShelterMaintenanceInterruption(state, person, atMonth, actionTick, events);
+        person.currentActionText = '留在住所内维持避护状态';
+        drainInterruptedIntentReturns(state, person, atMonth);
+        grantTerminalReplanPermit(execution, person, rootBeforeInterruption);
+        continue;
+      }
       if (reflexDuplicatesQueuedDehydrate) {
         executeIntentStep(execution, person, actionTick);
         continue;
       }
+      const resumesSelfCareBeforeAnotherCaregiverTrip = reflex?.kind === 'move'
+        && Boolean(reflex.caregiverRef)
+        && continuesSelfCareAfterCaregiverReturn(state, person, queuedIntent, atMonth);
+      if (resumesSelfCareBeforeAnotherCaregiverTrip) {
+        executeIntentStep(execution, person, actionTick);
+        continue;
+      }
       if (reflex && !(dependentChild && reflex.kind === 'move' && !reflex.wildlifeThreatBasis)) {
+        const repeatedWildlifeHold = reflex.kind === 'move'
+          && reflex.wildlifeThreatBasis?.response === 'hold'
+          && events.some((event) => event.kind === 'action'
+            && event.atMonth === atMonth
+            && event.who === person.id
+            && event.action.kind === 'move'
+            && event.action.wildlifeThreatBasis?.basisKey === reflex.wildlifeThreatBasis?.basisKey);
+        if (repeatedWildlifeHold) {
+          person.currentActionText = '无安全退路，继续警戒同一可见野兽威胁';
+          continue;
+        }
         const rootBeforeInterruption = rootIntentForPerson(state, person);
         const fact = executeProtectiveInterruption(state, person, reflex, 'survival-reflex', atMonth, actionTick, events);
         person.currentActionText = fact.result;
@@ -399,19 +549,7 @@ export function executePlanningTick(
           : '停留原地等待亲代照料，不能独自远行';
         continue;
       }
-      if (dependentCare) {
-        const rootBeforeInterruption = rootIntentForPerson(state, person);
-        const fact = executeDependentCareReflex(state, person, dependentCare, atMonth, actionTick, events);
-        person.currentActionText = fact.result;
-        drainInterruptedIntentReturns(state, person, atMonth);
-        grantTerminalReplanPermit(execution, person, rootBeforeInterruption);
-        continue;
-      }
-      const wildlifeShelter = shouldRemainShelteredFromWildlifeThreat(state, person, atMonth);
-      const maintainingShelter = wildlifeShelter
-        || shouldRemainSheltered(state, person)
-        || shouldRemainShelteredForDependent(state, person);
-      if (maintainingShelter && !causalShelterWork) {
+      if (wildlifeShelter || (maintainingShelter && !causalShelterWork)) {
         const rootBeforeInterruption = rootIntentForPerson(state, person);
         recordShelterMaintenanceInterruption(state, person, atMonth, actionTick, events, wildlifeShelter
           ? { reason: '可见猛兽仍在住所近旁，继续留在真实围护内' }
@@ -421,7 +559,14 @@ export function executePlanningTick(
         grantTerminalReplanPermit(execution, person, rootBeforeInterruption);
         continue;
       }
-
+      if (dependentCare) {
+        const rootBeforeInterruption = rootIntentForPerson(state, person);
+        const fact = executeDependentCareReflex(state, person, dependentCare, atMonth, actionTick, events);
+        person.currentActionText = fact.result;
+        drainInterruptedIntentReturns(state, person, atMonth);
+        grantTerminalReplanPermit(execution, person, rootBeforeInterruption);
+        continue;
+      }
       if (person.id === execution.controlledPersonId && actorController) {
         controlRequested = true;
         const control = actorController({ state, person, atMonth, actionTick, events });
@@ -433,7 +578,7 @@ export function executePlanningTick(
       }
 
       const rootBeforePlanning = rootIntentForPerson(state, person);
-      if (actionTick !== 1 || !execution.plannedAtTickOne.has(person.id)) {
+      if (execution.plannedAtTicks.get(person.id) !== actionTick) {
         planLocallyForTick(
           state,
           person,
@@ -444,6 +589,24 @@ export function executePlanningTick(
           execution.reviewedPeople,
           execution,
         );
+      }
+      // Perceiving that the current shelter is inadequate allows deliberation,
+      // not arbitrary departure. Only a shelter project actually selected by
+      // that deliberation may spend this protected tick outside; an unrelated
+      // intent remains queued until the thermal/wildlife maintenance state
+      // clears naturally.
+      if (maintainingShelter
+        && perceivesShelterAdaptation
+        && !continuesShelterAdaptationProject(state, activeIntent(state, person))
+        && !continuesImmediateShelterProtection(activeIntent(state, person), person)) {
+        const rootBeforeInterruption = rootIntentForPerson(state, person);
+        recordShelterMaintenanceInterruption(state, person, atMonth, actionTick, events, wildlifeShelter
+          ? { reason: '可见猛兽仍在住所近旁，继续留在真实围护内' }
+          : {});
+        person.currentActionText = wildlifeShelter ? '留在住所内避开可见猛兽' : '留在住所内维持避护状态';
+        drainInterruptedIntentReturns(state, person, atMonth);
+        grantTerminalReplanPermit(execution, person, rootBeforeInterruption);
+        continue;
       }
       executeIntentStep(execution, person, actionTick, rootBeforePlanning);
     }
@@ -509,13 +672,17 @@ export function finishMonthExecution(execution: MonthExecution): SimulationState
     Math.max(1, livingAgents),
   );
   execution.finished = true;
-  return finishMonth(
+  const finishedState = finishMonth(
     state,
     events,
     atMonth,
     execution.projectionCadence,
     execution.observationProjector,
   );
+  for (const person of finishedState.people) {
+    refreshPersonMindMarkdown(finishedState, person, atMonth);
+  }
+  return finishedState;
 }
 
 export function executeRemainingPlanningTicks(

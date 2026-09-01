@@ -1,5 +1,5 @@
 import type { ActionFact, SimulationState } from './model';
-import { materialDefinition, type MaterialId } from './material';
+import { Material, materialDefinition, type MaterialId } from './material';
 import type { PersonState } from './person';
 import { personById } from './state-index';
 
@@ -40,7 +40,9 @@ function interactionFailure(fact: ActionFact): { id: string; summary: string } |
   if (!Number.isInteger(inputMaterialId) || !Number.isInteger(targetMaterialId)) return null;
   if (fact.action.operation === 'combine') return {
     id: voxelNoResponseFactId('combine', inputMaterialId, targetMaterialId),
-    summary: `观察到${materialDefinition(inputMaterialId).name}与${materialDefinition(targetMaterialId).name}接触时没有产生物质变化`,
+    summary: targetMaterialId === Material.Air
+      ? `尝试把${materialDefinition(inputMaterialId).name}安装到眼前空位时，没有形成可用结构`
+      : `观察到${materialDefinition(inputMaterialId).name}用于${materialDefinition(targetMaterialId).name}时没有产生可见变化`,
   };
   if (fact.action.operation === 'expose') return {
     id: voxelNoResponseFactId('expose', inputMaterialId, targetMaterialId),
@@ -50,7 +52,9 @@ function interactionFailure(fact: ActionFact): { id: string; summary: string } |
   if (fact.action.operation !== 'exert' || !Number.isInteger(toolMaterialId)) return null;
   return {
     id: voxelNoResponseFactId('exert', inputMaterialId, targetMaterialId, toolMaterialId),
-    summary: `用${materialDefinition(toolMaterialId).name}向${materialDefinition(inputMaterialId).name}施力时，${materialDefinition(targetMaterialId).name}没有产生物质变化`,
+    summary: targetMaterialId === Material.Air
+      ? `用${materialDefinition(toolMaterialId).name}加工${materialDefinition(inputMaterialId).name}时没有产生可见变化`
+      : `用${materialDefinition(toolMaterialId).name}加工${materialDefinition(inputMaterialId).name}时，${materialDefinition(targetMaterialId).name}没有产生可见变化`,
   };
 }
 

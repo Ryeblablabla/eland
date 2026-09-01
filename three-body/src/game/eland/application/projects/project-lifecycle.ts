@@ -10,6 +10,7 @@ import { closeProjectHypothesisCampaign } from '../project-hypotheses';
 import { recordJointProjectSocialLearning } from '../../domain/social-learning';
 import { projectCurrentLeadId } from '../../domain/project-leadership';
 import { recordRecurringDutyProjectCompletion } from '../../domain/governance';
+import { invalidateCompletedProjectRelationshipEvidence } from '../../domain/relationship-outcome-evidence';
 import {
   closeProjectSearchCampaigns,
   endActiveLogisticsEpisode,
@@ -43,7 +44,16 @@ function rememberJointCompletion(state: SimulationState, project: ProjectState):
     .filter((person): person is PersonState => Boolean(person));
   for (const person of contributors) {
     const partners = contributors.filter((other) => other.id !== person.id);
-    for (const partner of partners) applyRelationEvidence(person, partner.id, evidenceId, { trust: 6, bond: 4 });
+    for (const partner of partners) applyRelationEvidence(
+      person,
+      partner.id,
+      evidenceId,
+      { trust: 6, bond: 4 },
+      {
+        atMonth: project.completedAtMonth ?? state.clock.elapsedMonths,
+        kinds: ['substantive', 'shared-life'],
+      },
+    );
     remember(person, {
       id: `memory:joint-project:${project.id}:${person.id}`,
       kind: 'episode',
@@ -80,6 +90,7 @@ export function completeProject(
   project.status = 'completed';
   project.completedAtMonth = atMonth;
   project.completionEventIds = [...new Set(evidenceEventIds)];
+  invalidateCompletedProjectRelationshipEvidence(state);
   project.reservations = [];
   project.missingMaterialIds = [];
   project.materialDemands = [];

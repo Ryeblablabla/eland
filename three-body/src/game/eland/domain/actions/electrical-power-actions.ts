@@ -6,10 +6,6 @@ import {
   ELECTRICAL_POWER_LOAD_DEMAND,
   ELECTRICAL_POWER_OPERATION_TECHNIQUE_ID,
   ELECTRICAL_POWER_WORLD_VERSION,
-  activeElectricalMaintenanceProjectLeaseKey,
-  activeElectricalMaintenanceReplacementLeaseKey,
-  currentElectricalNetworkFaultLeaseKey,
-  currentElectricalNetworkRepairLeaseKey,
   electricalPowerFaultObservationFactId,
   electricalPowerLoadTechniqueId,
   electricalPowerLoadTechniquePrefix,
@@ -19,9 +15,6 @@ import {
   emptyElectricalPowerWorldState,
   ensureElectricalPowerNetwork,
   isElectricalPowerActionBasis,
-  livingPersonElectricalLoadTechniqueKnowledgeLeaseKey,
-  livingPersonElectricalMechanicalServiceLeaseKey,
-  livingPersonElectricalOperationKnowledgeLeaseKey,
   plannedElectricalPowerComponents,
   recordElectricalPowerDispatch,
   recordElectricalPowerFault,
@@ -37,7 +30,7 @@ import {
   type ElectricalPowerWorldState,
   type ElectricalVoxelPosition,
 } from '../electrical-power';
-import { worldEventById, worldEventByIdWithRetainedLease } from '../event-index';
+import { worldEventById } from '../event-index';
 import { exposureRuleFor } from '../interaction-rules';
 import { Material, materialDefinition, type MaterialId } from '../material';
 import {
@@ -233,11 +226,7 @@ export function resolveMechanicalElectricalSourceContext(
       && candidate.installationProjectId === plan.mechanicalInstallationProjectId
       && candidate.planKey === plan.mechanicalPlanKey
   ));
-  const serviceEvent = worldEventByIdWithRetainedLease(
-    state,
-    mechanicalServiceEventId,
-    livingPersonElectricalMechanicalServiceLeaseKey(person.id),
-  );
+  const serviceEvent = worldEventById(state, mechanicalServiceEventId);
   if (!project || project.status !== 'completed'
     || project.desiredFunction !== 'water-powered-crop-processing') {
     return { blocked: '发电机所指机械安装项目不是当前已完成的水力处理项目' };
@@ -318,11 +307,7 @@ export function executeElectricalPowerFaultAttend(
   const fault = network?.fault;
   const position = action.target.kind === 'voxel' ? action.target.position : undefined;
   const faultEvent = fault && network
-    ? worldEventByIdWithRetainedLease(
-      state,
-      fault.faultEventId,
-      currentElectricalNetworkFaultLeaseKey(network.id),
-    )
+    ? worldEventById(state, fault.faultEventId)
     : undefined;
   const perceptionRadius = 4 + Math.floor(person.baselineCapacities.perception / 25);
   if (ref.version !== 'electrical-power-fault-observation-v1'
@@ -395,18 +380,13 @@ function verifiedComponentEvidence(
   manufactureEventId: string,
   verificationEventId: string,
   after?: ActionFact,
-  evidenceLeaseKey?: string,
 ): { stack: ItemStack; manufacture: ActionFact; verification: ActionFact } | null {
   const stack = person.inventory.find((candidate) => candidate.id === stackId
     && candidate.materialId === materialId
     && candidate.quantity > 0
     && !candidate.recordPayloadId);
-  const manufacture = evidenceLeaseKey
-    ? worldEventByIdWithRetainedLease(state, manufactureEventId, evidenceLeaseKey)
-    : worldEventById(state, manufactureEventId);
-  const verification = evidenceLeaseKey
-    ? worldEventByIdWithRetainedLease(state, verificationEventId, evidenceLeaseKey)
-    : worldEventById(state, verificationEventId);
+  const manufacture = worldEventById(state, manufactureEventId);
+  const verification = worldEventById(state, verificationEventId);
   if (!stack
     || manufacture?.kind !== 'action'
     || manufacture.status !== 'completed'
@@ -544,9 +524,9 @@ function reliableTeachingSourceFor(
   factId: string,
 ): boolean {
   if (event.status !== 'completed'
-    || event.action.kind !== 'communicate'
-    || event.action.content.kind !== 'claim'
-    || event.action.content.factId !== factId
+    || event.action.kind !== 'talk'
+    || event.action.speakerMeaning.kind !== 'claim'
+    || event.action.speakerMeaning.factId !== factId
     || event.diff.explicitTeaching !== true
     || event.diff.teachingFactId !== factId
     || !Array.isArray(event.diff.taughtAudienceIds)
@@ -565,9 +545,8 @@ export function reliableElectricalOperationKnowledgeEvidence(
     && fact.id === ELECTRICAL_POWER_OPERATION_TECHNIQUE_ID
     && fact.confidence >= 55);
   if (!knowledge) return null;
-  const leaseKey = livingPersonElectricalOperationKnowledgeLeaseKey(person.id);
   for (const eventId of [...knowledge.sourceEventIds].reverse()) {
-    const event = worldEventByIdWithRetainedLease(state, eventId, leaseKey);
+    const event = worldEventById(state, eventId);
     if (event?.kind !== 'action') continue;
     const actionBasis = event.action.kind === 'act' ? event.action.electricalPowerBasis : undefined;
     const directOperation = event.status === 'completed'
@@ -598,9 +577,8 @@ export function reliableElectricalLoadTechniqueKnowledgeEvidence(
     && fact.id.startsWith(prefix)
     && fact.confidence >= 55);
   for (const knowledge of candidates) {
-    const leaseKey = livingPersonElectricalLoadTechniqueKnowledgeLeaseKey(person.id, knowledge.id);
     for (const eventId of [...knowledge.sourceEventIds].reverse()) {
-      const event = worldEventByIdWithRetainedLease(state, eventId, leaseKey);
+      const event = worldEventById(state, eventId);
       if (event?.kind !== 'action') continue;
       const actionBasis = event.action.kind === 'act' ? event.action.electricalPowerBasis : undefined;
       const directLoadService = event.status === 'completed'
@@ -921,11 +899,7 @@ function electricalOperate(
       };
     }
     if (currentRepairEventId) {
-      const repair = worldEventByIdWithRetainedLease(
-        state,
-        currentRepairEventId,
-        currentElectricalNetworkRepairLeaseKey(network.id),
-      );
+      const repair = worldEventById(state, currentRepairEventId);
       const repairBasis = repair?.kind === 'action'
         && repair.action.kind === 'act'
         ? repair.action.electricalPowerBasis
@@ -1076,11 +1050,7 @@ function electricalRepair(
   const network = electricalNetworkForBasis(state, basis);
   const fault = network?.fault;
   const faultEvent = fault && network
-    ? worldEventByIdWithRetainedLease(
-      state,
-      fault.faultEventId,
-      currentElectricalNetworkFaultLeaseKey(network.id),
-    )
+    ? worldEventById(state, fault.faultEventId)
     : undefined;
   const faultRef = action.targets.find((target): target is Extract<WorldRef, { kind: 'voxel' }> => (
     target.kind === 'voxel'
@@ -1100,11 +1070,7 @@ function electricalRepair(
     ? state.projects.find((candidate) => candidate.id === maintenanceBasis.installationProjectId)
     : undefined;
   const diagnosisEvent = maintenanceProject && maintenanceBasis
-    ? worldEventByIdWithRetainedLease(
-      state,
-      maintenanceBasis.diagnosisEventId,
-      activeElectricalMaintenanceProjectLeaseKey(maintenanceProject.id),
-    )
+    ? worldEventById(state, maintenanceBasis.diagnosisEventId)
     : undefined;
   const diagnosisKnowledge = network && maintenanceBasis
     ? person.knowledge.find((fact) => fact.kind === 'observation'
@@ -1191,9 +1157,6 @@ function electricalRepair(
     basis.manufactureEventId,
     basis.verificationEventId,
     faultEvent,
-    maintenanceProject
-      ? activeElectricalMaintenanceReplacementLeaseKey(maintenanceProject.id)
-      : undefined,
   );
   if (!evidence) {
     return { status: 'blocked' as const, result: '替换导体不是故障之后由本人制造并核验的实体', diff: {} };

@@ -24,11 +24,11 @@ export interface SocialExpectationAppraisal {
 
 function executionCommunication(option: ActionOption) {
   const action = option.completionAction ?? option.nextAction;
-  return action.kind === 'communicate' ? action : undefined;
+  return action.kind === 'talk' ? action : undefined;
 }
 
 function proposalForOption(option: ActionOption): SocialProposal | undefined {
-  const content = executionCommunication(option)?.content;
+  const content = executionCommunication(option)?.speakerMeaning;
   return content && (content.kind === 'request' || content.kind === 'offer')
     ? content.proposal
     : undefined;

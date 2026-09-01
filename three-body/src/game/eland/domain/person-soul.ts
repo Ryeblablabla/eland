@@ -1,4 +1,10 @@
-import type { HexacoTrait, HexacoVector, PersonState } from './person';
+import type {
+  CognitiveOutcome,
+  HexacoTrait,
+  HexacoVector,
+  PersonState,
+  PrototypeReactionPattern,
+} from './person';
 
 export type PersonSoulFacetId =
   | 'danger-and-loss'
@@ -26,7 +32,7 @@ export interface PersonSoulSceneFacet {
 }
 
 export interface PersonSoul {
-  version: 2;
+  version: 3;
   authority: 'derived-personality';
   /** Stable across saves and branches for the same underlying person. */
   signature: string;
@@ -38,6 +44,69 @@ export interface PersonSoul {
   styleMatrix: PersonSoulStyleMatrix;
   /** Cue-addressable personality facets. A turn should activate only the closest facet. */
   sceneFacets: PersonSoulSceneFacet[];
+  /** Founder dossier priors. These are response tendencies, never world facts. */
+  prototype?: {
+    personalitySummary: string;
+    reactionPatterns: PrototypeReactionPattern[];
+  };
+}
+
+export interface AdaptivePersonalityShift {
+  trait: HexacoTrait;
+  direction: 'increased' | 'decreased';
+  magnitude: number;
+  attention: string;
+  expression: string;
+  sourceEventIds: string[];
+}
+
+export interface AdaptivePersonalityLayer {
+  version: 'adaptive-personality-v1';
+  authority: 'sourced-experience';
+  effectivePersonality: HexacoVector;
+  styleMatrix: PersonSoulStyleMatrix;
+  learnedShifts: AdaptivePersonalityShift[];
+  rule: string;
+}
+
+export interface ExperienceMemorySignal {
+  id: string;
+  lane: 'episodic' | 'semantic' | 'social' | 'procedural' | 'prospective' | 'dialogue';
+  salience: number;
+  emotionalValence: number;
+  unresolved: boolean;
+  personIds: readonly string[];
+  topicKeys?: readonly string[];
+  sourceEventIds: readonly string[];
+  causalOutcome?: CognitiveOutcome;
+}
+
+export interface PersonExperienceCue {
+  kind: 'loss-or-harm' | 'unresolved-obligation' | 'earned-closeness' | 'repeated-success';
+  attention: string;
+  expression: string;
+  memoryIds: string[];
+  sourceEventIds: string[];
+}
+
+export interface PersonExperienceLayer {
+  version: 'person-experience-layer-v1';
+  authority: 'sourced-memory-and-learning';
+  adaptivePersonality: AdaptivePersonalityLayer;
+  activeCues: PersonExperienceCue[];
+  rule: string;
+}
+
+export interface CharacterTurnNote {
+  version: 'character-turn-note-v1';
+  activeFacet: Pick<PersonSoulSceneFacet, 'id' | 'attention' | 'innerTension' | 'speechTendency'>;
+  activeReaction?: PrototypeReactionPattern;
+  currentDelivery: PersonSoulStyleMatrix;
+  experienceCues: Array<Pick<PersonExperienceCue, 'kind' | 'attention' | 'expression'>>;
+  responseShape: string;
+  naturalSpeech: string[];
+  historyRule: string;
+  exampleRule: string;
 }
 
 type Direction = 'high' | 'low';
@@ -229,7 +298,11 @@ function autonomyVoice(person: PersonState): string {
 function signatureFor(person: PersonState): string {
   const baseline = TRAITS.map((trait) => person.personality.baseline[trait]).join(',');
   const motives = `${person.motiveSensitivity.control},${person.motiveSensitivity.status}`;
-  return `soul-v2-${stableHash(`${person.id}|${baseline}|${motives}`).toString(36)}`;
+  const prototype = [
+    person.profile?.personalitySummary ?? '',
+    ...(person.profile?.reactionPatterns ?? []).map((pattern) => pattern.id),
+  ].join('|');
+  return `soul-v3-${stableHash(`${person.id}|${baseline}|${motives}|${prototype}`).toString(36)}`;
 }
 
 function styleMatrix(personality: HexacoVector): PersonSoulStyleMatrix {
@@ -248,6 +321,191 @@ function styleMatrix(personality: HexacoVector): PersonSoulStyleMatrix {
     hesitation: personality.conscientiousness >= 65
       ? 'low'
       : personality.openness >= 62 ? 'visible' : 'situational',
+  };
+}
+
+const ADAPTIVE_SHIFT_LANGUAGE: Record<HexacoTrait, Record<'increased' | 'decreased', Pick<AdaptivePersonalityShift, 'attention' | 'expression'>>> = {
+  honestyHumility: {
+    increased: { attention: '更留意公平、归属和自己能否如实说明所得', expression: '更愿意区分事实、功劳与不能保证的部分' },
+    decreased: { attention: '更先衡量个人代价、回报与他人要求是否可信', expression: '更直接说出自己应得到什么，不用道德说辞遮住利益' },
+  },
+  emotionality: {
+    increased: { attention: '更容易注意危险、失去、照护和关系留下的情绪后果', expression: '在有信任支撑时更可能承认担忧和牵挂' },
+    decreased: { attention: '更先寻找能改变处境的行动，不让情绪占满判断', expression: '语气更克制，关心更多落在具体行动上' },
+  },
+  extraversion: {
+    increased: { attention: '更容易注意可以主动联系、追问或共享判断的社会机会', expression: '开口更快，愿意先给态度再补理由' },
+    decreased: { attention: '更愿意先观察和倾听，只保留真正需要回应的社会线索', expression: '句子更短，自我暴露更谨慎' },
+  },
+  agreeableness: {
+    increased: { attention: '更会注意他人的为难与仍可合作的部分', expression: '分歧中更愿意给对方余地，但不虚构同意' },
+    decreased: { attention: '更快察觉施压、冲突和自己的界线是否被越过', expression: '更早说出反对与边界，减少讨好式缓冲' },
+  },
+  conscientiousness: {
+    increased: { attention: '更优先召回未完成责任、承诺和已经推进的工作', expression: '倾向用已完成的一步与下一步说明态度' },
+    decreased: { attention: '更留意眼前变化和调整路线的机会', expression: '更愿意承认原计划已经失去价值，不把形式当成责任' },
+  },
+  openness: {
+    increased: { attention: '更容易注意反常、新证据和仍未解释的问题', expression: '愿意提出新联想或追问，同时标明它仍是猜想' },
+    decreased: { attention: '更优先召回亲眼见过、亲手做过和反复验证的经验', expression: '要求把依据说具体，再决定是否接受陌生解释' },
+  },
+};
+
+function effectiveVector(person: Pick<PersonState, 'personality'>): HexacoVector {
+  return Object.fromEntries(TRAITS.map((trait) => [
+    trait,
+    Math.max(0, Math.min(100, person.personality.baseline[trait] + person.personality.learnedDelta[trait])),
+  ])) as unknown as HexacoVector;
+}
+
+/** Experience may bend current attention and delivery without rewriting the stable Soul. */
+export function buildAdaptivePersonality(person: PersonState): AdaptivePersonalityLayer {
+  const effectivePersonality = effectiveVector(person);
+  const learnedShifts = TRAITS.flatMap((trait): AdaptivePersonalityShift[] => {
+    const delta = person.personality.learnedDelta[trait];
+    if (!delta) return [];
+    const direction = delta > 0 ? 'increased' as const : 'decreased' as const;
+    const changes = person.personality.changes
+      .filter((change) => change.trait === trait && change.delta === (delta > 0 ? 1 : -1))
+      .slice(-6);
+    const sourceEventIds = [...new Set(changes.flatMap((change) => change.sourceEventIds))].slice(-24);
+    if (!sourceEventIds.length) return [];
+    return [{
+      trait,
+      direction,
+      magnitude: Math.abs(delta),
+      ...ADAPTIVE_SHIFT_LANGUAGE[trait][direction],
+      sourceEventIds,
+    }];
+  }).sort((left, right) => right.magnitude - left.magnitude || left.trait.localeCompare(right.trait));
+  return {
+    version: 'adaptive-personality-v1',
+    authority: 'sourced-experience',
+    effectivePersonality,
+    styleMatrix: styleMatrix(effectivePersonality),
+    learnedShifts,
+    rule: '经历层只调整当前注意和表达；稳定 Soul 不消失，来源事实也不因此变成新知识或能力。',
+  };
+}
+
+function cue(
+  kind: PersonExperienceCue['kind'],
+  memories: readonly ExperienceMemorySignal[],
+  attention: string,
+  expression: string,
+): PersonExperienceCue | undefined {
+  if (!memories.length) return undefined;
+  return {
+    kind,
+    attention,
+    expression,
+    memoryIds: memories.map((memory) => memory.id).slice(0, 4),
+    sourceEventIds: [...new Set(memories.flatMap((memory) => memory.sourceEventIds))].slice(-16),
+  };
+}
+
+/**
+ * Current memories add transient, source-bound cues. Trauma/loss, obligations,
+ * closeness and repeated success can therefore alter attention and delivery
+ * without becoming permanent traits or invented facts.
+ */
+export function buildPersonExperienceLayer(
+  person: PersonState,
+  memories: readonly ExperienceMemorySignal[],
+  counterpartIds: readonly string[] = [],
+): PersonExperienceLayer {
+  const counterparts = new Set(counterpartIds);
+  const ranked = [...memories].sort((left, right) => right.salience - left.salience || left.id.localeCompare(right.id));
+  const loss = ranked.filter((memory) => memory.emotionalValence <= -0.45 && memory.salience >= 50).slice(0, 2);
+  const obligations = ranked.filter((memory) => memory.lane === 'prospective'
+    || memory.unresolved && (memory.topicKeys ?? []).some((topic) => /commit|agenda|agreement|promise|project/u.test(topic)))
+    .slice(0, 2);
+  const closeness = ranked.filter((memory) => (memory.lane === 'social' || memory.lane === 'dialogue')
+    && memory.emotionalValence >= 0.2
+    && (counterparts.size === 0 || memory.personIds.some((personId) => counterparts.has(personId))))
+    .slice(0, 2);
+  const successes = ranked.filter((memory) => memory.lane === 'procedural'
+    && memory.emotionalValence >= 0.25
+    && (!memory.causalOutcome || memory.causalOutcome === 'completed' || memory.causalOutcome === 'progressed'))
+    .slice(0, 2);
+  const activeCues = [
+    cue('loss-or-harm', loss,
+      '相关的伤害或失去会更快进入注意，但不能把旧危险当成仍在发生',
+      '可以显出谨慎、牵挂或防备，只引用本人仍记得的具体部分'),
+    cue('unresolved-obligation', obligations,
+      '未解决的承诺、关切或失败会与眼前选择一起被权衡',
+      '说明自己仍挂念什么以及现实上能做到哪一步'),
+    cue('earned-closeness', closeness,
+      '与当前对象真实积累的亲近经验会提高关系线索的优先级',
+      '可以更熟悉或更坦率，但不把亲近扩大成服从和无条件同意'),
+    cue('repeated-success', successes,
+      '反复成功的亲历会提高对相近做法的信心，但仍要核对当前条件',
+      '表达可以更笃定和简洁，不能把过去成功保证成这次结果'),
+  ].filter((item): item is PersonExperienceCue => Boolean(item));
+  return {
+    version: 'person-experience-layer-v1',
+    authority: 'sourced-memory-and-learning',
+    adaptivePersonality: buildAdaptivePersonality(person),
+    activeCues,
+    rule: '只使用列出的来源记忆改变本轮注意与表达；记忆会遗忘、关系会变化，任何 cue 都不授权新行动或新事实。',
+  };
+}
+
+const REACTION_FACET_HINTS: Record<PersonSoulFacetId, readonly string[]> = {
+  'danger-and-loss': ['care', 'sensitivity', 'caution', 'resilience', 'setback'],
+  'autonomy-and-proposals': ['autonomy', 'assertiveness', 'principle', 'proposal'],
+  'trust-and-closeness': ['sociability', 'restraint', 'care', 'relationship', 'sensitivity'],
+  'commitment-and-work': ['duty', 'practicality', 'resilience', 'setback'],
+  'uncertainty-and-change': ['inquiry', 'imagination', 'adaptation', 'caution'],
+};
+
+export function selectPrototypeReactionPattern(
+  soul: PersonSoul,
+  facetId: PersonSoulFacetId,
+): PrototypeReactionPattern | undefined {
+  const patterns = soul.prototype?.reactionPatterns ?? [];
+  if (!patterns.length) return undefined;
+  const hints = REACTION_FACET_HINTS[facetId];
+  const matched = patterns.find((pattern) => hints.some((hint) => pattern.id.includes(hint)));
+  return matched ?? patterns[stableHash(`${soul.signature}:${facetId}`) % patterns.length];
+}
+
+function responseShape(style: PersonSoulStyleMatrix): string {
+  if (style.sentenceLength === 'short') return '通常一句短话；确有具体经历时才补第二句。';
+  if (style.sentenceLength === 'mixed') return '长短可以变化；没有具体内容时保持一句，有真实矛盾时再展开。';
+  return '通常一到两句，先回应最具体的一点。';
+}
+
+/** A compact, last-mile character note analogous to an in-chat depth note. */
+export function buildCharacterTurnNote(
+  soul: PersonSoul,
+  experience: PersonExperienceLayer,
+  facetId: PersonSoulFacetId,
+): CharacterTurnNote {
+  const facet = soul.sceneFacets.find((candidate) => candidate.id === facetId) ?? soul.sceneFacets[0]!;
+  const activeReaction = selectPrototypeReactionPattern(soul, facet.id);
+  return {
+    version: 'character-turn-note-v1',
+    activeFacet: {
+      id: facet.id,
+      attention: facet.attention,
+      innerTension: facet.innerTension,
+      speechTendency: facet.speechTendency,
+    },
+    ...(activeReaction ? {
+      activeReaction: structuredClone(activeReaction),
+    } : {}),
+    currentDelivery: experience.adaptivePersonality.styleMatrix,
+    experienceCues: experience.activeCues.slice(0, 2).map(({ kind, attention, expression }) => ({
+      kind, attention, expression,
+    })),
+    responseShape: responseShape(experience.adaptivePersonality.styleMatrix),
+    naturalSpeech: [
+      '先接住眼前最具体的一点，说到够用就停。一句能说清，就不要补成整齐的三句。',
+      '可以有短句、半句、改口或停顿，但不用每轮都表演。关系普通时不自动安慰、总结或表示愿意帮忙。',
+    ],
+    historyRule: '历史原话只证明当时说过什么。本轮按当前关系和处境重新说，不必继承旧回复的篇幅、客套或助手口吻。',
+    exampleRule: 'activeReaction.exampleLine 只示范节奏和用词，不是本轮事实；不要照抄。',
   };
 }
 
@@ -373,7 +631,7 @@ export function buildPersonSoul(person: PersonState): PersonSoul {
       : personality.emotionality <= 38 ? 'guarded' : 'balanced';
 
   return {
-    version: 2,
+    version: 3,
     authority: 'derived-personality',
     signature,
     innerVoice: [`我是${person.name}。`, ...traitVoices, autonomyVoice(person)].join(''),
@@ -386,5 +644,11 @@ export function buildPersonSoul(person: PersonState): PersonSoul {
     ],
     styleMatrix: styleMatrix(personality),
     sceneFacets: sceneFacets(person),
+    ...(person.profile?.personalitySummary && person.profile.reactionPatterns?.length ? {
+      prototype: {
+        personalitySummary: person.profile.personalitySummary,
+        reactionPatterns: structuredClone(person.profile.reactionPatterns).slice(0, 3),
+      },
+    } : {}),
   };
 }

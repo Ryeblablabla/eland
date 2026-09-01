@@ -162,7 +162,7 @@
 | `21 创造语言` | `capability:21:emergence:guarded:v2` | `ambivalent* · emergence*` | `guarded`：结构化沟通证明一次表达，不证明语言系统被创造。 |
 | `24 讲述并传承往事` | `capability:24:emergence:guarded:v2` | `ambivalent* · emergence*` | `guarded`：记忆或沟通尚不能证明内容是往事且完成传承。 |
 | `51 创造文字` | `capability:51:emergence:writing:v2` | `constructive · emergence` | `strict · writing（操作性口径）`：知识写入带 `recordPayloadId` 的实体载体，且另一人物取得并读懂同一 payload。 |
-| `201 用手势传达意图` | `capability:201:practice:gesture-communication:v2` | `constructive · practice` | `strict · gesture-communication`：`communicate` 明确使用手势渠道，并有至少一名不同人物处于实际 audience。 |
+| `201 用手势传达意图` | `capability:201:practice:gesture-communication:v2` | `constructive · practice` | `strict · gesture-communication`：`talk` 明确使用手势渠道，并有至少一名不同人物处于实际 audience。 |
 | `239 让知识在代际传递中改变` | `capability:239:emergence:guarded:v2` | `ambivalent* · emergence*` | `guarded`：跨代共同持有知识仍不足以证明内容发生了变化。 |
 | `240 在学校或知识体系崩解后恢复教学` | `capability:240:emergence:guarded:v2` | `ambivalent* · emergence*` | `guarded`：缺少学校/知识体系先崩解、教学后恢复的同一历史链。 |
 | `241 记住个人经历` | `capability:241:practice:memory:v2` | `ambivalent · practice` | `strict · memory`：人物记忆保存可解析 `sourceEventIds`，来源是亲历、对话、承诺或失败事实。 |

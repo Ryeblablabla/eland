@@ -7,6 +7,10 @@ import {
   validatePlayerInteractionChoice,
 } from '../src/game/eland/infrastructure-api';
 import { followUpSemanticallyMatches } from '../src/game/eland/domain/intent-follow-up';
+import {
+  buildCharacterTurnNote,
+  buildPersonExperienceLayer,
+} from '../src/game/eland/domain/person-soul';
 import { animalSpecies } from '../src/game/eland/domain/animal';
 import { canAccessContainer, CONTAINER_CAPACITY, containerUsedCapacity } from '../src/game/eland/domain/container';
 import { Material, materialDefinition, materialHas } from '../src/game/eland/domain/material';
@@ -295,11 +299,21 @@ export function buildAgentInteractionContext(
     participantIds: mentionedPersonIds,
     maximum: 6,
   });
+  const memoryBySourceId = new Map(memoryCandidates.map((memory, index) => [
+    memory.sourceId,
+    projected.person.memories[index],
+  ]));
+  const selectedExperienceMemories = selectedMemories.flatMap((memory) => {
+    const sourceMemory = memoryBySourceId.get(memory.sourceId);
+    return sourceMemory ? [sourceMemory] : [];
+  });
+  const experience = buildPersonExperienceLayer(person, selectedExperienceMemories, mentionedPersonIds);
   const playerIdentityQuestion = isPlayerIdentityQuestion(playerMessage);
   const hasCurrentCommitment = Boolean(projected.activeIntent || projected.activeProject
     || projected.agreements.some((agreement) => agreement.status === 'active' || agreement.status === 'proposed'));
   const personaFrame = buildPersonaFrame({
     soul: projected.person.soul,
+    experience,
     message: playerMessage,
     actionChoiceRequested,
     choiceEnabled,
@@ -309,6 +323,11 @@ export function buildAgentInteractionContext(
     hasCurrentCommitment,
     recalledMemorySourceIds: selectedMemories.map((memory) => memory.sourceId as string),
   });
+  const characterNote = buildCharacterTurnNote(
+    projected.person.soul,
+    experience,
+    personaFrame.activatedFacet.id,
+  );
   const localContext: Record<string, unknown> = {
     interaction: {
       requestKind,
@@ -332,8 +351,18 @@ export function buildAgentInteractionContext(
         stage: condition.stage,
       })),
       personality: projected.person.personality,
-      soul: projected.person.soul,
+      soul: {
+        version: projected.person.soul.version,
+        authority: projected.person.soul.authority,
+        signature: projected.person.soul.signature,
+        innerVoice: projected.person.soul.innerVoice,
+        ...(projected.person.soul.prototype ? {
+          prototypeSummary: projected.person.soul.prototype.personalitySummary,
+        } : {}),
+      },
+      experience,
       personaFrame,
+      characterNote,
       communication: communicationProfile(projected.person.capacities.communication, projected.person.ageMonths),
       traits: projected.person.traits.map((trait, index) => source(`self-trait:${index + 1}`, {
         name: trait.name,
@@ -636,6 +665,9 @@ export function buildAgentInteractionMessages(
 ): ModelMessage[] {
   const person = localContext.person as { name?: unknown } | undefined;
   const personName = typeof person?.name === 'string' ? person.name : 'person';
+  const characterNote = person && typeof person === 'object'
+    ? (person as Record<string, unknown>).characterNote
+    : undefined;
   return [
     { role: 'system', content: AGENT_INTERACTION_SYSTEM_PROMPT },
     ...historyMessages(input.turns),
@@ -664,6 +696,15 @@ export function buildAgentInteractionMessages(
         localContext,
       }),
     },
+    ...(characterNote ? [{
+      role: 'user' as const,
+      content: JSON.stringify({
+        protocol: 'eland-character-note-v1',
+        appliesTo: 'next-person-reply',
+        characterNote,
+        instruction: '按这张临场角色注记控制节奏和态度，直接回复上一条 currentTurn；输出格式仍服从 Player Conversation Contract。',
+      }),
+    }] : []),
   ];
 }
 

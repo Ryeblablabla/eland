@@ -92,6 +92,8 @@ export function makeCloudVolumeMaterial(noiseMap: THREE.Texture): THREE.ShaderMa
       uSunColor: { value: new THREE.Color('#fff1d6') },
     }]),
     vertexShader: /* glsl */`
+      uniform sampler2D uNoiseMap;
+      uniform vec2 uOffset;
       varying vec3 vCloudLocal;
       varying vec3 vCloudNormal;
       varying vec3 vViewNormal;
@@ -100,7 +102,13 @@ export function makeCloudVolumeMaterial(noiseMap: THREE.Texture): THREE.ShaderMa
         vCloudLocal = position;
         vCloudNormal = normal;
         vViewNormal = normalize(normalMatrix * normal);
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        // 积云平底：下半球压平成云底，云顶保持圆拱。
+        vec3 shaped = position;
+        shaped.y = max(shaped.y, -0.30);
+        // 湍流边缘：噪声沿法线位移，uOffset 随风前进，云形随时间缓慢蠕动。
+        float morph = textureLod(uNoiseMap, position.xz * 0.14 + vec2(0.5) + uOffset * 0.6, 0.0).r;
+        shaped += normal * (morph - 0.5) * 0.34;
+        vec4 mvPosition = modelViewMatrix * vec4(shaped, 1.0);
         gl_Position = projectionMatrix * mvPosition;
         #include <fog_vertex>
       }
@@ -132,7 +140,6 @@ export function makeCloudVolumeMaterial(noiseMap: THREE.Texture): THREE.ShaderMa
         float edgeFade = smoothstep(0.035, 0.72, facing);
         float density = 0.70 + detail * 0.30;
         float alpha = uOpacity * edgeFade * density;
-        if (alpha < 0.004) discard;
 
         // 照明以真实天光方向为主：朝日面亮、背日面沉；太阳低垂时亮色染成阳光色。
         float sunFacing = clamp(dot(normalize(vCloudNormal), normalize(uSunDir)) * 0.5 + 0.5, 0.0, 1.0);
@@ -141,6 +148,11 @@ export function makeCloudVolumeMaterial(noiseMap: THREE.Texture): THREE.ShaderMa
         vec3 litColor = mix(uLightColor, uSunColor, 0.42);
         vec3 color = mix(uShadeColor, litColor, lightMix);
         color *= 0.94 + detail * 0.08;
+        // 银边：视线掠射且朝向太阳时云缘透光发亮——低角度阳光的经典云相。
+        float rim = pow(1.0 - facing, 2.4) * sunFacing;
+        color += uSunColor * rim * 0.55 * uDaylight;
+        alpha = clamp(alpha + rim * 0.2 * uDaylight, 0.0, 1.0);
+        if (alpha < 0.004) discard;
         gl_FragColor = vec4(color, alpha);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>

@@ -49,6 +49,38 @@ export function addInventory(
   return stack;
 }
 
+export function addContainedInventory(
+  person: PersonState,
+  materialId: MaterialId,
+  quantity: number,
+  containerStackId: string,
+  sourceEventIds: string[],
+  stackId = `stack-${person.id}-${materialId}-${containerStackId}`,
+  sourceLineageKeys: string[] = [],
+): ItemStack {
+  const existing = person.inventory.find((stack) => stack.materialId === materialId
+    && stack.containedByStackId === containerStackId);
+  if (existing) {
+    existing.quantity += quantity;
+    existing.sourceEventIds = boundedItemSourceEventIds([...existing.sourceEventIds, ...sourceEventIds]);
+    existing.sourceLineageKeys = [...new Set([
+      ...(existing.sourceLineageKeys ?? []),
+      ...sourceLineageKeys,
+    ])].slice(-32);
+    return existing;
+  }
+  const stack: ItemStack = {
+    id: stackId,
+    materialId,
+    quantity,
+    containedByStackId: containerStackId,
+    sourceEventIds: boundedItemSourceEventIds(sourceEventIds),
+    ...(sourceLineageKeys.length ? { sourceLineageKeys: [...new Set(sourceLineageKeys)].slice(-32) } : {}),
+  };
+  person.inventory.push(stack);
+  return stack;
+}
+
 export function addContainerInventory(
   container: ContainerState,
   materialId: MaterialId,

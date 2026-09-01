@@ -1,5 +1,4 @@
 import type { PhysicalStructureIndex, SimulationState } from '../domain/model';
-import { committedHistoryView } from '../domain/history';
 import {
   copyPhysicalStructures,
   physicalStructureIndexOf,
@@ -56,34 +55,31 @@ export const simulationObservationProjector: ObservationProjector = {
     if (!historyCursor) {
       throw new Error('观察器输入缺少已提交 history cursor');
     }
-    if (historyCursor.hotStartIndex > 0) {
-      throw new Error('bounded state 缺少已验证的累计观察器投影，不能按热窗口重算文明观察');
-    }
     if (mode === 'structures-only') {
       const physicalStructureIndex = snapshot.authority.world.physicalStructureIndex;
       if (!physicalStructureIndex) {
         throw new Error('观察器输入缺少已提交 physicalStructureIndex');
       }
-      const previous = detachedMutableClone<SimulationObservationState>(
-        snapshot.previousObservations,
-      );
+      const previous = snapshot.previousObservations;
       return Object.freeze({
         kind: 'materialized' as const,
         observations: Object.freeze({
           ...previous,
           derived: {
             ...previous.derived,
+            // This branch only replaces the compatibility mirror. The patch
+            // is recursively cloned by applySimulationObservationProjection
+            // before it can become writable state, so cloning the complete
+            // prior observer snapshot here would duplicate the dominant work
+            // on eleven non-annual months.
             structures: copyPhysicalStructures(
-              detachedMutableClone<PhysicalStructureIndex>(physicalStructureIndex),
+              physicalStructureIndex as DeepReadonly<PhysicalStructureIndex> as PhysicalStructureIndex,
             ),
           },
         }),
       });
     }
     const state = observationReadState(snapshot);
-    if (committedHistoryView(state).hotStartIndex > 0) {
-      throw new Error('bounded state 缺少已验证的累计观察器投影，不能按热窗口重算文明观察');
-    }
     const physicalStructureIndex = physicalStructureIndexOf(state);
     if (mode === 'full') {
       state.derived = deriveObservations(state, physicalStructureIndex);

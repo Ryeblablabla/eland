@@ -74,10 +74,8 @@ export function durableRecordWriteEvidence(
   return projectActionFacts(state, project).flatMap((writeFact) => {
     if (writeFact.status !== 'completed'
       || writeFact.who !== project.ownerId
-      || writeFact.action.kind !== 'communicate'
-      || writeFact.action.channel !== 'record'
-      || writeFact.action.content.kind !== 'claim'
-      || writeFact.action.content.factId !== project.targetKnowledgeId
+      || writeFact.action.kind !== 'inscribe'
+      || writeFact.action.inscriptionMeaning.factId !== project.targetKnowledgeId
       || writeFact.diff.knowledgeId !== project.targetKnowledgeId
       || typeof writeFact.diff.recordPayloadId !== 'string'
       || typeof writeFact.diff.carrierStackId !== 'string') return [];
@@ -487,6 +485,12 @@ function capabilityReplicationEvidenceIds(state: SimulationState, project: Proje
 }
 
 export function projectFunctionSatisfied(state: SimulationState, project: ProjectState): boolean {
+  if (project.hibernationRescueBasis) {
+    const sleeper = state.people.find((person) => person.id === project.hibernationRescueBasis?.sleeperId && isAlive(person));
+    return Boolean(sleeper
+      && !sleeper.conditions.some((condition) => condition.id === project.hibernationRescueBasis?.hibernationConditionId)
+      && Math.min(sleeper.body.health, sleeper.body.hydration, sleeper.body.nutrition) >= 45);
+  }
   if (project.capabilityReplicationBasis) {
     return capabilityReplicationEvidenceIds(state, project).length > 0;
   }
@@ -552,6 +556,17 @@ export function projectFunctionSatisfied(state: SimulationState, project: Projec
 }
 
 export function projectCompletionEvidence(state: SimulationState, project: ProjectState): string[] {
+  if (project.hibernationRescueBasis) {
+    return projectActionFacts(state, project)
+      .filter((event) => event.status === 'completed' && (
+        event.action.kind === 'act' && event.action.operation === 'rehydrate'
+        || event.action.kind === 'transfer' && (
+          event.action.materialId === Material.Water
+          || materialHas(event.action.materialId, 'edible')
+        )
+      ))
+      .map((event) => event.id);
+  }
   if (project.capabilityReplicationBasis) {
     return capabilityReplicationEvidenceIds(state, project);
   }

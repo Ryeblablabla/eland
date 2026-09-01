@@ -603,16 +603,16 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
   const interactionKinds = new Set<string>();
   for (const event of events) {
     if (event.kind !== 'action' || event.status !== 'completed') continue;
-    if (event.action.kind === 'communicate') {
-      const audience = event.action.audience
+    if (event.action.kind === 'talk') {
+      const audience = ((event.diff.understoodByPersonIds as string[] | undefined) ?? [])
         .filter((personId) => !FILTER_SOCIAL_SELF_DYADS || personId !== event.who);
-      if (audience.length) interactionKinds.add(`communicate:${event.action.content.kind}`);
-      const isDirectedCoordination = event.action.audience.length === 1
-        || event.action.content.kind === 'request'
-        || event.action.content.kind === 'offer'
-        || event.action.content.kind === 'accept'
-        || event.action.content.kind === 'reject'
-        || event.action.content.kind === 'revoke-agreement';
+      if (audience.length) interactionKinds.add(`communicate:${event.action.speakerMeaning.kind}`);
+      const isDirectedCoordination = ((event.diff.understoodByPersonIds as string[] | undefined) ?? []).length === 1
+        || event.action.speakerMeaning.kind === 'request'
+        || event.action.speakerMeaning.kind === 'offer'
+        || event.action.speakerMeaning.kind === 'accept'
+        || event.action.speakerMeaning.kind === 'reject'
+        || event.action.speakerMeaning.kind === 'revoke-agreement';
       if (isDirectedCoordination) audience
         .forEach((personId) => interactionDyads.add(pairKey(event.who, personId)));
     } else if (event.action.kind === 'transfer') {
@@ -673,10 +673,10 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
   for (const event of events) {
     if (event.kind === 'action'
       && event.status === 'completed'
-      && event.action.kind === 'communicate'
-      && event.action.content.kind === 'claim'
-      && event.action.content.factId
-      && event.action.audience.length > 0) taughtFactIds.add(event.action.content.factId);
+      && event.action.kind === 'talk'
+      && event.action.speakerMeaning.kind === 'claim'
+      && event.action.speakerMeaning.factId
+      && ((event.diff.understoodByPersonIds as string[] | undefined) ?? []).length > 0) taughtFactIds.add(event.action.speakerMeaning.factId);
     if (event.kind === 'environment' && typeof event.diff.bornPersonId === 'string') {
       births += 1;
       causalEpisodeAnchors.add(event.id);

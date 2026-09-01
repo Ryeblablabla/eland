@@ -1,7 +1,7 @@
 import type { SimulationState } from '../domain/model';
 import { isAlive, type PersonState } from '../domain/person';
 import { shelterGeometryAt } from '../domain/structure';
-import { neighbors4, standingPositions } from '../world/grid';
+import { findStandingPath, neighbors4, standingPositions } from '../world/grid';
 
 export interface LocalShelterCapacityObservation {
   visiblePersonCount: number;
@@ -31,6 +31,7 @@ export function observeLocalShelterCapacity(
     if (!neighbors4(cell).every((neighbor) => visible.has(neighbor))) return [];
     return standingPositions(state.world.grid, cell)
       .filter((position) => Boolean(shelterGeometryAt(state.world.grid, position)))
+      .filter((position) => findStandingPath(state.world.grid, observer.position, position).length > 0)
       .map(positionKey);
   }));
   const people = [...new Map([observer, ...visiblePeople]

@@ -149,7 +149,7 @@ function speechBubbleTexture(text: string, placement: SpeechBubblePlacement): Sp
 // ---------------------------------------------------------------------------
 
 export type FigureAction = 'idle' | 'walk' | 'gather' | 'harvest' | 'attack' | 'carry' | 'ingest'
-  | 'craft' | 'work' | 'tend-fire' | 'attend' | 'communicate' | 'care' | 'reproduce';
+  | 'craft' | 'work' | 'tend-fire' | 'attend' | 'talk' | 'care' | 'reproduce';
 export type FigureAge = 'child' | 'adult' | 'elder';
 
 export interface FigureParts {
@@ -226,7 +226,8 @@ export function figureActionOf(agent: SocietyAgent, intent: IntentView | undefin
   if (view.actionKind === 'move') return 'walk';
   if (view.actionKind === 'transfer') return 'carry';
   if (view.actionKind === 'attend') return 'attend';
-  if (view.actionKind === 'communicate') return view.channel === 'record' ? 'attend' : 'communicate';
+  if (view.actionKind === 'inscribe') return 'attend';
+  if (view.actionKind === 'talk') return 'talk';
   if (view.operation === 'ingest') return 'ingest';
   if (view.operation === 'hunt') return 'attack';
   if (view.operation === 'separate') {

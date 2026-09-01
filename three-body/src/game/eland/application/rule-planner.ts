@@ -70,13 +70,13 @@ export function hasFulfillmentOpportunity(context: DecisionContext): boolean {
 
 function isExecutingPriorityObligation(intent: Intent): boolean {
   if (intent.agreementId) return true;
-  const action = intent.nextAction.kind === 'communicate'
+  const action = intent.nextAction.kind === 'talk'
     ? intent.nextAction
-    : intent.completionAction?.kind === 'communicate'
+    : intent.completionAction?.kind === 'talk'
       ? intent.completionAction
       : undefined;
   if (!action) return false;
-  const content = action.content;
+  const content = action.speakerMeaning;
   return content.kind === 'accept'
     || content.kind === 'reject'
     || (content.kind === 'claim' && content.conversation?.turn === 'response');
@@ -104,13 +104,13 @@ function optionalLifeReviewKind(option: ActionOption): LifeReviewEvidence['optio
   if (semantics.reproduction?.phase === 'proposal'
     && semantics.reproduction.direction === 'proceed') return 'offer-reproduce';
   const action = option.completionAction ?? option.nextAction;
-  if (action.kind === 'communicate'
-    && (action.content.kind === 'request' || action.content.kind === 'offer')
-    && action.content.proposal?.kind === 'companion') return 'offer-companion';
-  if (action.kind === 'communicate'
-    && action.content.kind === 'request'
-    && action.content.proposal?.kind === 'assist'
-    && action.content.proposal.need === 'company') return 'request-company';
+  if (action.kind === 'talk'
+    && (action.speakerMeaning.kind === 'request' || action.speakerMeaning.kind === 'offer')
+    && action.speakerMeaning.proposal?.kind === 'companion') return 'offer-companion';
+  if (action.kind === 'talk'
+    && action.speakerMeaning.kind === 'request'
+    && action.speakerMeaning.proposal?.kind === 'assist'
+    && action.speakerMeaning.proposal.need === 'company') return 'request-company';
   return undefined;
 }
 
@@ -324,8 +324,6 @@ export class RulePlanner implements AgentDecider {
   }
 
   decideAt(context: DecisionContext, moment: PlanningMoment): Decision {
-    // Open conversation exists only so a model can choose its own subject and
-    // wording. Pure local mode keeps using the older grounded topic menu.
     context = withoutOpenConversationOptions(context);
     if (this.defersVoluntarySocialChoicesToModel) {
       context = withoutModelOwnedVoluntarySocialOptions(context);
@@ -354,9 +352,11 @@ export class RulePlanner implements AgentDecider {
     const fulfillment = context.options.filter(isFulfillmentOption);
     const forcedOptions = required.length ? required : fulfillment;
     const forced = rankOptionsWithoutForesight(context, forcedOptions, moment)[0];
-    if (active && forced) {
+    if (forced) {
+      const reason = required.length ? '先完成必须由本人作出的回应' : '先履行已经生效的承诺或职责';
+      if (!active) return { kind: 'start', optionId: forced.id, reason };
       if (isExecutingPriorityObligation(active)) {
-        return { kind: 'idle', reason: '先完成已经开始的回应或履约；新收到的义务随后仍会保留并依次处理' };
+        return { kind: 'idle', reason: '先完成已经开始的回应或履约' };
       }
       return {
         kind: 'revise',
@@ -366,16 +366,10 @@ export class RulePlanner implements AgentDecider {
           mode: 'interrupt' as const,
           interruptionKind: required.length ? 'required-response' as const : 'fulfillment' as const,
         } : {}),
-        reason: required.length ? '先完成必须由本人作出的回应' : '先履行已经生效的承诺或职责',
+        reason,
       };
     }
-    if (forced) return {
-      kind: 'start',
-      optionId: forced.id,
-      reason: required.length ? '先完成必须由本人作出的回应' : '先履行已经生效的承诺或职责',
-    };
 
-    const lifeReview = active ? groundedLifeReviewOpportunity(context) : null;
     const {
       option,
       followUp,
@@ -400,97 +394,27 @@ export class RulePlanner implements AgentDecider {
         : { kind: 'idle', reason: context.options.length ? deliberationReason : '当前没有可执行目标' };
     }
 
-    if (option?.nextAction.kind === 'act' && option.nextAction.operation === 'dehydrate') {
-      return withDeliberation({
-        kind: 'revise',
-        intentId: active.id,
-        optionId: option.id,
-        mode: 'interrupt',
-        interruptionKind: 'survival-reflex',
-        reason: '乱纪元的直接生存风险要求暂时进入脱水休眠，恢复后返回原有安排',
-      });
-    }
-
-    // A demand-bound record experiment is an instrumental child of one exact
-    // owned active project, even when the currently resumable activity is a
-    // different generic state goal. Never insert it without a legal option.
-    if (option?.recordUseBasis
-      && !active.recordUseBasis
-      && isResumableIntent(active)) {
-      return withDeliberation({
-        kind: 'revise',
-        intentId: active.id,
-        optionId: option.id,
-        mode: 'interrupt',
-        interruptionKind: 'record-use',
-        reason: option.recordUseStage === 'acquire'
-          ? '可见公共记录与本人活动项目的真实技术缺口完全匹配，先亲自取得、读懂、准备并核验，再返回原安排'
-          : option.recordUseStage === 'read'
-            || option.recordUseStage === 'prepare-experiment'
-            || option.recordUseStage === 'experiment'
-            || option.recordUseStage === 'read-experiment'
-            ? '本人持有的实体记录与本人活动项目的真实技术缺口完全匹配，先读懂并沿项目物流准备实体材料，再亲自复现'
-          : '这项旧版记录交付与身边项目的真实技术缺口匹配，短暂完成后继续原安排',
-      });
-    }
-
     const persistence = assessIntentionPersistence(context, active, appraisal, moment);
     if (persistence.keep || !option || goalSatisfied(context.state, context.person, active.goal)) {
       return { kind: 'idle', reason: persistence.reason };
     }
-
-    const voluntaryConversationAction = option.completionAction ?? option.nextAction;
-    if (voluntaryConversationAction.kind === 'communicate'
-      && voluntaryConversationAction.content.kind === 'claim'
-      && voluntaryConversationAction.content.conversation
-      && isResumableIntent(active)) {
-      return withDeliberation({
-        kind: 'revise',
-        intentId: active.id,
-        optionId: option.id,
-        mode: 'interrupt',
-        interruptionKind: 'voluntary-conversation',
-        reason: `${persistence.reason}；短暂说完这轮话后返回原来的工作；${deliberationReason}`,
-      });
-    }
-
-    if (lifeReview?.option.id === option.id) {
-      const matchingProjectFollowUps = context.followUpOptions.filter((candidate) => candidate.projectId === active.projectId
-        && followUpSemanticallyMatches(lifeReview.option, candidate));
-      const lifeReviewFollowUp = lifeReview.option.requiresFollowUp
-        ? rankOptionsWithoutForesight(context, matchingProjectFollowUps, moment)[0]
-        : undefined;
-      return withDeliberation({
-        kind: 'revise',
-        intentId: active.id,
-        optionId: lifeReview.option.id,
-        ...(lifeReviewFollowUp ? { followUpOptionId: lifeReviewFollowUp.id } : {}),
-        mode: 'interrupt',
-        interruptionKind: 'life-review',
-        reason: `${persistence.reason}；生活复核：${lifeReview.reasons.length ? lifeReview.reasons.join('、') : '眼前出现具体生活机会'}；${deliberationReason}`,
-        lifeReview: lifeReview.evidence,
-      });
-    }
-
-    const optionAction = option?.completionAction ?? option?.nextAction;
-    if (optionAction?.kind === 'communicate'
-      && (optionAction.content.kind === 'request' || optionAction.content.kind === 'offer')
-      && optionAction.content.proposal?.kind === 'collective'
-      && option.sourceFactIds.length > 0) {
-      return withDeliberation({
-        kind: 'revise',
-        intentId: active.id,
-        optionId: option.id,
-        ...(followUp ? { followUpOptionId: followUp.id } : {}),
-        reason: '与共同项目协作者重逢，出现了把已完成合作延续为成员关系的具体机会',
-      });
-    }
-
+    const action = option.completionAction ?? option.nextAction;
+    const interruptionKind = option.nextAction.kind === 'act' && option.nextAction.operation === 'dehydrate'
+      ? 'survival-reflex' as const
+      : option.recordUseBasis
+        ? 'record-use' as const
+        : action.kind === 'talk'
+          ? 'voluntary-conversation' as const
+          : undefined;
     return withDeliberation({
       kind: 'revise',
       intentId: active.id,
       optionId: option.id,
       ...(followUp ? { followUpOptionId: followUp.id } : {}),
+      ...(interruptionKind && isResumableIntent(active) ? {
+        mode: 'interrupt' as const,
+        interruptionKind,
+      } : {}),
       reason: `${persistence.reason}；${deliberationReason}`,
     });
   }

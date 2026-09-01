@@ -13,6 +13,7 @@ import type {
 } from '../../domain/project';
 import { worldEventById } from '../../domain/event-index';
 import { canPersonPlanToCollectProjectMaterialDrop } from '../../domain/project-material-request';
+import { visibleWildlifeThreatsGuardingPosition } from '../../domain/wildlife-threat';
 import {
   cellX,
   cellY,
@@ -51,6 +52,32 @@ export function activeLogisticsEpisode(project: ProjectState): ProjectLogisticsE
     && candidate.status === 'active');
   if (!episode) delete project.activeLogisticsEpisodeId;
   return episode;
+}
+
+/**
+ * A fixed, already seen source remains authoritative, but it is not currently
+ * executable when an aggressive animal the actor can see has its alarm area
+ * over that exact destination. Animal movement is a monthly world process, so
+ * the same episode may naturally resume after the next changed observation.
+ */
+export function activeLogisticsEpisodeWaitsForVisibleWildlife(
+  state: SimulationState,
+  person: PersonState,
+  episode: ProjectLogisticsEpisode | undefined,
+): boolean {
+  if (!episode || episode.status !== 'active' || episode.actorId !== person.id) return false;
+  return movementRouteWaitsForVisibleWildlife(state, person, episode.target);
+}
+
+export function movementRouteWaitsForVisibleWildlife(
+  state: SimulationState,
+  person: PersonState,
+  target: StandingPosition,
+): boolean {
+  const path = findStandingPath(state.world.grid, person.position, target);
+  return path.slice(1).some((position) => (
+    visibleWildlifeThreatsGuardingPosition(state, person, position).length > 0
+  ));
 }
 
 export function endLogisticsEpisode(
@@ -873,6 +900,7 @@ export function activeEpisodeStep(
   project: ProjectState,
   episode: ProjectLogisticsEpisode,
 ): ProjectStep | null {
+  if (activeLogisticsEpisodeWaitsForVisibleWildlife(state, person, episode)) return null;
   if (episode.kind === 'drop') return dropEpisodeStep(state, person, visibleDrops, project, episode);
   if (episode.kind === 'source') return sourceEpisodeStep(state, person, project, episode);
   return searchEpisodeStep(state, person, project, episode);

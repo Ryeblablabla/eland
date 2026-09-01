@@ -62,8 +62,8 @@ function connectionSummary(kind: CandidateKind, inputMaterialId: MaterialId): st
   const material = materialDefinition(inputMaterialId).name;
   if (kind === 'vertical') return `把${material}连接到已有结构上方`;
   if (kind === 'lateral') return `从已有结构向侧面继续连接${material}`;
-  if (kind === 'overhead') return `从邻近高处结构向头顶空气延伸${material}`;
-  return `把${material}连接到身边有支撑的空气中`;
+  if (kind === 'overhead') return `从邻近高处结构向头顶空位延伸${material}`;
+  return `把${material}安装到身边有支撑的空位`;
 }
 
 export function buildConstructionOptions(state: SimulationState, person: PersonState): ActionOption[] {
@@ -84,10 +84,10 @@ export function buildConstructionOptions(state: SimulationState, person: PersonS
       id: `build:${position.x}:${position.y}:${position.z}:${stack.id}`,
       summary: connectionSummary(kind, stack.materialId),
       reason: materialHas(stack.materialId, 'placeable')
-        ? '这种固体物质可以放在有实体支撑且没有身体占据的空气中'
+        ? '这种固体材料可以安装到有实体支撑且没有身体占据的空位'
         : kind === 'grounded'
-        ? '这种固体物质具有建造性质，目标空气下方有实体支撑且没有身体占据'
-        : '这种固体物质具有建造性质，目标空气与人物已连接的结构相邻且没有身体占据',
+        ? '这种固体材料具有建造性质，目标空位下方有实体支撑且没有身体占据'
+        : '这种固体材料具有建造性质，目标空位与人物已连接的结构相邻且没有身体占据',
       goal: { kind: 'voxel-is' as const, position, materialId: outputMaterialId },
       nextAction: {
         kind: 'act' as const, operation: 'combine' as const,

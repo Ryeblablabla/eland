@@ -16,6 +16,7 @@ import type {
   ProjectState,
 } from '../../domain/project';
 import { shelterGeometryAt } from '../../domain/structure';
+import { findReachableShelter } from '../../domain/shelter-access';
 import { worldEventById } from '../../domain/event-index';
 import { inspectProjectMaterialContributionRequest } from '../../domain/project-material-request';
 import {
@@ -61,7 +62,7 @@ import {
   projectCultivationCells,
   verifiedProductionToolFunctions,
 } from './project-completion';
-import { proposalWithInquiryOpportunityMemory } from './project-inquiry';
+import { proposalWithInquiryOpportunityMemory, reliableExposureTechniques } from './project-inquiry';
 import { visibleCellsFor } from './project-perception';
 import { knownFacilitySite } from './project-workplace';
 import { projectsOwnedBy } from '../../domain/state-index';
@@ -124,6 +125,41 @@ function proposal(
     triggerFactIds: [...basis.sourceFactIds],
     pressure: basis.pressure,
     pressureBasis: basis,
+  };
+}
+
+function reuseVisibleTerminalConstructionSite(
+  state: SimulationState,
+  person: PersonState,
+  candidate: ProjectProposal,
+  visibleCells: ReadonlySet<number>,
+): ProjectProposal {
+  if (candidate.kind !== 'construction') return candidate;
+  const reusable = state.projects
+    .filter((project) => (project.status === 'blocked' || project.status === 'abandoned')
+      && project.kind === 'construction'
+      && project.desiredFunction === candidate.desiredFunction
+      && Boolean(project.site && visibleCells.has(project.site.cellId))
+      && project.actionEventIds.length > 0)
+    .sort((left, right) => {
+      const leftDistance = Math.abs(cellX(left.site!.cellId) - cellX(person.position.cellId))
+        + Math.abs(cellY(left.site!.cellId) - cellY(person.position.cellId));
+      const rightDistance = Math.abs(cellX(right.site!.cellId) - cellX(person.position.cellId))
+        + Math.abs(cellY(right.site!.cellId) - cellY(person.position.cellId));
+      return leftDistance - rightDistance
+        || right.actionEventIds.length - left.actionEventIds.length
+        || left.id.localeCompare(right.id);
+    })[0];
+  if (!reusable?.site) return candidate;
+  return {
+    ...candidate,
+    summary: `接续旧工地完成“${candidate.summary}”`,
+    site: { ...reusable.site },
+    triggerFactIds: [...new Set([
+      ...candidate.triggerFactIds,
+      ...reusable.actionEventIds.slice(-8),
+      ...reusable.failureEventIds.slice(-4),
+    ])],
   };
 }
 
@@ -449,14 +485,17 @@ export function deriveProjectProposals(
   const severeWeather = (state.civilization.weather.kind === 'storm' && state.civilization.weather.intensity >= 2)
     || state.civilization.climate.kind === 'fire'
     || ((state.civilization.climate.kind === 'cold' || state.civilization.climate.kind === 'heat') && state.civilization.climate.severity >= 3);
-  const ownShelter = shelterGeometryAt(state.world.grid, person.position);
-  const sheltered = Boolean(ownShelter);
   const adaptation = shelterAdaptationProposal(state, person, visiblePeople, pressureView);
   if (adaptation) proposals.push(adaptation);
   const localShelterCapacity = observeLocalShelterCapacity(state, person, visibleCells, visiblePeople);
   const locallyUnsheltered = localShelterCapacity.unshelteredPersonIds.includes(person.id);
   const capacityShortfall = localShelterCapacity.capacityShortfall > 0;
-  if (!adaptation && (exposed || severeWeather || capacityShortfall) && locallyUnsheltered) proposals.push(compileProposal('shelter-capacity', {
+  const reachableShelter = locallyUnsheltered
+    ? findReachableShelter(state, person, visibleCells)
+    : null;
+  const availableShelterKnown = localShelterCapacity.freeShelterSlots > 0 || Boolean(reachableShelter);
+  const needsImmediateShelter = Boolean((exposed || severeWeather) && !availableShelterKnown);
+  if (!adaptation && locallyUnsheltered && (capacityShortfall || needsImmediateShelter)) proposals.push(compileProposal('shelter-capacity', {
     kind: 'construction', desiredFunction: 'weather-shelter',
     summary: capacityShortfall
       ? '为自己和眼前同伴补足能进入并遮蔽天气的住所位置'
@@ -970,22 +1009,39 @@ export function deriveProjectProposals(
     'construction',
   );
   const metallurgySite = knownFacilitySite(state, person);
+  const exposureCompatibleSite = (
+    inputMaterialId: MaterialId,
+    outputMaterialId: MaterialId,
+  ): ProjectState['site'] | undefined => {
+    for (const technique of reliableExposureTechniques(person)) {
+      if (technique.rule.inputMaterialId !== inputMaterialId
+        || technique.rule.outputMaterialId !== outputMaterialId
+        || !materialHas(technique.rule.targetMaterialId, 'facility')
+        || !materialHas(technique.rule.targetMaterialId, 'hot')) continue;
+      const site = knownFacilitySite(state, person, [technique.rule.targetMaterialId]);
+      if (site) return site;
+    }
+    return metallurgySite;
+  };
+  const brickFiringSite = exposureCompatibleSite(Material.Clay, Material.FiredBrick);
+  const copperSmeltingSite = exposureCompatibleSite(Material.CopperCharge, Material.Copper);
+  const tinSmeltingSite = exposureCompatibleSite(Material.TinCharge, Material.Tin);
   pushDevelopmentProposal(
     'high-heat-capability',
     'brick-firing',
     '在固定窑炉中反复烧制砖料，为更复杂建筑准备耐火材料',
-    Boolean(metallurgySite && hasOwn(Material.Clay) && hasFacility(Material.Kiln, Material.Foundry)),
+    Boolean(brickFiringSite && hasOwn(Material.Clay) && hasFacility(Material.Kiln, Material.Foundry)),
     'production',
-    metallurgySite,
+    brickFiringSite,
   );
   pushDevelopmentProposal('alloy-capability', 'copper-charge', '在固定窑炉汇合铜矿与木炭，配成可冶炼的铜料',
     Boolean(metallurgySite && hasObserved(Material.CopperOre)), 'production', metallurgySite);
   pushDevelopmentProposal('alloy-capability', 'copper-smelting', '在固定高温设施中从铜料得到金属铜',
-    Boolean(metallurgySite && hasObserved(Material.CopperCharge)), 'production', metallurgySite);
+    Boolean(copperSmeltingSite && hasObserved(Material.CopperCharge)), 'production', copperSmeltingSite);
   pushDevelopmentProposal('alloy-capability', 'tin-charge', '在固定窑炉汇合锡矿与木炭，配成可冶炼的锡料',
     Boolean(metallurgySite && hasObserved(Material.TinOre)), 'production', metallurgySite);
   pushDevelopmentProposal('alloy-capability', 'tin-smelting', '在固定高温设施中从锡料得到金属锡',
-    Boolean(metallurgySite && hasObserved(Material.TinCharge)), 'production', metallurgySite);
+    Boolean(tinSmeltingSite && hasObserved(Material.TinCharge)), 'production', tinSmeltingSite);
   pushDevelopmentProposal('alloy-capability', 'bronze-alloying', '在固定工地汇合铜锡并反复校验比例，得到可用青铜',
     Boolean(metallurgySite && hasObserved(Material.Copper) && hasObserved(Material.Tin)), 'production', metallurgySite);
   pushDevelopmentProposal('alloy-capability', 'bronze-tooling', '在固定工地把青铜变成能显著提高生产效率的专门工具',
@@ -1038,7 +1094,12 @@ export function deriveProjectProposals(
     'construction',
   );
 
-  return proposals.flatMap((candidate) => {
+  return proposals.map((candidate) => reuseVisibleTerminalConstructionSite(
+    state,
+    person,
+    candidate,
+    visible,
+  )).flatMap((candidate) => {
     // This inquiry already carries an exact seven-fact personal route basis;
     // generic failed-inquiry history would widen it back into cumulative state.
     if (candidate.desiredFunction === 'remote-work-power-delivery') return [candidate];

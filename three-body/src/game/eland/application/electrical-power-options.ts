@@ -135,7 +135,7 @@ function routeDistance(left: RemoteWorkPowerPosition, right: RemoteWorkPowerPosi
 
 function validRemoteWorkFact(fact: ActionFact): boolean {
   if (fact.status !== 'completed' || fact.cause !== 'intent') return false;
-  if (fact.action.kind === 'move' || fact.action.kind === 'communicate') return false;
+  if (fact.action.kind === 'move' || fact.action.kind === 'talk') return false;
   if (fact.action.kind === 'act') {
     if (fact.action.mechanicalPowerBasis || fact.action.electricalPowerBasis) return false;
     return fact.action.operation !== 'ingest' && fact.action.operation !== 'dehydrate';

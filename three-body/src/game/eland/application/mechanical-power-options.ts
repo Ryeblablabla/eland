@@ -7,7 +7,6 @@ import {
 } from '../domain/action';
 import {
   completedActionFactsForPerson,
-  retainedColdWorldEventsForLease,
   worldEventById,
 } from '../domain/event-index';
 import {
@@ -152,11 +151,7 @@ export function ownMillLaborFacts(state: SimulationState, person: PersonState): 
     && fact.action.operation === 'separate'
     && Number(fact.diff.sourceMaterialId) === Material.CropMature
     && Number(fact.diff.facilityMaterialId) === Material.Mill;
-  const cold = retainedColdWorldEventsForLease(
-    state,
-    `living-mill-labor:${person.id}:recent-3`,
-  ).filter(qualifies);
-  return [...cold, ...completedActionFactsForPerson(state, person.id).filter(qualifies)];
+  return completedActionFactsForPerson(state, person.id).filter(qualifies);
 }
 
 export function personalWaterCurrentObservation(

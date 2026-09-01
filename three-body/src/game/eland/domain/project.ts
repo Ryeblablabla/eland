@@ -271,6 +271,18 @@ export interface ProjectSite {
   z: number;
 }
 
+export interface HibernationRescueBasis {
+  version: 'hibernation-rescue-basis-v1';
+  helperId: PersonId;
+  sleeperId: PersonId;
+  hibernationConditionId: string;
+  observedAtMonth: number;
+  lastKnownPosition: ProjectSite;
+  triggerPredictionId?: string;
+  sourceFactIds: string[];
+  basisKey: string;
+}
+
 export interface ProjectShelterRequirement {
   exposureKind: 'cold' | 'heat';
   beneficiaryId: PersonId;
@@ -308,6 +320,8 @@ export interface ProjectProposal {
   createdAtMonth: number;
   reviewAtMonth: number;
   site?: ProjectSite;
+  /** Sourced care target and frozen location for a multi-step hibernation rescue. */
+  hibernationRescueBasis?: HibernationRescueBasis;
   /** A locally observed exposure that an already functional shelter failed to prevent. */
   shelterRequirement?: ProjectShelterRequirement;
   /** A fact the owner already knows and has a local reason to preserve. */

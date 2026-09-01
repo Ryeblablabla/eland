@@ -1,4 +1,9 @@
-import type { DirectedRelation, PersonState } from './person';
+import type {
+  DirectedRelation,
+  PersonState,
+  RelationshipEvidenceAnchor,
+  RelationshipEvidenceLedger,
+} from './person';
 
 /**
  * A shared arrival means the founders recognize one another; it is not a
@@ -9,6 +14,19 @@ import type { DirectedRelation, PersonState } from './person';
  */
 export const FOUNDER_INITIAL_RELATION = 10;
 export const COMPANION_RELATION_THRESHOLD = 20;
+const RELATION_RECENT_SOURCE_LIMIT = 24;
+const RELATION_SUBSTANTIVE_ANCHOR_LIMIT = 4;
+const RELATION_SPECIALIZED_ANCHOR_LIMIT = 2;
+const RELATION_DECISION_BOUNDARY_LIMIT = 4;
+
+export type RelationshipEvidenceKind = 'substantive' | 'direct-intimacy' | 'shared-life' | 'decision-boundary';
+
+export interface RelationshipEvidenceRetention {
+  atMonth: number;
+  kinds: readonly RelationshipEvidenceKind[];
+  /** Preserve the latest fact in this semantic lane instead of one fact per month. */
+  semanticKey?: string;
+}
 
 export function relationshipPairKey(firstId: string, secondId: string): string {
   return [firstId, secondId].sort().join('|');
@@ -75,12 +93,113 @@ export function relationTo(person: PersonState, otherId: string): DirectedRelati
   return relation;
 }
 
+function validAnchor(anchor: RelationshipEvidenceAnchor): boolean {
+  return typeof anchor.eventId === 'string'
+    && anchor.eventId.length > 0
+    && Number.isSafeInteger(anchor.atMonth)
+    && anchor.atMonth >= 0
+    && (anchor.semanticKey === undefined
+      || (typeof anchor.semanticKey === 'string' && anchor.semanticKey.length > 0));
+}
+
+function appendMonthlyAnchor(
+  anchors: readonly RelationshipEvidenceAnchor[],
+  eventId: string,
+  atMonth: number,
+  limit: number,
+  semanticKey?: string,
+): RelationshipEvidenceAnchor[] {
+  return [
+    ...anchors.filter(validAnchor)
+      .filter((anchor) => anchor.eventId !== eventId
+        && (semanticKey ? anchor.semanticKey !== semanticKey : anchor.atMonth !== atMonth)),
+    { eventId, atMonth, ...(semanticKey ? { semanticKey } : {}) },
+  ].sort((left, right) => left.atMonth - right.atMonth || left.eventId.localeCompare(right.eventId))
+    .slice(-limit);
+}
+
+function emptyEvidenceLedger(): RelationshipEvidenceLedger {
+  return {
+    version: 'relationship-evidence-ledger-v1',
+    substantive: [],
+    directIntimacy: [],
+    sharedLife: [],
+    decisionBoundaries: [],
+  };
+}
+
+function appendRelationshipEvidenceAnchors(
+  relation: DirectedRelation,
+  eventId: string,
+  retention: RelationshipEvidenceRetention,
+): void {
+  if (!Number.isSafeInteger(retention.atMonth) || retention.atMonth < 0) {
+    throw new Error('relationship evidence anchor month must be a non-negative safe integer');
+  }
+  const kinds = [...new Set(retention.kinds)];
+  if (!kinds.length) return;
+  const ledger = relation.evidenceLedger?.version === 'relationship-evidence-ledger-v1'
+    ? relation.evidenceLedger
+    : emptyEvidenceLedger();
+  for (const kind of kinds) {
+    if (kind === 'substantive') {
+      ledger.substantive = appendMonthlyAnchor(
+        ledger.substantive,
+        eventId,
+        retention.atMonth,
+        RELATION_SUBSTANTIVE_ANCHOR_LIMIT,
+      );
+    } else if (kind === 'direct-intimacy') {
+      ledger.directIntimacy = appendMonthlyAnchor(
+        ledger.directIntimacy,
+        eventId,
+        retention.atMonth,
+        RELATION_SPECIALIZED_ANCHOR_LIMIT,
+      );
+    } else if (kind === 'shared-life') {
+      ledger.sharedLife = appendMonthlyAnchor(
+        ledger.sharedLife,
+        eventId,
+        retention.atMonth,
+        RELATION_SPECIALIZED_ANCHOR_LIMIT,
+      );
+    } else if (kind === 'decision-boundary') {
+      ledger.decisionBoundaries = appendMonthlyAnchor(
+        ledger.decisionBoundaries ?? [],
+        eventId,
+        retention.atMonth,
+        RELATION_DECISION_BOUNDARY_LIMIT,
+        retention.semanticKey,
+      );
+    }
+  }
+  relation.evidenceLedger = ledger;
+}
+
+/** Exact semantic anchors for relationship gates, separate from recent dialogue recall. */
+export function relationshipEvidenceSourceEventIds(
+  relation: DirectedRelation | undefined,
+): string[] {
+  if (!relation) return [];
+  const ledger = relation.evidenceLedger?.version === 'relationship-evidence-ledger-v1'
+    ? relation.evidenceLedger
+    : undefined;
+  return [...new Set([
+    ...relation.sourceEventIds,
+    ...(ledger?.substantive ?? []).filter(validAnchor).map((anchor) => anchor.eventId),
+    ...(ledger?.directIntimacy ?? []).filter(validAnchor).map((anchor) => anchor.eventId),
+    ...(ledger?.sharedLife ?? []).filter(validAnchor).map((anchor) => anchor.eventId),
+    ...(ledger?.decisionBoundaries ?? []).filter(validAnchor).map((anchor) => anchor.eventId),
+  ])];
+}
+
 /** Relation values are caches over witnessed events; every mutation carries evidence. */
 export function applyRelationEvidence(
   person: PersonState,
   otherId: string,
   eventId: string,
   delta: Partial<Pick<DirectedRelation, 'trust' | 'bond' | 'fear'>>,
+  retention?: RelationshipEvidenceRetention,
 ): void {
   const trustDelta = delta.trust ?? 0;
   const bondDelta = delta.bond ?? 0;
@@ -110,15 +229,33 @@ export function applyRelationEvidence(
   relation.trust = clamp(relation.trust + trustDelta);
   relation.bond = clamp(relation.bond + bondDelta);
   relation.fear = clamp(relation.fear + fearDelta);
-  relation.sourceEventIds = [...new Set([...relation.sourceEventIds, eventId])].slice(-24);
+  relation.sourceEventIds = [...new Set([...relation.sourceEventIds, eventId])]
+    .slice(-RELATION_RECENT_SOURCE_LIMIT);
+  if (retention) appendRelationshipEvidenceAnchors(relation, eventId, retention);
 }
 
-const CANONICAL_RELATION_KEYS = new Set(['personId', 'trust', 'bond', 'fear', 'sourceEventIds']);
+const CANONICAL_RELATION_KEYS = new Set([
+  'personId', 'trust', 'bond', 'fear', 'sourceEventIds', 'evidenceLedger',
+]);
 
 function hasExactCanonicalRelationKeys(relation: DirectedRelation): boolean {
   const keys = Object.keys(relation);
-  return keys.length === CANONICAL_RELATION_KEYS.size
+  return (keys.length === CANONICAL_RELATION_KEYS.size
+      || keys.length === CANONICAL_RELATION_KEYS.size - 1)
     && keys.every((key) => CANONICAL_RELATION_KEYS.has(key));
+}
+
+function cloneEvidenceLedger(
+  ledger: RelationshipEvidenceLedger | undefined,
+): RelationshipEvidenceLedger | undefined {
+  if (ledger?.version !== 'relationship-evidence-ledger-v1') return undefined;
+  return {
+    version: ledger.version,
+    substantive: ledger.substantive.filter(validAnchor).map((anchor) => ({ ...anchor })),
+    directIntimacy: ledger.directIntimacy.filter(validAnchor).map((anchor) => ({ ...anchor })),
+    sharedLife: ledger.sharedLife.filter(validAnchor).map((anchor) => ({ ...anchor })),
+    decisionBoundaries: (ledger.decisionBoundaries ?? []).filter(validAnchor).map((anchor) => ({ ...anchor })),
+  };
 }
 
 /**
@@ -139,8 +276,16 @@ export function compactCanonicalRelations(
       && relation.bond === 0
       && relation.fear === 0
       && relation.sourceEventIds.length === 0
+      && relationshipEvidenceSourceEventIds(relation).length === 0
       && !kinPersonIds.has(relation.personId);
-    if (!redundantDefault) compacted.push({ ...relation, sourceEventIds: [...relation.sourceEventIds] });
+    if (!redundantDefault) {
+      const evidenceLedger = cloneEvidenceLedger(relation.evidenceLedger);
+      compacted.push({
+        ...relation,
+        sourceEventIds: [...relation.sourceEventIds],
+        ...(evidenceLedger ? { evidenceLedger } : {}),
+      });
+    }
   }
   return compacted;
 }

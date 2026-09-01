@@ -18,6 +18,7 @@ import {
   worldEventFacts,
 } from '../domain/event-index';
 import { cellX, cellY, neighbors4 } from '../world/grid';
+import { languageBroadcastFromDiff } from '../domain/language-perception';
 import {
   eventManufacturedMeasurementArtifact,
   eventSupportsMeasurementStackMaterial,
@@ -655,18 +656,15 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
       });
     }
     case 'communication':
-      return completed.flatMap((event) => event.action.kind === 'communicate'
-        && event.action.audience.some((id) => id !== event.who)
-        ? episode([event], [event.who, ...event.action.audience]) ?? [] : []);
+      return completed.flatMap((event) => event.action.kind === 'talk'
+        && (languageBroadcastFromDiff(event.diff)?.understoodByPersonIds ?? []).some((id) => id !== event.who)
+        ? episode([event], [event.who, ...(languageBroadcastFromDiff(event.diff)?.understoodByPersonIds ?? [])]) ?? [] : []);
     case 'direct-communication':
-      return completed.flatMap((event) => event.action.kind === 'communicate'
-        && (event.action.channel === 'voice' || event.action.channel === 'gesture')
-        && event.action.audience.some((id) => id !== event.who)
-        ? episode([event], [event.who, ...event.action.audience]) ?? [] : []);
+      return completed.flatMap((event) => event.action.kind === 'talk'
+        && (languageBroadcastFromDiff(event.diff)?.understoodByPersonIds ?? []).some((id) => id !== event.who)
+        ? episode([event], [event.who, ...(languageBroadcastFromDiff(event.diff)?.understoodByPersonIds ?? [])]) ?? [] : []);
     case 'gesture-communication':
-      return completed.flatMap((event) => event.action.kind === 'communicate'
-        && event.action.channel === 'gesture' && event.action.audience.some((id) => id !== event.who)
-        ? episode([event], [event.who, ...event.action.audience]) ?? [] : []);
+      return [];
     case 'natural-observation':
       return actionEvents((event) => event.action.kind === 'attend'
         && (event.action.target.kind === 'animal' || event.action.target.kind === 'voxel' || event.action.target.kind === 'drop'));
@@ -674,22 +672,22 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
       return state.agreements.filter((agreement) => agreement.proposal.kind === 'assist' && agreement.status === 'fulfilled')
         .flatMap((agreement) => episode(resolvedEvents(index, agreement.sourceEventIds), agreement.partyIds, [agreement.proposerId]) ?? []);
     case 'teaching': {
-      const teaching = completed.filter((event) => event.action.kind === 'communicate'
-        && event.action.content.kind === 'claim' && Boolean(event.action.content.factId));
+      const teaching = completed.filter((event) => event.action.kind === 'talk'
+        && event.action.speakerMeaning.kind === 'claim' && Boolean(event.action.speakerMeaning.factId));
       return teaching.flatMap((event) => {
-        if (event.action.kind !== 'communicate' || event.action.content.kind !== 'claim' || !event.action.content.factId) return [];
-        const factId = event.action.content.factId;
+        if (event.action.kind !== 'talk' || event.action.speakerMeaning.kind !== 'claim' || !event.action.speakerMeaning.factId) return [];
+        const factId = event.action.speakerMeaning.factId;
         const learners = state.people.filter((person) => person.id !== event.who
           && person.knowledge.some((fact) => fact.id === factId && fact.sourceEventIds.includes(event.id)));
         return learners.length ? episode([event], [event.who, ...learners.map((person) => person.id)], learners.map((person) => person.id)) ?? [] : [];
       });
     }
     case 'craft-teaching': {
-      const teaching = completed.filter((event) => event.action.kind === 'communicate'
-        && event.action.content.kind === 'claim' && event.action.content.factId?.startsWith('technique:'));
+      const teaching = completed.filter((event) => event.action.kind === 'talk'
+        && event.action.speakerMeaning.kind === 'claim' && event.action.speakerMeaning.factId?.startsWith('technique:'));
       return teaching.flatMap((event) => {
-        if (event.action.kind !== 'communicate' || event.action.content.kind !== 'claim' || !event.action.content.factId) return [];
-        const factId = event.action.content.factId;
+        if (event.action.kind !== 'talk' || event.action.speakerMeaning.kind !== 'claim' || !event.action.speakerMeaning.factId) return [];
+        const factId = event.action.speakerMeaning.factId;
         const learners = state.people.filter((person) => person.id !== event.who
           && person.knowledge.some((fact) => fact.kind === 'technique' && fact.id === factId && fact.sourceEventIds.includes(event.id)));
         return learners.length ? episode([event], [event.who, ...learners.map((person) => person.id)], learners.map((person) => person.id)) ?? [] : [];
@@ -706,7 +704,7 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
         if (holders.length < 2) return [];
         const sources = resolvedEvents(index, holders.flatMap((person) => person.knowledge.flatMap((fact) => fact.sourceEventIds)));
         const crossGeneration = new Set(holders.map((person) => person.generation)).size >= 2;
-        const communication = sources.some((event) => event.kind === 'action' && event.action.kind === 'communicate');
+        const communication = sources.some((event) => event.kind === 'action' && event.action.kind === 'talk');
         return communication || crossGeneration ? episode(sources.slice(-24), holders.map((person) => person.id), holders.map((person) => person.id)) ?? [] : [];
       });
     }
@@ -830,12 +828,12 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
           const proposalEvent = index.eventById(admission.proposalEventId);
           if (!proposalEvent || proposalEvent.kind !== 'action' || proposalEvent.status !== 'completed'
             || proposalEvent.who !== admission.proposerId
-            || proposalEvent.action.kind !== 'communicate'
-            || proposalEvent.action.content.kind !== 'offer'
-            || proposalEvent.action.content.id !== admission.id
-            || proposalEvent.action.content.proposal?.kind !== 'membership'
-            || proposalEvent.action.content.proposal.collectiveId !== collective.id
-            || proposalEvent.action.content.proposal.candidateId !== membership.personId) return [];
+            || proposalEvent.action.kind !== 'talk'
+            || proposalEvent.action.speakerMeaning.kind !== 'offer'
+            || proposalEvent.action.speakerMeaning.id !== admission.id
+            || proposalEvent.action.speakerMeaning.proposal?.kind !== 'membership'
+            || proposalEvent.action.speakerMeaning.proposal.collectiveId !== collective.id
+            || proposalEvent.action.speakerMeaning.proposal.candidateId !== membership.personId) return [];
           const proposerMembership = collective.memberships.find((item) => item.personId === admission.proposerId
             && item.personId !== membership.personId
             && item.joinedAtMonth <= proposalEvent.atMonth
@@ -848,9 +846,9 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
             || !requiredResponderIds.every((personId) => admission.acceptedByPersonIds.includes(personId))) return [];
           const acceptances = sourceEvents.filter((event): event is ActionFact => event.kind === 'action'
             && event.status === 'completed'
-            && event.action.kind === 'communicate'
-            && event.action.content.kind === 'accept'
-            && event.action.content.referenceId === admission.id
+            && event.action.kind === 'talk'
+            && event.action.speakerMeaning.kind === 'accept'
+            && event.action.speakerMeaning.referenceId === admission.id
             && requiredResponderIds.includes(event.who));
           const acceptingPeople = new Set(acceptances.map((event) => event.who));
           if (!requiredResponderIds.every((personId) => acceptingPeople.has(personId))) return [];
@@ -858,12 +856,12 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
           const candidateRequests = sourceEvents.filter((event): event is ActionFact => event.kind === 'action'
             && event.status === 'completed'
             && event.who === membership.personId
-            && event.action.kind === 'communicate'
-            && event.action.content.kind === 'request'
-            && event.action.content.proposal?.kind === 'membership'
-            && event.action.content.proposal.proposerId === membership.personId
-            && event.action.content.proposal.candidateId === membership.personId
-            && event.action.content.proposal.collectiveId === collective.id);
+            && event.action.kind === 'talk'
+            && event.action.speakerMeaning.kind === 'request'
+            && event.action.speakerMeaning.proposal?.kind === 'membership'
+            && event.action.speakerMeaning.proposal.proposerId === membership.personId
+            && event.action.speakerMeaning.proposal.candidateId === membership.personId
+            && event.action.speakerMeaning.proposal.collectiveId === collective.id);
           if (candidateDriven !== (candidateRequests.length > 0)) return [];
           const evidence = candidateDriven
             ? [candidateRequests.at(-1) as ActionFact, proposalEvent, ...acceptances]
@@ -875,7 +873,7 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
       return state.agreements.filter((agreement) => agreement.proposal.kind === 'membership' && agreement.status === 'rejected')
         .flatMap((agreement) => episode(resolvedEvents(index, agreement.sourceEventIds), agreement.partyIds, agreement.proposal.kind === 'membership' ? [agreement.proposal.candidateId] : []) ?? []);
     case 'writing': {
-      const writes = completed.filter((event) => event.action.kind === 'communicate' && event.action.channel === 'record'
+      const writes = completed.filter((event) => event.action.kind === 'inscribe'
         && typeof event.diff.recordPayloadId === 'string');
       const reads = completed.filter((event) => event.action.kind === 'attend' && typeof event.diff.recordPayloadId === 'string' && event.diff.understood === true);
       return writes.flatMap((write) => {
@@ -885,7 +883,7 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
     }
     case 'shared-record': {
       const recordActions = completed.filter((event) => typeof event.diff.recordPayloadId === 'string'
-        && ((event.action.kind === 'communicate' && event.action.channel === 'record')
+        && (event.action.kind === 'inscribe'
           || (event.action.kind === 'attend' && event.diff.understood === true)));
       return [...grouped(recordActions, (event) => String(event.diff.recordPayloadId)).values()].flatMap((events) => {
         const users = unique(events.map((event) => event.who));
@@ -907,8 +905,7 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
         const creationEvents = resolvedEvents(index, record.sourceEventIds).filter((event): event is ActionFact => event.kind === 'action'
           && event.status === 'completed'
           && event.who === record.authorId
-          && event.action.kind === 'communicate'
-          && event.action.channel === 'record'
+          && event.action.kind === 'inscribe'
           && event.diff.recordPayloadId === record.id);
         if (!creationEvents.length) return [];
         const carrierEvents = resolvedEvents(index, currentCarriers.flatMap((carrier) => carrier.sourceEventIds))
@@ -1090,12 +1087,12 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
             if (!agreement) return [];
             const sources = resolvedEvents(index, agreement.sourceEventIds);
             const proposal = sources.find((source) => source.kind === 'action' && source.status === 'completed'
-              && source.action.kind === 'communicate'
-              && (source.action.content.kind === 'offer' || source.action.content.kind === 'request')
-              && source.action.content.id === agreement.id);
+              && source.action.kind === 'talk'
+              && (source.action.speakerMeaning.kind === 'offer' || source.action.speakerMeaning.kind === 'request')
+              && source.action.speakerMeaning.id === agreement.id);
             const acceptance = sources.find((source) => source.kind === 'action' && source.status === 'completed'
-              && source.action.kind === 'communicate' && source.action.content.kind === 'accept'
-              && source.action.content.referenceId === agreement.id);
+              && source.action.kind === 'talk' && source.action.speakerMeaning.kind === 'accept'
+              && source.action.speakerMeaning.referenceId === agreement.id);
             return proposal && acceptance && sources.some((source) => source.id === event.id)
               ? episode([proposal, acceptance, event], agreement.partyIds, agreement.partyIds) ?? [] : [];
           })() : []);

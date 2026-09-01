@@ -10,7 +10,6 @@ import { recordIntentGoalOutcome } from '../../domain/cognition';
 import {
   clearPlanningEventOverlay,
   registerPlanningEventOverlay,
-  retainedColdWorldEventsForLease,
   worldEventById,
 } from '../../domain/event-index';
 import {
@@ -21,6 +20,7 @@ import {
 } from '../../domain/intent';
 import { lifePlanningStage } from '../../domain/life-stage';
 import { remember } from '../../domain/memory';
+import { broadcastLanguage } from '../../domain/language-perception';
 import { materialHas } from '../../domain/material';
 import type {
   ActionFact,
@@ -32,8 +32,10 @@ import type {
   WorldEvent,
 } from '../../domain/model';
 import {
+  ageMonths,
   isAlive,
   isRecoveringFromDehydratedHibernation,
+  sameLocation,
   type PersonId,
   type PersonState,
 } from '../../domain/person';
@@ -63,7 +65,6 @@ import {
   bindConversationEpisodeIntent,
   cancelConversationReservation,
   reserveConversationEpisode,
-  applyModelMemoryConsolidation,
   pendingConversationEpisodeForListener,
   closeConversationWithoutResponse,
 } from '../../domain/agent-memory';
@@ -120,9 +121,9 @@ function revalidateDecisionAtCommit(
 
 function groundedConversationForOption(option: ActionOption | undefined) {
   const action = option?.completionAction ?? option?.nextAction;
-  return action?.kind === 'communicate'
-    && action.content.kind === 'claim'
-    ? action.content.conversation
+  return action?.kind === 'talk'
+    && action.speakerMeaning.kind === 'claim'
+    ? action.speakerMeaning.conversation
     : undefined;
 }
 
@@ -147,27 +148,11 @@ function allocateIntentId(
   return `intent-${atMonth}-${personId}${qualifier}-${ordinal}`;
 }
 
-function reproductionAttemptLeaseKey(intentId: string): string {
-  return `gameplay:reproduction-intent:${intentId}:attempt`;
-}
-
-function reproductionConceptionLeaseKey(intentId: string): string {
-  return `gameplay:reproduction-intent:${intentId}:conception`;
-}
-
 function reproductionEvidenceFacts(
   state: SimulationState,
-  intent: Intent,
-  leaseKey: string,
   currentMonthEvents: readonly WorldEvent[],
 ): readonly WorldEvent[] {
-  if ((state.world.historyCursor?.hotStartIndex ?? 0) > 0
-    && !worldEventById(state, intent.sourceDecisionEventId)
-    && !currentMonthEvents.some((event) => event.id === intent.sourceDecisionEventId)) {
-    throw new Error(`reproduction intent ${intent.id} 缺少已验证来源决定事实`);
-  }
   return [
-    ...retainedColdWorldEventsForLease(state, leaseKey),
     ...state.world.past,
     ...currentMonthEvents,
   ];
@@ -216,8 +201,6 @@ function reproductionAttemptFactForIntent(
   const attemptIds = new Set(agreement?.reproductionAttemptEventIds ?? []);
   return [...reproductionEvidenceFacts(
     state,
-    intent,
-    reproductionAttemptLeaseKey(intent.id),
     currentMonthEvents,
   )].reverse().find((event): event is ActionFact => (
     event.kind === 'action'
@@ -243,8 +226,6 @@ function reproductionConceptionFactForIntent(
   const attemptIds = new Set(agreement?.reproductionAttemptEventIds ?? []);
   return [...reproductionEvidenceFacts(
     state,
-    intent,
-    reproductionConceptionLeaseKey(intent.id),
     currentMonthEvents,
   )].reverse().find((event): event is ActionFact => (
     event.kind === 'action'
@@ -267,6 +248,18 @@ function failedActionGoalOutcomeKind(fact: ActionFact): 'attempted-unmet' | 'not
 
 function isAttemptOnlyGoal(intent: Intent): boolean {
   return intent.goal.kind === 'knowledge' && intent.goal.factId.startsWith('attempt:');
+}
+
+function completedAttendObservedDifferentKnowledgeFact(
+  intent: Intent,
+  fact: ActionFact,
+): string | null {
+  if (fact.status !== 'completed'
+    || fact.action.kind !== 'attend'
+    || intent.goal.kind !== 'knowledge'
+    || typeof fact.diff.factId !== 'string'
+    || fact.diff.factId === intent.goal.factId) return null;
+  return fact.diff.factId;
 }
 
 function boundedReviewDurationMonths(duration: ActionOption['estimatedDuration'], estimatedMonths?: number): number {
@@ -404,7 +397,10 @@ export function startIntent(
   const intent: Intent = {
     id: allocateIntentId(state, atMonth, person.id, 'ordinary'),
     ownerId: person.id,
-    summary: choice.summary,
+    // A Project persists while its compiled atom changes. Keep the intent's
+    // identity on the authoritative project aim; the selected option and the
+    // ActionFact continue to describe the current concrete step.
+    summary: linkedProject?.summary ?? choice.summary,
     domain: choice.domain,
     ...projectTarget,
     ...(choice.openingAction ? { openingAction: choice.openingAction, openingActionCompleted: false } : {}),
@@ -440,6 +436,41 @@ export function activeIntent(state: SimulationState, person: PersonState): Inten
   if (!person.activeIntentId) return undefined;
   const intent = intentById(state, person.activeIntentId);
   return intent?.status === 'active' ? intent : undefined;
+}
+
+/**
+ * A learning child may briefly reach a caregiver, resume a sourced food/water
+ * course, and step away again to finish it. That exact return chain should
+ * reach a body consequence before opening another caregiver rendezvous in the
+ * same month; otherwise the parent Intent and one-tick care children alternate
+ * without satisfying either need. This is episode continuity, not a cooldown:
+ * another month, a failed root action, or any non-caregiver emergency falls
+ * through to ordinary reflex selection.
+ */
+export function continuesSelfCareAfterCaregiverReturn(
+  state: SimulationState,
+  person: PersonState,
+  intent: Intent | undefined,
+  atMonth: number,
+): boolean {
+  if (!intent
+    || intent.status !== 'active'
+    || intent.ownerId !== person.id
+    || intent.interruptionKind !== undefined
+    || intent.lastProgressAtMonth !== atMonth
+    || intent.goal.kind !== 'body-at-least'
+    || (intent.goal.field !== 'hydration'
+      && intent.goal.field !== 'nutrition'
+      && intent.goal.field !== 'health')) return false;
+  return state.intents.some((child) => child.ownerId === person.id
+    && child.status === 'completed'
+    && child.interruptionKind === 'survival-reflex'
+    && child.returnToIntentId === intent.id
+    && child.returnOutcome === 'resumed'
+    && child.lastProgressAtMonth === atMonth
+    && child.goal.kind === 'near-person'
+    && child.nextAction.kind === 'move'
+    && child.nextAction.caregiverRef === child.goal.personId);
 }
 
 function sourceAgreementForIntent(
@@ -509,6 +540,19 @@ export function startInterruptIntent(
     ? projectById(state, selected.projectId)
     : undefined;
   if (selected.projectId && selectedProject?.status !== 'active') return null;
+  const plannedDurationMonths = selected.completionPolicy
+    ? Math.max(1, Math.min(120, Math.round(selected.completionPolicy.durationMonths)))
+    : undefined;
+  const lifecycle = plannedDurationMonths !== undefined
+    ? {
+        version: 'intent-lifecycle-v1' as const,
+        completion: selected.completionPolicy?.kind ?? 'on-achievement' as const,
+        reviewAtMonth: atMonth + plannedDurationMonths - 1,
+        ...(selected.completionPolicy?.kind === 'maintain-state'
+          ? { maintainUntilMonth: atMonth + plannedDurationMonths - 1 }
+          : {}),
+      }
+    : undefined;
   const childId = allocateIntentId(state, atMonth, person.id, 'interrupt');
   const sourceAgreement = sourceAgreementForIntent(state, person.id, selected.sourceFactIds);
   const child: Intent = {
@@ -524,6 +568,8 @@ export function startInterruptIntent(
     createdAtMonth: atMonth,
     lastProgressAtMonth: atMonth,
     progress: 0,
+    ...(plannedDurationMonths !== undefined ? { plannedDurationMonths } : {}),
+    ...(lifecycle ? { lifecycle } : {}),
     sourceDecisionEventId: decisionEventId,
     ...(selectedProject ? { projectId: selectedProject.id } : {}),
     ...(selected.characterAgendaItemId ? { characterAgendaItemId: selected.characterAgendaItemId } : {}),
@@ -629,6 +675,61 @@ export function drainInterruptedIntentReturns(state: SimulationState, person: Pe
   }
 }
 
+/**
+ * A world-change wait yields one executable Intent episode while its Project
+ * remains the durable objective. Once that Project reaches a terminal state,
+ * the parked episode must receive the same outcome instead of remaining an
+ * apparently resumable goal forever.
+ */
+export function settleTerminalProjectWaitingIntents(
+  state: SimulationState,
+  atMonth: number,
+): void {
+  for (const intent of state.intents) {
+    if (intent.status !== 'suspended'
+      || intent.waitingFor !== 'world-change'
+      || !intent.projectId
+      || intent.suspendedByIntentId) continue;
+    const project = projectById(state, intent.projectId);
+    if (project?.status === 'active') continue;
+    const owner = personById(state, intent.ownerId);
+    if (project?.status === 'completed') {
+      intent.status = 'completed';
+      intent.progress = 1;
+      recordIntentGoalOutcome(
+        state,
+        intent,
+        'achieved',
+        atMonth,
+        intentGoalSourceIds(state, intent, project.completionEventIds),
+      );
+    } else if (project?.status === 'blocked') {
+      intent.status = 'blocked';
+      intent.blockedReason = project.blockedReason ?? '等待期间项目已经无法推进';
+      recordIntentGoalOutcome(
+        state,
+        intent,
+        'attempted-unmet',
+        atMonth,
+        intentGoalSourceIds(state, intent, project.failureEventIds),
+      );
+    } else {
+      intent.status = 'abandoned';
+      intent.blockedReason = project?.blockedReason ?? '等待期间项目已经不再存在';
+      recordIntentGoalOutcome(
+        state,
+        intent,
+        intent.actionEventIds.length ? 'attempted-unmet' : 'not-evaluated',
+        atMonth,
+        intentGoalSourceIds(state, intent, project?.failureEventIds ?? []),
+      );
+    }
+    delete intent.waitingFor;
+    delete intent.suspendedAtMonth;
+    if (owner?.activeIntentId === intent.id) delete owner.activeIntentId;
+  }
+}
+
 export function installAgreementContinuation(state: SimulationState, currentIntent: Intent, continuation: AgreementContinuation, atMonth: number): Intent | null {
   const owner = personById(state, continuation.personId);
   if (!owner || !isAlive(owner)) return null;
@@ -713,6 +814,21 @@ export function applyDecision(
     selectedOptionAtDecision,
   ));
   const id = `e-${atMonth}-decision-${person.id}-${planningTick}-${orderInMonth}`;
+  const mentalAct = 'mentalAct' in decision ? decision.mentalAct : undefined;
+  const thoughtBroadcast = usedModel && mentalAct?.thoughtLine.trim()
+    ? broadcastLanguage({
+        seed: state.seed,
+        sourceFactId: id,
+        speakerId: person.id,
+        mode: 'transparent-thought',
+        text: mentalAct.thoughtLine,
+        speakerPosition: person.position,
+        listeners: state.people.filter(isAlive).map((listener) => ({
+          id: listener.id,
+          position: listener.position,
+        })),
+      })
+    : undefined;
   let intentId: string | undefined;
   let result = decision.reason;
   let domain: Intent['domain'] | undefined;
@@ -725,7 +841,7 @@ export function applyDecision(
     && (decision.kind === 'start' || decision.kind === 'revise')
     && decision.groundingSourceFactIds !== undefined
     && Boolean(decision.utterance?.trim())
-    ? compileOpenConversationOption(requestedOption, decision.groundingSourceFactIds)
+    ? compileOpenConversationOption(state, person, requestedOption, decision.groundingSourceFactIds)
     : undefined;
   const decisionContext = requestedOption?.openConversationGrounding
     ? {
@@ -934,14 +1050,6 @@ export function applyDecision(
       result = `${person.name}在规划刻度 ${planningTick} 不改变当前安排：${decision.reason}`;
     }
   }
-  if ('memoryConsolidation' in decision && decision.memoryConsolidation) {
-    applyModelMemoryConsolidation(
-      state,
-      person.id,
-      decision.memoryConsolidation,
-      atMonth,
-    );
-  }
   person.lastDecisionText = result;
   return {
     id,
@@ -1003,6 +1111,7 @@ export function applyDecision(
       },
     } : {}),
     ...(characterAgendaEvidence.length ? { characterAgendaEvidence } : {}),
+    ...(thoughtBroadcast ? { thoughtBroadcast } : {}),
     usedModel,
     result,
   };
@@ -1134,14 +1243,6 @@ export function executeActiveIntent(
       intent.blockedReason = fact.result;
       recordIntentGoalOutcome(state, intent, failedActionGoalOutcomeKind(fact), atMonth, [fact.id], fact.action);
       intent.replanCount += 1;
-      remember(person, {
-        id: `memory:intent-opening-failed:${intent.id}:${atMonth}`,
-        kind: 'failure', summary: `${intent.summary}失败：${fact.result}`, importance: 78,
-        createdAtMonth: atMonth, lastRecalledAtMonth: atMonth,
-        expiresAtMonth: atMonth + 6,
-        personIds: intent.openingAction.kind === 'communicate' ? intent.openingAction.audience : [],
-        sourceEventIds: [fact.id],
-      });
       delete person.activeIntentId;
     } else {
       intent.openingActionCompleted = true;
@@ -1215,6 +1316,40 @@ export function executeActiveIntent(
     return null;
   }
   if (!next) {
+    const waitingCompanyAgreement = sourceAgreement?.status === 'active'
+      && sourceAgreement.proposal.kind === 'assist'
+      && sourceAgreement.proposal.need === 'company'
+      && sourceAgreement.proposal.helperId === person.id
+      ? sourceAgreement
+      : undefined;
+    const waitingCompanyProposal = waitingCompanyAgreement?.proposal.kind === 'assist'
+      ? waitingCompanyAgreement.proposal
+      : undefined;
+    const waitingCompanyRequester = waitingCompanyProposal
+      ? personById(state, waitingCompanyProposal.requesterId)
+      : undefined;
+    if (waitingCompanyAgreement
+      && waitingCompanyProposal
+      && waitingCompanyRequester
+      && isAlive(waitingCompanyRequester)
+      && !sameLocation(person, waitingCompanyRequester)) {
+      // This executable attempt is over, but the agreement itself remains
+      // active until its own deadline. Ending the child without a failure fact
+      // restores any interrupted work and lets a later natural meeting expose
+      // one fresh, locally grounded attend action.
+      intent.status = 'abandoned';
+      intent.blockedReason = '陪伴对象已离开当前同地位置；不追踪实时坐标，等待自然重逢';
+      recordIntentGoalOutcome(
+        state,
+        intent,
+        'not-evaluated',
+        atMonth,
+        intentGoalSourceIds(state, intent, waitingCompanyAgreement.sourceEventIds),
+      );
+      delete person.activeIntentId;
+      person.currentActionText = '对方已经离开，停止远距追踪并等待自然重逢';
+      return null;
+    }
     const sharedFacilityProducedThisMonth = Boolean(project && currentMonthEvents.some((event) => event.kind === 'action'
       && event.status === 'completed'
       && event.atMonth === atMonth
@@ -1270,20 +1405,13 @@ export function executeActiveIntent(
     recordIntentGoalOutcome(
       state,
       intent,
-      'attempted-unmet',
+      intent.actionEventIds.length ? 'attempted-unmet' : 'not-evaluated',
       atMonth,
       intentGoalSourceIds(state, intent),
     );
     intent.replanCount += 1;
-    remember(person, {
-      id: `memory:intent-blocked:${intent.id}:${atMonth}`,
-      kind: 'failure', summary: `${intent.summary}失败：${intent.blockedReason}`, importance: 76,
-      createdAtMonth: atMonth, lastRecalledAtMonth: atMonth,
-      expiresAtMonth: atMonth + 6,
-      personIds: intent.target?.kind === 'person' ? [intent.target.personId] : [],
-      sourceEventIds: [...intent.actionEventIds],
-    });
     delete person.activeIntentId;
+    person.currentActionText = `无法继续，等待重新规划：${intent.summary}`;
     return null;
   }
   intent.nextAction = next;
@@ -1434,21 +1562,41 @@ export function executeActiveIntent(
     intent.blockedReason = fact.result;
     recordIntentGoalOutcome(state, intent, failedActionGoalOutcomeKind(fact), atMonth, [fact.id], fact.action);
     intent.replanCount += 1;
-    remember(person, {
-      id: `memory:intent-action-failed:${intent.id}:${atMonth}`,
-      kind: 'failure', summary: `${intent.summary}失败：${fact.result}`, importance: 78,
-      createdAtMonth: atMonth, lastRecalledAtMonth: atMonth,
-      expiresAtMonth: atMonth + 6,
-      personIds: intent.target?.kind === 'person' ? [intent.target.personId] : [],
-      sourceEventIds: [fact.id],
-    });
     delete person.activeIntentId;
   } else {
+    const contradictoryObservation = completedAttendObservedDifferentKnowledgeFact(intent, fact);
+    if (contradictoryObservation) {
+      intent.status = 'blocked';
+      intent.blockedReason = `实际观察形成了${contradictoryObservation}，不再支持原知识目标${intent.goal.kind === 'knowledge' ? intent.goal.factId : ''}`;
+      intent.replanCount += 1;
+      recordIntentGoalOutcome(
+        state,
+        intent,
+        'attempted-unmet',
+        atMonth,
+        [fact.id],
+        fact.action,
+      );
+      remember(person, {
+        id: `memory:intent-observation-changed:${intent.id}:${fact.id}`,
+        kind: 'failure',
+        summary: `${intent.summary}需要重新判断：${fact.result}，与原先要确认的事实不同`,
+        importance: 74,
+        createdAtMonth: atMonth,
+        lastRecalledAtMonth: atMonth,
+        expiresAtMonth: atMonth + 6,
+        personIds: [],
+        sourceEventIds: [fact.id],
+      });
+      delete person.activeIntentId;
+      person.currentActionText = `观察结果改变，需要重评：${fact.result}`;
+      return fact;
+    }
     intent.lastProgressAtMonth = atMonth;
     intent.progress = clamp(intent.progress + (fact.status === 'completed' ? 0.32 : 0.16), 0, 0.95);
     const representationCompleted = intent.goal.kind === 'representation-made'
-      && fact.action.kind === 'communicate'
-      && fact.action.content.id === intent.goal.representationId
+      && fact.action.kind === 'talk'
+      && fact.action.speakerMeaning.id === intent.goal.representationId
       && fact.status === 'completed';
     const reproductionAttempted = fact.action.kind === 'act' && fact.action.operation === 'reproduce';
     const processAttemptCompleted = fact.status === 'completed'
@@ -1456,9 +1604,9 @@ export function executeActiveIntent(
       && (reproductionAttempted || fact.action.operation === 'combine' || fact.action.operation === 'exert' || fact.action.operation === 'expose');
     if (processAttemptCompleted) intent.lastProcessAttemptAtMonth = atMonth;
     const acceptedAgreementId = fact.status === 'completed'
-      && fact.action.kind === 'communicate'
-      && fact.action.content.kind === 'accept'
-      ? fact.action.content.referenceId
+      && fact.action.kind === 'talk'
+      && fact.action.speakerMeaning.kind === 'accept'
+      ? fact.action.speakerMeaning.referenceId
       : undefined;
     const installed = acceptedAgreementId
       ? compileAgreementContinuations(state, acceptedAgreementId, atMonth).map((continuation) => installAgreementContinuation(state, intent, continuation, atMonth)).filter(Boolean)
@@ -1514,10 +1662,41 @@ export function executeActiveIntent(
   return fact;
 }
 
-function protectiveGoal(person: PersonState, action: ActionOption['nextAction']): ActionOption['goal'] {
-  if (action.kind === 'move') return { kind: 'at-cell', cellId: action.toCellId };
+function protectiveGoal(
+  state: SimulationState,
+  person: PersonState,
+  action: ActionOption['nextAction'],
+  kind?: 'survival-reflex' | 'dependent-care',
+): ActionOption['goal'] {
+  if (action.kind === 'move') {
+    if (action.caregiverRef) {
+      return { kind: 'near-person', personId: action.caregiverRef };
+    }
+    if (kind === 'dependent-care' && !action.dependentTransportBasis) {
+      const dependent = state.people
+        .filter((candidate) => isAlive(candidate)
+          && candidate.geneticParents.includes(person.id)
+          && ageMonths(candidate, state.clock.elapsedMonths + 1) < 12 * 12
+          && candidate.position.cellId === action.toCellId
+          && candidate.position.z === (action.toZ ?? candidate.position.z))
+        .sort((left, right) => (
+          Math.min(left.body.health, left.body.hydration, left.body.nutrition)
+          - Math.min(right.body.health, right.body.hydration, right.body.nutrition)
+        ) || left.id.localeCompare(right.id))[0];
+      if (dependent) return { kind: 'near-person', personId: dependent.id };
+    }
+    return { kind: 'at-cell', cellId: action.toCellId };
+  }
   if (action.kind === 'act' && (action.operation === 'dehydrate' || action.operation === 'rehydrate')) {
     const target = action.targets.find((candidate) => candidate.kind === 'person');
+    const targetPerson = target?.kind === 'person'
+      ? personById(state, target.personId)
+      : undefined;
+    if (action.operation === 'rehydrate'
+      && target?.kind === 'person'
+      && !targetPerson?.conditions.some((condition) => condition.kind === 'dehydrated-hibernation')) {
+      return { kind: 'near-person', personId: target.personId };
+    }
     if (target?.kind === 'person') return {
       kind: 'condition',
       personId: target.personId,
@@ -1538,6 +1717,77 @@ function protectiveGoal(person: PersonState, action: ActionOption['nextAction'])
   return { kind: 'at-cell', cellId: person.position.cellId };
 }
 
+function sameProtectiveGoal(
+  first: ActionOption['goal'],
+  second: ActionOption['goal'],
+): boolean {
+  if (first.kind !== second.kind) return false;
+  if (first.kind === 'at-cell' && second.kind === 'at-cell') {
+    return first.cellId === second.cellId;
+  }
+  if (first.kind === 'near-person' && second.kind === 'near-person') {
+    return first.personId === second.personId;
+  }
+  if (first.kind === 'body-at-least' && second.kind === 'body-at-least') {
+    return first.field === second.field
+      && first.value === second.value;
+  }
+  if (first.kind === 'condition' && second.kind === 'condition') {
+    return first.personId === second.personId
+      && first.condition === second.condition
+      && first.present === second.present
+      && first.phase === second.phase;
+  }
+  return false;
+}
+
+function sameProtectiveActionLane(
+  first: ActionOption['nextAction'],
+  second: ActionOption['nextAction'],
+): boolean {
+  if (first.kind !== 'move' || second.kind !== 'move') return false;
+  const firstHydration = Boolean(first.waterAccessBasis || first.waterSearchBasis);
+  const secondHydration = Boolean(second.waterAccessBasis || second.waterSearchBasis);
+  if (firstHydration && secondHydration) return true;
+  return Boolean(first.caregiverRef && first.caregiverRef === second.caregiverRef);
+}
+
+/**
+ * Keep one still-unresolved self-preservation target stable inside the current
+ * monthly deliberation episode. Body/environment settlement at the next month
+ * boundary permits a fresh target; reaching the current goal does so on the
+ * next tick. Any action with an immediate material/body consequence, an
+ * updated water route, or a newly visible wildlife response may supersede the
+ * ordinary movement target. These are causal updates to the active plan, not
+ * candidate suppression or a switch-count rule.
+ */
+export function continuousProtectiveAction(
+  state: SimulationState,
+  person: PersonState,
+  child: Intent | undefined,
+  incoming: ActionOption['nextAction'],
+  kind: 'survival-reflex' | 'dependent-care',
+  atMonth: number,
+): ActionOption['nextAction'] {
+  const immediateOverride = incoming.kind !== 'move'
+    || Boolean(
+      incoming.wildlifeThreatBasis
+      || incoming.waterAccessBasis
+      || incoming.waterSearchBasis,
+    );
+  const incomingGoal = protectiveGoal(state, person, incoming, kind);
+  if (kind !== 'survival-reflex'
+    || !child
+    || child.status !== 'active'
+    || child.interruptionKind !== 'survival-reflex'
+    || child.lastProgressAtMonth !== atMonth
+    || goalSatisfied(state, person, child.goal)
+    || sameProtectiveGoal(child.goal, incomingGoal)
+    || sameProtectiveActionLane(child.nextAction, incoming)
+    || immediateOverride) return incoming;
+  return child.nextAction;
+}
+
 export function executeProtectiveInterruption(
   state: SimulationState,
   person: PersonState,
@@ -1547,6 +1797,9 @@ export function executeProtectiveInterruption(
   actionTick: number,
   events: WorldEvent[],
 ): ActionFact {
+  let child = activeIntent(state, person);
+  if (child?.status !== 'active'
+    || child.interruptionKind !== kind) child = undefined;
   const completedProjectIntent = activeIntent(state, person);
   const completedProject = completedProjectIntent?.projectId
     ? projectById(state, completedProjectIntent.projectId)
@@ -1565,14 +1818,14 @@ export function executeProtectiveInterruption(
     delete person.activeIntentId;
   }
   const parent = activeIntent(state, person);
-  const mayInterrupt = Boolean(parent && isResumableIntent(parent));
-  let child: Intent | undefined;
-  if (parent && mayInterrupt) {
+  const mayInterrupt = Boolean(parent
+    && (kind === 'survival-reflex' || isResumableIntent(parent)));
+  if (!child && (!parent || mayInterrupt)) {
     const option: ActionOption = {
       id: `${kind}:${atMonth}:${actionTick}:${person.id}`,
       summary: kind === 'dependent-care' ? '先处理身边未成年人的紧急照护' : '先处理本人迫近的生存危险',
       reason: kind === 'dependent-care' ? '未成年人的风险高于本人当前风险' : '本人当前生存风险最高',
-      goal: protectiveGoal(person, action),
+      goal: protectiveGoal(state, person, action, kind),
       nextAction: structuredClone(action),
       estimatedDuration: 'one-month',
       sourceFactIds: person.conditions.flatMap((condition) => condition.sourceEventIds),
@@ -1589,41 +1842,120 @@ export function executeProtectiveInterruption(
       followUpOptions: [],
       activeIntent: parent,
     };
-    const decision: Decision = {
-      kind: 'revise',
-      intentId: parent.id,
-      optionId: option.id,
-      mode: 'interrupt',
-      interruptionKind: kind,
-      reason: option.reason,
+    const decision: Decision = parent ? {
+      kind: 'revise', intentId: parent.id, optionId: option.id,
+      mode: 'interrupt', interruptionKind: kind, reason: option.reason,
+    } : {
+      kind: 'start', optionId: option.id, reason: option.reason,
     };
     const decisionFact = applyDecision(state, person, context, decision, false, atMonth, events.length, actionTick, 'edge');
     events.push(decisionFact);
     child = activeIntent(state, person);
+    if (child && !parent) child.interruptionKind = kind;
   }
-  const fact = executePrimitiveAction(state, person, action, atMonth, events.length, {
+  const effectiveAction = structuredClone(continuousProtectiveAction(
+    state,
+    person,
+    child,
+    action,
+    kind,
+    atMonth,
+  ));
+  if (child && child.interruptionKind === kind) {
+    child.goal = protectiveGoal(state, person, effectiveAction, kind);
+    child.nextAction = structuredClone(effectiveAction);
+    child.lastProgressAtMonth = atMonth;
+    delete child.blockedReason;
+  }
+  const fact = executePrimitiveAction(state, person, effectiveAction, atMonth, events.length, {
     ...(child ? { intentId: child.id } : {}),
     cause: 'survival-reflex',
     actionTick,
   });
   if (child && child.interruptionKind === kind) {
     child.actionEventIds.push(fact.id);
-    child.status = fact.status === 'failed' ? 'failed' : fact.status === 'blocked' ? 'blocked' : 'completed';
-    child.progress = child.status === 'completed' ? 1 : child.progress;
-    recordIntentGoalOutcome(
-      state,
-      child,
-      child.status === 'completed' && goalSatisfied(state, person, child.goal) ? 'achieved' : 'attempted-unmet',
-      atMonth,
-      [fact.id],
-      fact.action,
-    );
-    if (child.status !== 'completed') child.blockedReason = fact.result;
-    delete person.activeIntentId;
+    if (fact.status === 'failed' || fact.status === 'blocked') {
+      child.status = fact.status;
+      child.blockedReason = fact.result;
+      recordIntentGoalOutcome(
+        state,
+        child,
+        'attempted-unmet',
+        atMonth,
+        [fact.id],
+        fact.action,
+      );
+      delete person.activeIntentId;
+    } else {
+      // One adjacent move, drink, or act is only a step inside the emergency
+      // episode. The same interruption stays active until the reflex compiler
+      // no longer observes the causal danger; later ticks update the next
+      // primitive action without manufacturing another DecisionFact.
+      child.status = 'active';
+      child.progress = Math.max(child.progress, fact.status === 'completed' ? 0.75 : 0.5);
+      child.lastProgressAtMonth = atMonth;
+      person.activeIntentId = child.id;
+    }
   }
   events.push(fact);
+  if (kind === 'dependent-care'
+    && fact.status !== 'blocked'
+    && fact.status !== 'failed'
+    && fact.action.kind === 'move'
+    && fact.action.dependentTransportBasis) {
+    const carriedPersonIds = Array.isArray(fact.diff.carriedPersonIds)
+      ? fact.diff.carriedPersonIds.filter(
+        (personId): personId is string => typeof personId === 'string' && personId.length > 0,
+      )
+      : [];
+    for (const dependentId of carriedPersonIds) {
+      const dependent = personById(state, dependentId);
+      const displacedIntent = dependent ? activeIntent(state, dependent) : undefined;
+      if (!dependent
+        || !displacedIntent
+        || displacedIntent.interruptionKind !== undefined) continue;
+      displacedIntent.status = 'abandoned';
+      displacedIntent.blockedReason = '亲代紧急照护运输改变了原计划的空间起点，需要按新位置重新决定';
+      recordIntentGoalOutcome(
+        state,
+        displacedIntent,
+        'not-evaluated',
+        atMonth,
+        [fact.id],
+        fact.action,
+      );
+      delete dependent.activeIntentId;
+      dependent.currentActionText = '被亲代带离原计划位置，等待按当前处境重新决定';
+    }
+  }
   if (child) resolveInterruptedIntentReturn(state, person, atMonth);
   return fact;
+}
+
+/** Close one continuous protective episode only after its causal reflex clears. */
+export function resolveClearedProtectiveInterruption(
+  state: SimulationState,
+  person: PersonState,
+  kind: 'survival-reflex' | 'dependent-care',
+  atMonth: number,
+): boolean {
+  const child = activeIntent(state, person);
+  if (!child
+    || child.status !== 'active'
+    || child.interruptionKind !== kind) return false;
+  child.status = 'completed';
+  child.progress = 1;
+  recordIntentGoalOutcome(
+    state,
+    child,
+    goalSatisfied(state, person, child.goal) ? 'achieved' : 'attempted-unmet',
+    atMonth,
+    [...child.actionEventIds],
+    child.nextAction,
+  );
+  delete person.activeIntentId;
+  if (child.returnToIntentId) resolveInterruptedIntentReturn(state, person, atMonth);
+  return true;
 }
 
 export function executeDependentCareReflex(
@@ -1660,6 +1992,11 @@ export function recordShelterMaintenanceInterruption(
   events: WorldEvent[],
   detail: { reason?: string; sourceFactIds?: string[] } = {},
 ): void {
+  if (events.some((event) => event.kind === 'decision'
+    && event.atMonth === atMonth
+    && event.who === person.id
+    && event.decision.kind === 'revise'
+    && event.decision.interruptionKind === 'shelter-maintenance')) return;
   const parent = activeIntent(state, person);
   if (!parent || !isResumableIntent(parent)) return;
   const option: ActionOption = {

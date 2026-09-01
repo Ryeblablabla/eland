@@ -33,7 +33,13 @@ import { applyRelationEvidence, relationTo } from './relation';
 import { activeReproductionAgreementBetween, agreementAuthorizesTransfer, agreementById, recordAgreementAction, reproductionAttemptedBetweenInMonth } from './agreement';
 import { recordCollectiveAction } from './collective';
 import { mandateById, mandateSupportsTransfer, recordGovernanceAction } from './governance';
-import { permissionAuthorizesTransfer, permissionById, recordPermissionAction } from './permission';
+import {
+  inferPermissionUseBasis,
+  permissionAuthorizesTransfer,
+  permissionById,
+  permissionUseBasisIsCurrent,
+  recordPermissionAction,
+} from './permission';
 import {
   exertionRuleFor,
   exertionTechniqueId,
@@ -47,7 +53,10 @@ import {
   inventoryCombinationFor,
   inventoryCombinationSummary,
   inventoryCombinationTechniqueId,
-  inventoryVoxelCombinationOutput,
+  inventoryVoxelInteractionFor,
+  inventoryVoxelInteractionResult,
+  inventoryVoxelInteractionSummary,
+  inventoryVoxelInteractionTechniqueId,
 } from './interaction-rules';
 import { rememberMaterialPlace } from './spatial-knowledge';
 import { shelterGeometryAt } from './structure';
@@ -63,7 +72,7 @@ import {
   inspectProjectMaterialContributionRequest,
 } from './project-material-request';
 import { humanReproductionCapacityFactor, HUMAN_SOFT_CARRYING_CAPACITY } from './population-capacity';
-import { hasReproductiveRecoveryCondition } from './dependent-care';
+import { hasReproductiveRecoveryCondition, isInfant } from './dependent-care';
 import { lifePlanningStage } from './life-stage';
 import {
   hasKnowledgeFact,
@@ -90,7 +99,7 @@ import {
   reproductiveUpperAgeMonths,
   traitStatesOf,
 } from './trait';
-import { addContainerInventory, addDrop, addInventory, removeEmptyStacks } from './actions/inventory';
+import { addContainedInventory, addContainerInventory, addDrop, addInventory, removeEmptyStacks } from './actions/inventory';
 import {
   bodyOccupies,
   bodyStandsOn,
@@ -107,7 +116,7 @@ import {
   applyTechniqueLearning,
   validateTechniqueLearningAction,
 } from './actions/technique-learning-actions';
-import { executeCommunicate } from './actions/communication-actions';
+import { executeInscribe, executeTalk } from './actions/talk-actions';
 import { executeAttend } from './actions/attend-actions';
 import {
   projectEventHasEventTimeLead,
@@ -485,6 +494,8 @@ export function goalSatisfied(
   if (goal.kind === 'technique-demonstrated') return projectById(state, goal.projectId)
     ?.techniqueDemonstrations?.some((basis) => basis.requestEventId === goal.requestEventId) ?? false;
   if (goal.kind === 'agreement-fulfilled') return agreementById(state, goal.agreementId)?.status === 'fulfilled';
+  if (goal.kind === 'agreement-contribution-recorded') return agreementById(state, goal.agreementId)
+    ?.fulfilledByPersonIds.includes(goal.personId) ?? false;
   if (goal.kind === 'death-mourned') return bereavementFor(person, goal.remainsId)?.lastMournedAtMonth !== undefined;
   if (goal.kind === 'remains-interred') return remainsById(state, goal.remainsId)?.status === 'interred';
   if (goal.kind === 'memorial-marked') return Boolean(memorialForRemains(state, goal.remainsId));
@@ -535,6 +546,91 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
     result: threatValidation.reason,
     diff: { wildlifeThreatResponse: true, wildlifeThreatResponseInvalidated: true },
   };
+  const transportBasis = action.dependentTransportBasis;
+  let explicitlyTransportedDependent: PersonState | undefined;
+  if (transportBasis) {
+    const dependent = personById(state, transportBasis.dependentId);
+    const currentConditionIds = new Set(dependent?.conditions.map((condition) => condition.id) ?? []);
+    const currentConditionSourceIds = new Set(dependent?.conditions
+      .flatMap((condition) => condition.sourceEventIds) ?? []);
+    const reasonIsCurrent = Boolean(dependent) && (
+      transportBasis.reason === 'thermal-shelter'
+        ? dependent!.conditions.some((condition) => condition.kind === 'cold' || condition.kind === 'heat')
+          && Boolean(shelterGeometryAt(state.world.grid, {
+            cellId: action.toCellId,
+            z: action.toZ ?? dependent!.position.z,
+          }))
+        : transportBasis.reason === 'hibernation-recovery'
+          ? isRecoveringFromDehydratedHibernation(dependent!)
+            && dependent!.body.hydration < HIBERNATION_RECOVERY_SAFE_RESERVE
+          : transportBasis.reason === 'hydration-access'
+            ? dependent!.body.hydration < 40
+            : dependent!.body.nutrition < 40
+    );
+    const valid = transportBasis.version === 'dependent-transport-v1'
+      && transportBasis.observedAtMonth === atMonth
+      && Boolean(dependent && isAlive(dependent))
+      && Boolean(dependent?.geneticParents.includes(person.id))
+      && Boolean(dependent && sameLocation(dependent, person))
+      && Boolean(dependent && isInfant(state, dependent, atMonth))
+      && Boolean(dependent && !isDormantDehydratedHibernating(dependent))
+      && transportBasis.conditionIds.every((conditionId) => currentConditionIds.has(conditionId))
+      && transportBasis.sourceFactIds.every((sourceEventId) => currentConditionSourceIds.has(sourceEventId))
+      && reasonIsCurrent;
+    if (!valid) return {
+      status: 'blocked' as const,
+      path: [person.position.cellId],
+      result: '照护运输依据已经失效，不能把对方随移动改写位置',
+      diff: {
+        dependentTransportInvalidated: true,
+        dependentTransportPersonId: transportBasis.dependentId,
+        dependentTransportReason: transportBasis.reason,
+      },
+    };
+    explicitlyTransportedDependent = dependent;
+  }
+  const waterAccess = action.waterAccessBasis;
+  if (waterAccess) {
+    const currentMaterial = voxelAt(
+      state.world.grid,
+      waterAccess.waterPosition.x,
+      waterAccess.waterPosition.y,
+      waterAccess.waterPosition.z,
+    );
+    const visible = new Set(cellsInRadius(
+      person.position.cellId,
+      4 + Math.floor(person.baselineCapacities.perception / 25),
+    ));
+    const waterCell = cellId(waterAccess.waterPosition.x, waterAccess.waterPosition.y);
+    // The basis is compiled immediately from a visible source or a sourced
+    // place memory. Keep that perception snapshot usable for this month even
+    // if the bounded known-place list is compacted while the decision is
+    // committed. A later month must compile a fresh basis, and the physical
+    // voxel/path are still checked below on every step.
+    const sourceIsCurrent = waterAccess.observedAtMonth === atMonth
+      && (waterAccess.mode === 'visible'
+        ? visible.has(waterCell)
+        : waterAccess.sourceFactIds.length > 0);
+    const valid = waterAccess.version === 'water-access-basis-v1'
+      && action.toCellId === waterAccess.bankPosition.cellId
+      && action.toZ === waterAccess.bankPosition.z
+      && currentMaterial === waterAccess.materialId
+      && materialHas(currentMaterial, 'drinkable')
+      && sourceIsCurrent;
+    if (!valid) return {
+      status: 'blocked' as const,
+      path: [person.position.cellId],
+      result: '前往水源的感知或地点记忆已经失效',
+      diff: {
+        waterAccessInvalidated: true,
+        waterAccessBasisKey: waterAccess.basisKey,
+        waterAccessObservedAtMonth: waterAccess.observedAtMonth,
+        waterAccessSourceIsCurrent: sourceIsCurrent,
+        waterAccessMaterialStillDrinkable: currentMaterial === waterAccess.materialId
+          && materialHas(currentMaterial, 'drinkable'),
+      },
+    };
+  }
   const fullPath = findStandingPath(state.world.grid, person.position, { cellId: action.toCellId, ...(action.toZ === undefined ? {} : { z: action.toZ }) });
   if (!fullPath.length) return { status: 'blocked' as const, path: [person.position.cellId], result: '目标地表当前不可达', diff: {} };
   // 一个 move 仍沿逐格连续路径执行；低成本道路可在同一规则刻度继续跨过下一条边。
@@ -547,12 +643,22 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
   person.position.cellId = to.cellId;
   person.position.z = to.z;
   if (moved) person.position.lastPath.push(...segment.slice(1).map((position) => position.cellId));
-  const carried = !moved ? [] : livingPeople(state).filter((candidate) =>
+  const automaticallyCarried = !moved ? [] : livingPeople(state).filter((candidate) =>
     candidate.position.cellId === from.cellId
     && candidate.position.z === from.z
     && candidate.geneticParents.includes(person.id)
     && lifePlanningStage(candidate, atMonth) === 'dependent-child'
-    && !isDormantDehydratedHibernating(candidate));
+    && !isDormantDehydratedHibernating(candidate)
+    // Ordinary adult movement must not pull an already thermally stressed
+    // infant out of real cover. Explicit care transport remains available
+    // when another child need genuinely justifies that trade-off.
+    && !(candidate.conditions.some((condition) => condition.kind === 'cold' || condition.kind === 'heat')
+      && Boolean(shelterGeometryAt(state.world.grid, candidate.position))
+      && !shelterGeometryAt(state.world.grid, to)));
+  const carried = !moved ? [] : [...new Map([
+    ...automaticallyCarried,
+    ...(explicitlyTransportedDependent ? [explicitlyTransportedDependent] : []),
+  ].map((dependent) => [dependent.id, dependent])).values()];
   for (const dependent of carried) {
     dependent.position.cellId = to.cellId;
     dependent.position.z = to.z;
@@ -566,26 +672,40 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
   person.body.hydration = clamp(person.body.hydration - movementCost * 0.125 * movementMetabolism);
   person.body.nutrition = clamp(person.body.nutrition - movementCost * 0.08 * movementMetabolism);
   const materialChanges = compactTraversedSurface(state, segment, eventId);
+  if (waterAccess) {
+    rememberMaterialPlace(person, waterAccess.materialId, waterAccess.waterPosition, atMonth, eventId);
+  }
   const reached = to.cellId === action.toCellId && (action.toZ === undefined || to.z === action.toZ);
   const threatDiff = action.wildlifeThreatBasis
     ? wildlifeThreatResponseDiff(from, to, action.wildlifeThreatBasis)
     : {};
+  const movementResult = action.wildlifeThreatBasis
+    ? action.wildlifeThreatBasis.response === 'shelter-step'
+      ? action.wildlifeThreatBasis.threats.length
+        ? `${person.name}向真实住所移动一步，避开可见野兽威胁`
+        : `${person.name}继续走向先前选定的真实住所，完成避险路线`
+      : action.wildlifeThreatBasis.response === 'flee-step'
+        ? `${person.name}与可见野兽拉开距离`
+        : `${person.name}无安全退路，原地警戒野兽`
+    : reached ? `沿可容身空间到达格 ${cellX(to.cellId)}, ${cellY(to.cellId)} 的高度 ${to.z}` : `沿可容身空间推进了 ${Math.max(0, segment.length - 1)} 步`;
   return {
     status: reached ? 'completed' as const : 'progressed' as const,
     path: segment.map((position) => position.cellId),
-    result: action.wildlifeThreatBasis
-      ? action.wildlifeThreatBasis.response === 'shelter-step'
-        ? `${person.name}向真实住所移动一步，避开可见野兽威胁`
-        : action.wildlifeThreatBasis.response === 'flee-step'
-          ? `${person.name}与可见野兽拉开距离`
-          : `${person.name}无安全退路，原地警戒野兽`
-      : reached ? `沿可容身空间到达格 ${cellX(to.cellId)}, ${cellY(to.cellId)} 的高度 ${to.z}` : `沿可容身空间推进了 ${Math.max(0, segment.length - 1)} 步`,
+    result: carried.length
+      ? `${movementResult}，并带着${carried.map((dependent) => dependent.name).join('、')}`
+      : movementResult,
     diff: {
       spentWork: spent,
       movementCost,
       movementMetabolism,
       verticalPath: segment.map((position) => position.z),
       materialChanges,
+      ...(waterAccess ? {
+        waterAccessBasisKey: waterAccess.basisKey,
+        waterAccessMode: waterAccess.mode,
+        waterAccessPosition: waterAccess.waterPosition,
+        waterAccessRemembered: true,
+      } : {}),
       ...threatDiff,
       ...(carried.length ? { carriedPersonIds: carried.map((dependent) => dependent.id) } : {}),
       ...(carriedRemains.length ? { carriedRemainsIds: carriedRemains.map((remains) => remains.id) } : {}),
@@ -595,6 +715,7 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
 
 function executeTransfer(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'transfer' }>, atMonth: number, eventId: string) {
   let available = 0;
+  let surfaceWaterPosition: { x: number; y: number; z: number } | undefined;
   let sourceDrop: DropState | undefined;
   let sourcePerson: PersonState | undefined;
   let sourceContainer: ContainerState | undefined;
@@ -603,8 +724,31 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     const groundCellId = action.from.cellId;
     sourceDrop = state.world.drops.find((drop) => (action.dropId ? drop.id === action.dropId : drop.cellId === groundCellId && drop.materialId === action.materialId));
     const sourceZ = action.from.z ?? sourceDrop?.z;
-    if (groundCellId !== person.position.cellId || sourceZ !== person.position.z) return { status: 'blocked' as const, result: '不在地面物品所在位置', diff: {} };
-    available = sourceDrop?.quantity ?? 0;
+    if (!sourceDrop && action.materialId === Material.Water && sourceZ !== undefined) {
+      surfaceWaterPosition = { x: cellX(groundCellId), y: cellY(groundCellId), z: sourceZ };
+      const container = action.containerStackId
+        ? person.inventory.find((stack) => stack.id === action.containerStackId
+          && stack.materialId === Material.Container
+          && stack.quantity > 0)
+        : undefined;
+      const alreadyFilled = Boolean(container && person.inventory.some((stack) => stack.materialId === Material.Water
+        && stack.quantity > 0
+        && stack.containedByStackId === container.id));
+      if (action.to.kind !== 'person' || action.to.personId !== person.id) {
+        return { status: 'blocked' as const, result: '地表水必须先装入本人携带的容器', diff: {} };
+      }
+      if (!container || alreadyFilled) {
+        return { status: 'blocked' as const, result: alreadyFilled ? '这个容器已经装有水' : '缺少可携带的空容器', diff: {} };
+      }
+      if (voxelAt(state.world.grid, surfaceWaterPosition.x, surfaceWaterPosition.y, surfaceWaterPosition.z) !== Material.Water
+        || distanceToPosition(person, surfaceWaterPosition) > 1) {
+        return { status: 'blocked' as const, result: '真实水源不在近身装取范围', diff: {} };
+      }
+      available = 1;
+    } else {
+      if (groundCellId !== person.position.cellId || sourceZ !== person.position.z) return { status: 'blocked' as const, result: '不在地面物品所在位置', diff: {} };
+      available = sourceDrop?.quantity ?? 0;
+    }
   } else if (action.from.kind === 'person') {
     const sourcePersonId = action.from.personId;
     sourcePerson = personById(state, sourcePersonId);
@@ -618,6 +762,13 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     available = sourceStack?.quantity ?? 0;
   }
   if (available <= 0) return { status: 'blocked' as const, result: '来源中已经没有这种物质', diff: {} };
+  if (sourceStack?.containedByStackId) {
+    return { status: 'blocked' as const, result: '容器中的液体必须随容器使用，不能单独转移', diff: {} };
+  }
+  if (sourceStack?.materialId === Material.Container
+    && sourcePerson?.inventory.some((stack) => stack.containedByStackId === sourceStack?.id && stack.quantity > 0)) {
+    return { status: 'blocked' as const, result: '装有液体的容器不能与内容物分开转移', diff: {} };
+  }
   if (sourceDrop && !canPersonCollectProjectMaterialDrop(state, person.id, sourceDrop, atMonth)) {
     return {
       status: 'blocked' as const,
@@ -663,7 +814,32 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   const possibleAgreement = action.authorizationRef ? agreementById(state, action.authorizationRef) : undefined;
   const agreementAuthorized = agreementAuthorizesTransfer(possibleAgreement, person.id, action, quantity);
   const possiblePermission = action.authorizationRef ? permissionById(state, action.authorizationRef) : undefined;
-  const permissionAuthorized = permissionAuthorizesTransfer(possiblePermission, person.id, action, atMonth, quantity);
+  const permissionStructurallyAuthorized = permissionAuthorizesTransfer(possiblePermission, person.id, action, atMonth, quantity);
+  const permissionBasisCurrent = permissionUseBasisIsCurrent(state, possiblePermission, action);
+  const currentPermissionGrantee = possiblePermission ? personById(state, possiblePermission.granteeId) : undefined;
+  const currentPermissionGrantor = possiblePermission ? personById(state, possiblePermission.grantorId) : undefined;
+  const currentPermissionUseBasis = possiblePermission && currentPermissionGrantee && currentPermissionGrantor
+    ? inferPermissionUseBasis(
+        state,
+        possiblePermission,
+        currentPermissionGrantee,
+        currentPermissionGrantor,
+      )
+    : undefined;
+  if (possiblePermission && permissionStructurallyAuthorized && !permissionBasisCurrent) {
+    return {
+      status: 'blocked' as const,
+      result: '许可仍然有效，但产生本次取用的储备或项目缺口已经变化',
+      diff: {
+        authorized: false,
+        permissionAuthorized: false,
+        permissionUseBasisStale: true,
+        plannedPermissionUseBasis: action.permissionUseBasis,
+        currentPermissionUseBasis,
+      },
+    };
+  }
+  const permissionAuthorized = permissionBasisCurrent && permissionStructurallyAuthorized;
   const possibleMandate = action.authorizationRef ? mandateById(state, action.authorizationRef) : undefined;
   const mandateUse = mandateSupportsTransfer(state, possibleMandate, person.id, action, atMonth);
   const mandateAuthorized = Boolean(mandateUse);
@@ -703,6 +879,9 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     ...(sourceStack && sourceContainer
       ? [`container:${sourceContainer.id}:${sourceStack.id}`, ...(sourceStack.sourceLineageKeys ?? [])]
       : []),
+    ...(surfaceWaterPosition
+      ? [`voxel:water:${surfaceWaterPosition.x}:${surfaceWaterPosition.y}:${surfaceWaterPosition.z}`]
+      : []),
   ])];
   const recordPayloadId = sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId;
   if (sourceDrop) {
@@ -713,19 +892,38 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     }, atMonth, eventId);
   }
   if (destinationPerson) {
-    addInventory(
-      destinationPerson,
-      action.materialId,
-      quantity,
-      sourceEventIds,
-      recordPayloadId
-        ? `stack-${destinationPerson.id}-${action.materialId}-${eventId}`
-        : `stack-${destinationPerson.id}-${action.materialId}-${atMonth}`,
-      recordPayloadId,
-      sourceLineageKeys,
-    );
+    if (surfaceWaterPosition && action.containerStackId) {
+      addContainedInventory(
+        destinationPerson,
+        action.materialId,
+        quantity,
+        action.containerStackId,
+        sourceEventIds,
+        `stack-${destinationPerson.id}-${action.materialId}-${eventId}`,
+        sourceLineageKeys,
+      );
+      rememberMaterialPlace(destinationPerson, Material.Water, surfaceWaterPosition, atMonth, eventId);
+    } else {
+      addInventory(
+        destinationPerson,
+        action.materialId,
+        quantity,
+        sourceEventIds,
+        recordPayloadId
+          ? `stack-${destinationPerson.id}-${action.materialId}-${eventId}`
+          : `stack-${destinationPerson.id}-${action.materialId}-${atMonth}`,
+        recordPayloadId,
+        sourceLineageKeys,
+      );
+    }
     if (destinationPerson.id !== person.id && !referencedNorm) {
-      applyRelationEvidence(destinationPerson, person.id, eventId, { trust: authorized ? 3 : -8, bond: authorized ? 2 : -5 });
+      applyRelationEvidence(
+        destinationPerson,
+        person.id,
+        eventId,
+        { trust: authorized ? 3 : -8, bond: authorized ? 2 : -5 },
+        authorized ? { atMonth, kinds: ['substantive', 'direct-intimacy'] } : undefined,
+      );
     }
   } else if (destinationContainer) {
     addContainerInventory(
@@ -759,13 +957,16 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   state.world.drops = state.world.drops.filter((drop) => drop.quantity > 0);
   return {
     status: 'completed' as const,
-    result: `${materialDefinition(action.materialId).name} × ${quantity} ${authorized ? '改变了持有者' : '被未经授权地取走'}`,
+    result: surfaceWaterPosition
+      ? `${person.name}用随身容器从真实水源装取了水`
+      : `${materialDefinition(action.materialId).name} × ${quantity} ${authorized ? '改变了持有者' : '被未经授权地取走'}`,
     diff: {
       materialId: action.materialId,
       quantity,
       authorized,
       agreementAuthorized,
       permissionAuthorized,
+      ...(action.permissionUseBasis ? { permissionUseBasis: action.permissionUseBasis } : {}),
       mandateAuthorized,
       mandateUse,
       from: action.from,
@@ -773,6 +974,11 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       witnessedBy,
       sourceEventIds: sourceEventIds.slice(-24),
       sourceLineageKeys: sourceLineageKeys.slice(-32),
+      ...(surfaceWaterPosition ? {
+        portableWater: true,
+        sourceWaterPosition: surfaceWaterPosition,
+        containerStackId: action.containerStackId,
+      } : {}),
       ...(recordPayloadId ? { recordPayloadId } : {}),
       ...(sourceDrop?.estateOfPersonId ? { estateOfPersonId: sourceDrop.estateOfPersonId } : {}),
       ...(action.estateCarePersonId ? { estateCare: true, estateCarePersonId: action.estateCarePersonId } : {}),
@@ -954,7 +1160,14 @@ function executeInventoryCombine(state: SimulationState, person: PersonState, st
   }
   const materialIds = stacks.map((stack) => stack?.materialId ?? Material.Air);
   const rule = inventoryCombinationFor(materialIds);
-  if (!rule) return { status: 'blocked' as const, result: '这些随身物质当前没有可发生的结合规则', diff: { inputMaterialIds: materialIds } };
+  if (!rule) return {
+    status: 'blocked' as const,
+    result: `这次把${materialIds.map((materialId) => materialDefinition(materialId).name).join('与')}放在一起，没有观察到物质变化`,
+    diff: {
+      failureCode: 'no-interaction-response',
+      inputMaterialIds: materialIds,
+    },
+  };
   for (const [stackId, quantity] of requestedByStack) {
     const stack = person.inventory.find((candidate) => candidate.id === stackId);
     if (stack) stack.quantity -= quantity;
@@ -993,7 +1206,7 @@ function executeInventoryCombine(state: SimulationState, person: PersonState, st
   } else person.knowledge.push({ id: techniqueId, kind: 'technique', summary: inventoryCombinationSummary(rule), confidence: 46, learnedAtMonth: atMonth, sourceEventIds: [eventId] });
   return {
     status: 'completed' as const,
-    result: `${materialIds.map((id) => materialDefinition(id).name).join('与')}结合为${materialDefinition(rule.output.materialId).name}`,
+    result: `用${materialIds.map((id) => materialDefinition(id).name).join('与')}制成${materialDefinition(rule.output.materialId).name}`,
     diff: {
       techniqueId,
       inputMaterialIds: materialIds,
@@ -1047,15 +1260,22 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
     if (condition.stage > 1) condition.stage = (condition.stage - 1) as 1 | 2;
     else receiver.conditions = receiver.conditions.filter((item) => item.id !== condition.id);
     receiver.body.health = clamp(receiver.body.health + (stack.materialId === Material.HerbalMedicine ? 9 : 3));
-    applyRelationEvidence(receiver, person.id, eventId, { trust: 7, bond: 5 });
+    applyRelationEvidence(
+      receiver,
+      person.id,
+      eventId,
+      { trust: 7, bond: 5 },
+      { atMonth, kinds: ['substantive', 'direct-intimacy'] },
+    );
     return { status: 'completed' as const, result: `${person.name}用${materialDefinition(stack.materialId).name}照护${receiver.name}的${condition.kind === 'wound' ? '伤口' : '疾病'}`, diff: { caredPersonId: receiver.id, condition: condition.kind, careMaterialId: stack.materialId, fromStage: priorStage, toStage: receiver.conditions.find((item) => item.id === condition.id)?.stage ?? 0, health: receiver.body.health, atMonth } };
   }
   if (!stackRef || !voxelRef || stackRef.personId !== person.id || distanceToPosition(person, voxelRef.position) > 1) return { status: 'blocked' as const, result: '结合材料或目标不在近身范围', diff: {} };
   const stack = person.inventory.find((candidate) => candidate.id === stackRef.stackId && candidate.quantity > 0);
   if (!stack) return { status: 'blocked' as const, result: '背包中的材料已经不存在', diff: {} };
   const current = voxelAt(state.world.grid, voxelRef.position.x, voxelRef.position.y, voxelRef.position.z);
-  const output = inventoryVoxelCombinationOutput(stack.materialId, current);
-  if (output === null) return { status: 'blocked' as const, result: '这些物质当前没有可发生的结合规则', diff: { inputMaterialId: stack.materialId, targetMaterialId: current } };
+  const interaction = inventoryVoxelInteractionFor(stack.materialId, current);
+  if (!interaction) return { status: 'blocked' as const, result: '这次材料试作没有产生可见变化', diff: { inputMaterialId: stack.materialId, targetMaterialId: current } };
+  const output = interaction.outputMaterialId;
   if (materialHas(output, 'solid') && bodyOccupies(state, voxelRef.position)) return { status: 'blocked' as const, result: '目标空气体素正被身体占据，不能放入固体物质', diff: { outputMaterialId: output, position: voxelRef.position } };
   stack.quantity -= 1;
   removeEmptyStacks(person);
@@ -1082,7 +1302,7 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
   } else if (output === Material.Cistern && current === Material.Container) {
     state.containers = state.containers.filter((candidate) => candidate.id !== containerIdAt(voxelRef.position));
   }
-  const techniqueId = `technique:combine:${stack.materialId}:${current}:${output}`;
+  const techniqueId = inventoryVoxelInteractionTechniqueId(interaction);
   const knownTechnique = knowledgeFactById(person, techniqueId);
   if (knownTechnique) {
     knownTechnique.confidence = clamp(knownTechnique.confidence + 18);
@@ -1090,14 +1310,14 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
   } else person.knowledge.push({
     id: techniqueId,
     kind: 'technique',
-    summary: `${materialDefinition(stack.materialId).name}与${materialDefinition(current).name}可结合为${materialDefinition(output).name}`,
+    summary: inventoryVoxelInteractionSummary(interaction),
     confidence: 46,
     learnedAtMonth: atMonth,
     sourceEventIds: [eventId],
   });
   return {
     status: 'completed' as const,
-    result: `${materialDefinition(stack.materialId).name}与${materialDefinition(current).name}结合为${materialDefinition(output).name}`,
+    result: inventoryVoxelInteractionResult(interaction),
     diff: { techniqueId, inputMaterialId: stack.materialId, targetMaterialId: current, outputMaterialId: output, position: voxelRef.position, sourceEventId: eventId, ...(containerId ? { containerId } : {}) },
   };
 }
@@ -1432,18 +1652,72 @@ function executeRehydrate(
 ) {
   const target = action.targets.find((candidate): candidate is Extract<WorldRef, { kind: 'person' }> => candidate.kind === 'person');
   const sleeper = target ? personById(state, target.personId) : undefined;
-  if (!sleeper || !sameLocation(sleeper, person)) return { status: 'blocked' as const, result: '需要近身才能让脱水休眠者重新水化', diff: {} };
+  if (!sleeper) return { status: 'blocked' as const, result: '没有可重新水化的休眠者', diff: {} };
   const condition = sleeper.conditions.find((candidate) => candidate.kind === 'dehydrated-hibernation');
-  if (!condition) return { status: 'blocked' as const, result: '对方没有处于脱水休眠', diff: {} };
+  if (!condition) {
+    const assistedDependentHydration = isAlive(sleeper)
+      && person.id !== sleeper.id
+      && sleeper.geneticParents.includes(person.id)
+      && isInfant(state, sleeper, atMonth)
+      && sleeper.body.hydration < 40;
+    if (!assistedDependentHydration) {
+      return { status: 'blocked' as const, result: '对方没有处于脱水休眠，也不需要由亲代近身协助饮水', diff: {} };
+    }
+    if (!sameLocation(sleeper, person)) {
+      return { status: 'blocked' as const, result: '需要近身才能帮助年幼子女饮水', diff: {} };
+    }
+    const waterNearby = cellsInRadius(person.position.cellId, 2).some((cell) => {
+      const material = surfaceMaterial(state.world.grid, cell);
+      return materialHas(material, 'drinkable');
+    });
+    const portableWaterRef = action.targets.find((candidate): candidate is Extract<WorldRef, { kind: 'inventory-stack' }> => (
+      candidate.kind === 'inventory-stack' && candidate.personId === person.id
+    ));
+    const portableWater = portableWaterRef
+      ? person.inventory.find((stack) => stack.id === portableWaterRef.stackId
+        && stack.materialId === Material.Water
+        && stack.quantity > 0
+        && typeof stack.containedByStackId === 'string'
+        && person.inventory.some((container) => container.id === stack.containedByStackId
+          && container.materialId === Material.Container
+          && container.quantity > 0))
+      : undefined;
+    if (!waterNearby && !portableWater) {
+      return { status: 'blocked' as const, result: '附近没有可帮助幼儿饮用的真实水源', diff: {} };
+    }
+    const portableWaterSourceEventIds = [...(portableWater?.sourceEventIds ?? [])];
+    if (portableWater) {
+      portableWater.quantity -= 1;
+      removeEmptyStacks(person);
+    }
+    sleeper.body.hydration = clamp(sleeper.body.hydration + 18);
+    return {
+      status: 'completed' as const,
+      result: portableWater
+        ? `${person.name}用随身容器中的真实水帮助${sleeper.name}饮水`
+        : `${person.name}在附近真实水源旁帮助${sleeper.name}饮水`,
+      diff: {
+        rehydratedPersonId: sleeper.id,
+        assistedByPersonId: person.id,
+        assistedDependentId: sleeper.id,
+        waterNearby,
+        portableWaterConsumed: Boolean(portableWater),
+        portableWaterSourceEventIds,
+        hydrationAfter: sleeper.body.hydration,
+      },
+    };
+  }
   const phase = hibernationPhase(condition);
-  const assistedDependentRecovery = phase === 'recovering'
+  const assistedRecovery = phase === 'recovering'
     && isAlive(sleeper)
     && state.civilization.epoch === 'stable'
-    && sleeper.geneticParents.includes(person.id)
-    && lifePlanningStage(sleeper, atMonth) === 'dependent-child'
-    && sleeper.body.hydration < HIBERNATION_RECOVERY_SAFE_RESERVE
+    && person.id !== sleeper.id
+    && Math.min(sleeper.body.health, sleeper.body.hydration, sleeper.body.nutrition) < HIBERNATION_RECOVERY_SAFE_RESERVE
     && condition.lastRecoveryAssistedAtMonth !== atMonth;
-  if (phase !== 'dormant' && !assistedDependentRecovery) return {
+  const assistedDependentRecovery = assistedRecovery
+    && sleeper.geneticParents.includes(person.id)
+    && lifePlanningStage(sleeper, atMonth) === 'dependent-child';
+  if (phase !== 'dormant' && !assistedRecovery) return {
     status: 'blocked' as const,
     result: phase === 'recovering'
       ? '对方的恢复阶段不允许本次重新水化'
@@ -1454,23 +1728,45 @@ function executeRehydrate(
       duplicateRehydrationBlocked: true,
     },
   };
+  if (!sameLocation(sleeper, person)) return { status: 'blocked' as const, result: '需要近身才能让脱水休眠者重新水化', diff: {} };
   const waterNearby = cellsInRadius(person.position.cellId, 2).some((cell) => {
     const material = surfaceMaterial(state.world.grid, cell);
     return materialHas(material, 'drinkable');
   });
-  if (!waterNearby) return { status: 'blocked' as const, result: '附近没有可用水或冰，无法完成重新水化', diff: {} };
-  if (assistedDependentRecovery) {
+  const portableWaterRef = action.targets.find((candidate): candidate is Extract<WorldRef, { kind: 'inventory-stack' }> => (
+    candidate.kind === 'inventory-stack' && candidate.personId === person.id
+  ));
+  const portableWater = portableWaterRef
+    ? person.inventory.find((stack) => stack.id === portableWaterRef.stackId
+      && stack.materialId === Material.Water
+      && stack.quantity > 0
+      && typeof stack.containedByStackId === 'string'
+      && person.inventory.some((container) => container.id === stack.containedByStackId
+        && container.materialId === Material.Container
+        && container.quantity > 0))
+    : undefined;
+  if (!waterNearby && !portableWater) return { status: 'blocked' as const, result: '附近没有可用水或冰，且没有装水的随身容器', diff: {} };
+  const portableWaterSourceEventIds = [...(portableWater?.sourceEventIds ?? [])];
+  if (assistedRecovery) {
+    if (portableWater) {
+      portableWater.quantity -= 1;
+      removeEmptyStacks(person);
+    }
     condition.lastRecoveryAssistedAtMonth = atMonth;
     condition.recoverySourceEventIds = [...new Set([...(condition.recoverySourceEventIds ?? []), eventId])].slice(-24);
     sleeper.body.hydration = clamp(sleeper.body.hydration + 18);
     return {
       status: 'completed' as const,
-      result: `${person.name}用附近的真实水源继续帮助${sleeper.name}恢复`,
+      result: portableWater
+        ? `${person.name}用随身容器中的真实水继续帮助${sleeper.name}恢复`
+        : `${person.name}用附近的真实水源继续帮助${sleeper.name}恢复`,
       diff: {
         rehydratedPersonId: sleeper.id,
-        assistedDependentId: sleeper.id,
         assistedByPersonId: person.id,
-        waterNearby: true,
+        ...(assistedDependentRecovery ? { assistedDependentId: sleeper.id } : {}),
+        waterNearby,
+        portableWaterConsumed: Boolean(portableWater),
+        portableWaterSourceEventIds,
         atMonth,
         hibernationRecoverySource: true,
         hibernationConditionId: condition.id,
@@ -1506,11 +1802,16 @@ function executeRehydrate(
       ? 'disputed-pending-prediction' as const
       : triggerPrediction?.status === 'incorrect'
         ? 'prediction-invalidated' as const
-        : triggerPrediction?.status === 'correct'
-          ? 'post-chaos-recovery' as const
-          : 'unbound-stable-recovery' as const;
+      : triggerPrediction?.status === 'correct'
+        ? 'post-chaos-recovery' as const
+        : 'unbound-stable-recovery' as const;
+  if (portableWater) {
+    portableWater.quantity -= 1;
+    removeEmptyStacks(person);
+  }
   condition.hibernationPhase = 'recovering';
   condition.recoveryStartedAtMonth ??= atMonth;
+  if (person.id !== sleeper.id) condition.lastRecoveryAssistedAtMonth = atMonth;
   condition.recoverySourceEventIds = [...new Set([...(condition.recoverySourceEventIds ?? []), eventId])].slice(-24);
   sleeper.body.hydration = clamp(sleeper.body.hydration + 18);
   if (person.id !== sleeper.id) {
@@ -1555,16 +1856,21 @@ function executeRehydrate(
   }
   return {
     status: 'completed' as const,
-    result: `${person.name}用真实水源使${sleeper.name}转入受限恢复`,
+    result: portableWater
+      ? `${person.name}用随身容器中的真实水使${sleeper.name}转入受限恢复`
+      : `${person.name}用附近真实水源使${sleeper.name}转入受限恢复`,
     diff: {
       rehydratedPersonId: sleeper.id,
-      waterNearby: true,
+      waterNearby,
+      portableWaterConsumed: Boolean(portableWater),
+      portableWaterSourceEventIds,
       atMonth,
       rehydrationBasis: wakeBasis,
       hibernationConditionId: condition.id,
       hibernationPhase: 'recovering',
       exited: false,
       recoverySourceEventIds: [...condition.recoverySourceEventIds],
+      ...(person.id !== sleeper.id ? { lastRecoveryAssistedAtMonth: atMonth } : {}),
       ...(triggerPrediction ? { hibernationPredictionId: triggerPrediction.id } : {}),
     },
   };
@@ -1798,7 +2104,9 @@ export function executePrimitiveAction(
           ? executeAct(state, person, action, atMonth, meta.actionTick, eventId)
           : action.kind === 'attend'
             ? executeAttend(state, person, action, atMonth, eventId, meta.intentId)
-            : executeCommunicate(state, person, action, atMonth, eventId);
+            : action.kind === 'talk'
+              ? executeTalk(state, person, action, atMonth, eventId)
+              : executeInscribe(state, person, action, atMonth, eventId);
   if (outcome.status === 'completed'
     && action.kind === 'act'
     && action.operation === 'ingest'
@@ -1836,6 +2144,7 @@ export function executePrimitiveAction(
     result: outcome.result,
     diff: outcome.diff,
   };
+  person.lastActionAtMonth = atMonth;
   recordAgreementAction(state, fact);
   recordCollectiveAction(state, fact);
   recordGovernanceAction(state, fact);

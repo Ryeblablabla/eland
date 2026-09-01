@@ -118,8 +118,11 @@ export default function AtmosphereTransition({ direction, onComplete, onOpaque }
           float enter = smoothstep(0.0, 0.43, uProgress);
           float leave = 1.0 - smoothstep(0.68, 1.0, uProgress);
           float cloudEnvelope = enter * leave;
-          float whiteout = smoothstep(0.34, 0.48, uProgress)
-            * (1.0 - smoothstep(0.68, 0.84, uProgress));
+          float whiteout = smoothstep(0.42, 0.55, uProgress)
+            * (1.0 - smoothstep(0.62, 0.78, uProgress));
+          // 死白收敛：全白平台从 400ms 缩到约 100ms；中心最亮、边缘透出云层纹理，
+          // 读作"俯冲穿过一层亮云"，而不是长时间白屏。
+          whiteout *= 0.88 * (1.0 - 0.42 * smoothstep(0.3, 1.15, length(point)));
           float atmosphere = sin(clamp(uProgress, 0.0, 1.0) * 3.14159265);
           float sunGlow = exp(-length(point - vec2(-0.72, 0.34)) * 2.8) * atmosphere;
           vec3 skyColor = mix(vec3(0.035, 0.11, 0.2), vec3(0.22, 0.53, 0.73), atmosphere);
@@ -128,7 +131,7 @@ export default function AtmosphereTransition({ direction, onComplete, onOpaque }
             vec3(0.94, 0.97, 1.0),
             clamp(scatteredLight * 1.65 + whiteout * 0.7, 0.0, 1.0)
           );
-          vec3 color = mix(skyColor, cloudColor, clamp(density * 1.45 + whiteout * 0.72, 0.0, 1.0));
+          vec3 color = mix(skyColor, cloudColor, clamp(density * 1.45 + whiteout * 0.62, 0.0, 1.0));
           color += vec3(1.0, 0.55, 0.28) * sunGlow * 0.16;
           float alpha = max(cloudEnvelope * (0.18 + density * 1.5), whiteout);
           alpha = max(alpha, atmosphere * 0.12);

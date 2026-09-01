@@ -111,8 +111,8 @@ domain action executor ↔ voxel world / materials
 ### 5.1 进入
 
 1. 玩家在观察视角聚焦一名存活人物并选择“进入化身”。
-2. 如果普通月度 `/step` 已在执行，客户端等待它提交，不能中断执行中的原子月份。
-3. 客户端停止自动 step，冻结下一月的 `SkySample` 与可选 `CosmosSnapshot`。
+2. 如果在线观察 Runner 的普通月份已在执行，客户端先释放活动观察租约并等待它提交，不能中断执行中的原子月份。
+3. 服务端停止调度新的普通月，并从当前已提交 `CosmosSnapshot` 确定性准备化身月份的天象；客户端不再冻结或生成下一月天空输入。
 4. 客户端立即用当前已缓存的权威站位把镜头切到人物眼部，同时以完整权威身份请求开始化身。
 5. 准备期间玩家可以转头观察，但不展示可提交行动，也不会在前端预备一个月份。
 6. 服务端确认人物、分支、月份和会话租约仍一致，准备 `elapsedMonths + 1`。
@@ -289,7 +289,7 @@ interface EmbodimentOptionView {
   choiceKey: string
   source: 'wait' | 'continue-intent' | 'primitive-action' | 'decision'
   label: string
-  category: 'move' | 'build' | 'transfer' | 'attend' | 'communicate' | 'survival' | 'project' | 'wait'
+  category: 'move' | 'build' | 'transfer' | 'attend' | 'talk' | 'survival' | 'project' | 'wait'
   tickCost: 1
   target?: EmbodimentTargetView
   materialCost?: Array<{ materialId: MaterialId; quantity: number }>
@@ -551,9 +551,9 @@ v1 为正确性每刻返回完整 `SocietyState`；后续可复用 society patch
 - 玩家自己在本地合法候选中选择，玩家人物不需要模型替选。
 - 当前化身 begin 为其他人物调用本地 `RulePlanner`，将月初决策冻结进恢复快照；这条路径不调用已配置的模型端点。
 - tick 2..15 的本地修复和重规划不新增逐刻模型调用。
-- 当前化身月不发起 speech-only 自然台词请求；结构化 `communicate` 事实仍由规则提交。后续即使恢复台词投影，也不能修改其参与者、立场、来源或后果。
+- 当前化身月不发起 speech-only 自然台词请求；结构化 `talk` 事实仍由规则提交。后续即使恢复台词投影，也不能修改其参与者、立场、来源或后果。
 
-v1 的 `E 交谈` 只展示当前 `DecisionContext` 中的结构化合法沟通候选，确认后消耗一刻。现有自然自由文本人物对话仍只在观察模式工作，没有并入逐刻暂存月份。后续若接入，仍须先映射并重验唯一合法 `communicate` 候选，模型失败时不能消耗 tick 或伪造对话事实。
+v1 的 `E 交谈` 只展示当前 `DecisionContext` 中的结构化合法沟通候选，确认后消耗一刻。现有自然自由文本人物对话仍只在观察模式工作，没有并入逐刻暂存月份。后续若接入，仍须先映射并重验唯一合法 `talk` 候选，模型失败时不能消耗 tick 或伪造对话事实。
 
 ## 14. 已实现结构
 
@@ -689,4 +689,4 @@ type ExperienceMode =
 - 一次建造 action 是严格一体素，还是允许规则编译的“小构件”消耗一刻；v1 默认一体素。
 - 是否允许点击较远地面创建自动行走意图；v1 默认仅 WASD 相邻一步。
 - 断线超过实时会话恢复窗口后是否自动 release；v1 默认不自动推进，优先保留最后已提交月和可审计恢复错误。
-- 自由文本对话何时成为真实 `communicate` 动作；必须先保证回复、候选选择和 tick 消耗的原子语义。
+- 自由文本对话何时成为真实 `talk` 动作；必须先保证回复、候选选择和 tick 消耗的原子语义。

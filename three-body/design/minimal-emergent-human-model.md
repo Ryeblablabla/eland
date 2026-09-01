@@ -262,7 +262,7 @@ type PrimitiveAction =
   | { kind: 'transfer'; stackId: ItemStackId; quantity: number; from: HolderRef; to: HolderRef }
   | { kind: 'act'; operation: SourceOperation; targets: WorldRef[]; toolStackId?: ItemStackId }
   | { kind: 'attend'; target: WorldRef | RecordRef | ClaimRef; instrumentStackId?: ItemStackId }
-  | { kind: 'communicate'; content: RepresentationInput | RepresentationRef; channel: ChannelRef; audience: AudienceRef };
+  | { kind: 'talk'; content: RepresentationInput | RepresentationRef; channel: ChannelRef; audience: AudienceRef };
 
 type SourceOperation =
   | 'exert'      // 对目标施力：打击、推动、拉扯
@@ -282,7 +282,7 @@ type SourceOperation =
 - `transfer`：在体素、掉落物、容器、背包和人物之间移动物质；授权是引擎根据所有权与承诺判断的事实，不是另一种动作；
 - `act`：人物用固定局部原语之一作用于物质、空间或身体；具体效果由目标物质、工具、身体和环境共同决定；
 - `attend`：投入时间观察、测量、阅读、比较或核验，生成有来源且可能有误差的知识；
-- `communicate`：通过嗓音、手势、触摸、实体记录、信使或设备表达结构化内容；陈述、提议、接受、承诺、主张、支持、命令、威胁、叙事和表演都是内容，不是动作模式。
+- `talk`：通过嗓音、手势、触摸、实体记录、信使或设备表达结构化内容；陈述、提议、接受、承诺、主张、支持、命令、威胁、叙事和表演都是内容，不是动作模式。
 
 `SourceOperation` 仍是封闭集合。运行时在六种之上扩展了 `hunt / dehydrate / rehydrate` 三种物质与身体层面的通用作用（见[纪元、预言与生态](../../docs/three-body-era-ecology-v1.md)）；新增原语只允许是同类通用作用。引擎可以增加"哪些物质在何种条件下产生什么变化"的数据规则，却不再增加动作种类，更不增加"耕种、包扎、交易、选举、奴役"这类目的型动作。
 
@@ -298,10 +298,10 @@ type SourceOperation =
 | 耕种 | `transfer(seed, soil) → act(expose, water) → 等待物质变化 → act(separate, crop) → transfer` |
 | 储藏 | `transfer(item, container)` |
 | 分享 | `transfer(item, person)` |
-| 交易 | `communicate(offer/accept) → 双方条件式 transfer` |
+| 交易 | `talk(offer/accept) → 双方条件式 transfer` |
 | 照护 | `transfer(material, person) → act(combine/ingest, person)` |
-| 教学 | 可靠持有者 `communicate(teach, technique facts)` → 同地且达到学习年龄的人可靠掌握；普通陈述仍只形成不可靠线索 |
-| 生活聊天 | 有来源的身体处境/共同历史 `communicate(opening) → communicate(response)`；同一事实基础只能谈一次 |
+| 教学 | 可靠持有者 `talk(teach, technique facts)` → 同地且达到学习年龄的人可靠掌握；普通陈述仍只形成不可靠线索 |
+| 生活聊天 | 有来源的身体处境/共同历史 `talk(opening) → talk(response)`；同一事实基础只能谈一次 |
 
 `Intent` 只保存目标条件和下一原子动作，不保存模式：
 
@@ -368,13 +368,13 @@ interface TransferOutcome {
 | 生育 | 双方形成接受事实 → 邻近执行 `act(reproduce)` → 妊娠跨月结算 → 分娩 | 生理适格、亲子、妊娠、到期、母体生存状态、亲缘距离与后代遗传负荷 | **可以**；不能只靠通用搬运动作，需要一个局部生殖原语和妊娠状态；近亲不被硬禁止，其风险通过后代体质、能力和疾病后果被人物逐步认识 |
 | 杀戮 | `move` 接近 → 一次或多次 `act(exert/separate, person)` → 伤口/健康归零 | 伤害来源与死亡因果、见证者；“谋杀/正当防卫/事故”还依赖承诺与群体规范 | **可以**；没有 `kill` 动作，死亡只是身体结算结果 |
 | 信任 | 承诺被履行、陈述被证实、互惠转移、照护累积；伤害、谎言和违约反向累积 | `A → B` 的定向见闻、承诺及其结果 | **可以**；信任是带证据的关系摘要，不是人物固定属性 |
-| 选举 | `communicate(selection proposal)` → 多人公开 `support` → 截止时汇总 → 群体持续接受当选者命令 | 群体边界、候选角色、任期、谁支持谁、共同知晓的计数惯例 | **可以形成原始选举**；具有约束力的选举还需群体反复接受同一选择惯例 |
+| 选举 | `talk(selection proposal)` → 多人公开 `support` → 截止时汇总 → 群体持续接受当选者命令 | 群体边界、候选角色、任期、谁支持谁、共同知晓的计数惯例 | **可以形成原始选举**；具有约束力的选举还需群体反复接受同一选择惯例 |
 | 背叛 | 先形成承诺、联盟或授权 → 后来执行与其冲突且使对方受损的动作 → 被当事人获知 | 原承诺、冲突行为、受益者、知情范围 | **可以**；没有先前义务就只能叫冲突，不能叫背叛 |
-| 占有 | 携带/储藏 → `communicate(claim)` → 排除他人 → 他人反复尊重或挑战 | 实际控制、主张、授权、群体承认 | **可以**；随身背包先天有个人占有，土地/容器所有权则需社会承认 |
+| 占有 | 携带/储藏 → `talk(claim)` → 排除他人 → 他人反复尊重或挑战 | 实际控制、主张、授权、群体承认 | **可以**；随身背包先天有个人占有，土地/容器所有权则需社会承认 |
 | 奴役 | 拘束或持续威胁 → 命令劳动 → 未授权取得产出 → 阻止离开，并持续多月 | 定向控制、强制证据、产出流向、逃离受阻、群体是否容忍 | **可以被观察为强制控制制度**；不能因一次命令或合作劳动就误判为奴役 |
 | 交易与金钱 | `offer → accept → 条件式 transfer`；某种物质被不同人反复收取并再次支付 | 报价、接受、实际交割、交易对手、物质是否被消费或再次流通 | **交易可以直接出现**；金钱是多方持续把某物质当交换媒介后的二阶涌现 |
 | 偷窃 | 在低可见条件下，对他人物品执行未授权 `transfer` | 当前持有者/所有者、许可、成功与否、见证和后来发现 | **可以**；若没有授权事实，只能观察到“物品移动”，不能称为偷窃 |
-| 制作、科技与发展 | 用固定原语对材料反复 `act`，用 `attend` 比较结果 → 记住步骤 → `communicate` 传授 → 工具改善后继续试验 | 输入、工具、环境、步骤、输出、成功记录、知识持有人 | **可以**；制作是单次转换，技术是可复制知识，发展是知识扩散、剩余和分工的长期结果 |
+| 制作、科技与发展 | 用固定原语对材料反复 `act`，用 `attend` 比较结果 → 记住步骤 → `talk` 传授 → 工具改善后继续试验 | 输入、工具、环境、步骤、输出、成功记录、知识持有人 | **可以**；制作是单次转换，技术是可复制知识，发展是知识扩散、剩余和分工的长期结果 |
 
 ### 信任只做定向关系余额
 
@@ -449,7 +449,7 @@ exert + person/material      → 推移、损伤或破坏
 reproduce + eligible person  → 概率进入妊娠
 ```
 
-`eligible` 只表示同意、年龄、身体与空间条件，不包含全知的近亲禁令。亲缘距离和双亲遗传负荷在分娩时进入后代身体参数；重复近亲繁衍会累积易感性，外婚则逐代稀释。人物必须先观察到体弱出生或遗传易感疾病，形成带事件来源的记忆与认识，之后才会在本地规划中回避并通过 `communicate(claim)` 传播经验。
+`eligible` 只表示同意、年龄、身体与空间条件，不包含全知的近亲禁令。亲缘距离和双亲遗传负荷在分娩时进入后代身体参数；重复近亲繁衍会累积易感性，外婚则逐代稀释。人物必须先观察到体弱出生或遗传易感疾病，形成带事件来源的记忆与认识，之后才会在本地规划中回避并通过 `talk(claim)` 传播经验。
 
 配方只判断物质与空间条件，不判断人物是不是“农民、木匠或医生”。某人反复成功执行某类过程后，观察器可以称其为种植者、木匠或照护者，但这个称谓不是权限。
 

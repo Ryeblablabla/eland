@@ -1,6 +1,11 @@
 import { ageMonths } from '../src/game/eland/domain/person';
 import { effectivePersonality } from '../src/game/eland/domain/personality';
-import { buildPersonSoul } from '../src/game/eland/domain/person-soul';
+import {
+  buildCharacterTurnNote,
+  buildPersonExperienceLayer,
+  buildPersonSoul,
+  type PersonSoulFacetId,
+} from '../src/game/eland/domain/person-soul';
 import type { SimulationState, TokenUsage, WorldEvent } from '../src/game/eland/simulation';
 import type {
   DialogueDisposition,
@@ -29,7 +34,10 @@ interface SpeechRequestItem {
     conditions: SimulationState['people'][number]['conditions'];
     personality: ReturnType<typeof effectivePersonality>;
     motiveSensitivity: SimulationState['people'][number]['motiveSensitivity'];
-    soul: ReturnType<typeof buildPersonSoul>;
+    soul: Pick<ReturnType<typeof buildPersonSoul>, 'version' | 'authority' | 'signature' | 'innerVoice'> & {
+      prototypeSummary?: string;
+    };
+    experience: ReturnType<typeof buildPersonExperienceLayer>;
     activity: {
       currentAction: string;
       activeIntent?: { summary: string; progress: number };
@@ -75,7 +83,9 @@ interface SpeechRequestItem {
   };
   sourcedExperiences: string[];
   recentMemories: Array<{ kind: string; summary: string; participants: string[] }>;
+  recentDialogue: Array<{ month: number; speaker: string; listeners: string[]; text: string }>;
   knownFacts: Array<{ id: string; summary: string; confidence: number }>;
+  characterNote: ReturnType<typeof buildCharacterTurnNote>;
 }
 
 export interface LiveSpeechResult {
@@ -322,14 +332,14 @@ function repeatedPressureEvidence(
       && candidate.atMonth >= speech.atMonth - 12
       && candidate.status === 'completed'
       && candidate.who === listenerId
-      && candidate.action.kind === 'communicate'
+      && candidate.action.kind === 'talk'
       && candidate.action.channel === 'voice'
       && candidate.action.audience.includes(speakerId)
-      && (candidate.action.content.kind === 'request' || candidate.action.content.kind === 'offer')
+      && (candidate.action.speakerMeaning.kind === 'request' || candidate.action.speakerMeaning.kind === 'offer')
   ));
   if (recentIncoming.length < 2) return [];
-  const incomingIds = new Set(recentIncoming.map((candidate) => candidate.action.kind === 'communicate'
-    ? candidate.action.content.id
+  const incomingIds = new Set(recentIncoming.map((candidate) => candidate.action.kind === 'talk'
+    ? candidate.action.speakerMeaning.id
     : ''));
   const rejected = state.world.past.some((candidate) => (
     candidate.kind === 'action'
@@ -337,11 +347,11 @@ function repeatedPressureEvidence(
       && candidate.atMonth >= speech.atMonth - 12
       && candidate.status === 'completed'
       && candidate.who === speakerId
-      && candidate.action.kind === 'communicate'
+      && candidate.action.kind === 'talk'
       && candidate.action.channel === 'voice'
       && candidate.action.audience.includes(listenerId)
-      && candidate.action.content.kind === 'reject'
-      && incomingIds.has(candidate.action.content.referenceId)
+      && candidate.action.speakerMeaning.kind === 'reject'
+      && incomingIds.has(candidate.action.speakerMeaning.referenceId)
   ));
   if (!rejected) return [];
   return recentIncoming.slice(-2).map((candidate) => ({
@@ -392,9 +402,9 @@ export function deriveRelationalSpeechFrame(
   const controlSensitive = speaker.motiveSensitivity.control >= 64;
   const allFamiliar = listenerIds.length > 0 && minimumTrust >= 50 && minimumBond >= 65 && maximumFear < 30;
   const hasFrictionEvidence = frictionEvidence.length > 0;
-  const communicationKind = speech.action.kind === 'communicate' ? speech.action.content.kind : undefined;
-  const conversationTopic = speech.action.kind === 'communicate' && speech.action.content.kind === 'claim'
-    ? speech.action.content.conversation?.topic
+  const communicationKind = speech.action.kind === 'talk' ? speech.action.speakerMeaning.kind : undefined;
+  const conversationTopic = speech.action.kind === 'talk' && speech.action.speakerMeaning.kind === 'claim'
+    ? speech.action.speakerMeaning.conversation?.topic
     : undefined;
   const boundaryAct = communicationKind === 'request'
     || communicationKind === 'reject'
@@ -497,6 +507,30 @@ function activeSpeechContext(
   };
 }
 
+function speechFacetId(
+  line: SpeechLineDraft,
+  speaker: SimulationState['people'][number],
+): PersonSoulFacetId {
+  const conversation = line.speechAct.details?.conversation;
+  const conversationRecord = conversation && typeof conversation === 'object' && !Array.isArray(conversation)
+    ? conversation as Record<string, unknown>
+    : undefined;
+  const topic = typeof conversationRecord?.topic === 'string' ? conversationRecord.topic : '';
+  const kind = line.speechAct.kind;
+  const acuteBody = Math.min(speaker.body.health, speaker.body.hydration, speaker.body.nutrition) < 35
+    || speaker.conditions.some((condition) => condition.stage >= 2);
+  if (acuteBody || ['care', 'loss', 'family'].includes(topic)) return 'danger-and-loss';
+  if (['request', 'offer', 'accept', 'reject', 'withdraw', 'proposal'].includes(kind)
+    || ['proposal', 'exchange'].includes(topic)) return 'autonomy-and-proposals';
+  if (conversationRecord || ['gratitude', 'everyday', 'playful', 'reminiscence', 'open'].includes(topic)) {
+    return 'trust-and-closeness';
+  }
+  if (speaker.activeIntentId || (speaker.characterAgenda?.items ?? []).some((item) => item.status === 'active')) {
+    return 'commitment-and-work';
+  }
+  return 'uncertainty-and-change';
+}
+
 /**
  * Resolve only a verified, earlier model utterance addressed between the same
  * participants. A rule summary is never accepted as a substitute parent.
@@ -526,7 +560,7 @@ export function buildSpeechRequestItem(
   availableSpeechLines: readonly SpeechLineView[] = [],
 ): SpeechRequestItem | null {
   const event = events.find((candidate): candidate is ActionEvent => candidate.kind === 'action' && candidate.id === line.sourceEventId);
-  if (!event || event.action.kind !== 'communicate') return null;
+  if (!event || event.action.kind !== 'talk') return null;
   const speaker = state.people.find((person) => person.id === line.speakerId);
   if (!speaker) return null;
   const replyTo = replySpeechLineFor(state, event, line, availableSpeechLines);
@@ -575,11 +609,12 @@ export function buildSpeechRequestItem(
     .filter((memory) => memory.sourceEventIds.some((sourceId) => contextualMemorySourceIds.has(sourceId)))
     .sort((a, b) => b.importance - a.importance || b.createdAtMonth - a.createdAtMonth);
   const speechCue = JSON.stringify(line.speechAct);
-  const recentMemories = selectContextualMemories(eligibleMemories, {
+  const selectedSpeechMemories = selectContextualMemories(eligibleMemories, {
     query: speechCue,
     participantIds: line.audienceIds,
     maximum: 4,
-  }).map((memory) => ({
+  });
+  const recentMemories = selectedSpeechMemories.map((memory) => ({
     kind: memory.kind,
     summary: memory.summary.slice(0, 180),
     participants: memory.personIds.flatMap((personId) => {
@@ -587,6 +622,43 @@ export function buildSpeechRequestItem(
       return participant ? [participant.name] : [];
     }),
   }));
+  const soul = buildPersonSoul(speaker);
+  const experience = buildPersonExperienceLayer(speaker, selectedSpeechMemories.map((memory) => ({
+    id: memory.id,
+    lane: memory.kind === 'dialogue'
+      ? 'dialogue'
+      : memory.kind === 'commitment' ? 'prospective' : 'episodic',
+    salience: memory.importance,
+    emotionalValence: memory.causal?.valence ?? (memory.kind === 'failure' ? -0.5 : memory.kind === 'commitment' ? 0.1 : 0),
+    unresolved: (memory.kind === 'commitment' || memory.kind === 'failure')
+      && (memory.expiresAtMonth ?? state.clock.elapsedMonths) >= state.clock.elapsedMonths,
+    personIds: memory.personIds,
+    topicKeys: memory.causal?.basisKey ? [`action:${memory.causal.basisKey}`] : [],
+    sourceEventIds: memory.sourceEventIds,
+    ...(memory.causal?.outcome ? { causalOutcome: memory.causal.outcome } : {}),
+  })), line.audienceIds);
+  const relationalFrame = deriveRelationalSpeechFrame(state, event, speaker, line.audienceIds);
+  const characterNote = buildCharacterTurnNote(soul, experience, speechFacetId(line, speaker));
+  const nameById = new Map(state.people.map((person) => [person.id, person.name]));
+  const listenerIds = new Set(line.audienceIds);
+  const recentDialogue = (state.memoryStore?.items ?? [])
+    .filter((memory) => memory.ownerId === speaker.id
+      && memory.lane === 'dialogue'
+      && memory.exactUtterance
+      && memory.dialogueSpeakerId
+      && memory.personIds.some((personId) => listenerIds.has(personId))
+      && memory.sourceEventIds.some((sourceEventId) => eventBefore(eventById.get(sourceEventId), event)))
+    .sort((left, right) => right.lastExperiencedAtMonth - left.lastExperiencedAtMonth
+      || right.salience - left.salience
+      || left.id.localeCompare(right.id))
+    .slice(0, 4)
+    .map((memory) => ({
+      month: memory.lastExperiencedAtMonth,
+      speaker: nameById.get(memory.dialogueSpeakerId!) ?? '未知人物',
+      listeners: (memory.dialogueAudienceIds ?? []).slice(0, 4)
+        .map((personId) => nameById.get(personId) ?? '未知人物'),
+      text: memory.exactUtterance!.slice(0, 180),
+    }));
 
   return {
     sourceEventId: line.sourceEventId,
@@ -603,7 +675,14 @@ export function buildSpeechRequestItem(
       conditions: speaker.conditions,
       personality: effectivePersonality(speaker),
       motiveSensitivity: speaker.motiveSensitivity,
-      soul: buildPersonSoul(speaker),
+      soul: {
+        version: soul.version,
+        authority: soul.authority,
+        signature: soul.signature,
+        innerVoice: soul.innerVoice,
+        ...(soul.prototype ? { prototypeSummary: soul.prototype.personalitySummary } : {}),
+      },
+      experience,
       activity: activeSpeechContext(state, speaker),
     },
     listeners,
@@ -615,7 +694,7 @@ export function buildSpeechRequestItem(
     },
     communication: {
       speechAct: line.speechAct,
-      relationalFrame: deriveRelationalSpeechFrame(state, event, speaker, line.audienceIds),
+      relationalFrame,
       ...(!line.requiresParentSpeech && cleanText(line.modelText)
         ? { proposedText: cleanText(line.modelText) }
         : {}),
@@ -636,6 +715,7 @@ export function buildSpeechRequestItem(
     },
     sourcedExperiences,
     recentMemories,
+    recentDialogue,
     knownFacts: [...speaker.knowledge]
       .filter((fact) => fact.sourceEventIds.length > 0
         && fact.sourceEventIds.some((sourceId) => eventBefore(eventById.get(sourceId), event))
@@ -646,6 +726,7 @@ export function buildSpeechRequestItem(
         || b.confidence - a.confidence)
       .slice(0, 4)
       .map((fact) => ({ id: fact.id, summary: fact.summary.slice(0, 160), confidence: fact.confidence })),
+    characterNote,
   };
 }
 
@@ -696,6 +777,15 @@ async function realizeBatch(
   const messages: ModelMessage[] = [
     { role: 'system', content: SPEECH_SYSTEM_PROMPT_V2 },
     { role: 'user', content: JSON.stringify({ lines: items }) },
+    {
+      role: 'user',
+      content: JSON.stringify({
+        protocol: 'eland-character-note-v1',
+        appliesTo: 'next-speech-lines',
+        notes: items.map((item) => ({ sourceEventId: item.sourceEventId, characterNote: item.characterNote })),
+        instruction: '每条台词只使用同 sourceEventId 的临场角色注记。示例只校准节奏，输出仍严格服从 Voice Contract JSON。',
+      }),
+    },
   ];
   const response = await requestModelText(endpoint, {
     messages,

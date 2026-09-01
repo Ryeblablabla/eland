@@ -4,7 +4,7 @@
 
 ## 边界
 
-模型端点属于可选基础设施。本地规划器会先为每个人计算完整决定；模型只能在人物可感知事实生成的合法候选中重选，并由领域层再次组合、校验后才创建意图。人物台词只能在 completed `voice communicate` ActionFact 完成后绑定原事实生成，不覆写 ActionFact、规则 summary 或人物状态。调用失败、没有密钥、局域网主机离线或结果非法时，决策路径保留本地决定；台词路径保留沟通事实但不显示文字气泡。模型返回的台词与叙事固定为 `projection-only`。后代姓名是受限的已验证提议：出生先获得确定性保底姓名，模型只能提出 `givenName`，姓氏、顺序、字符、重名和一次性应用均由本地规则验收并记录在出生事实中；失败仍保留保底名。未来策略输出必须作为待验证建议，不能直接修改 `SimulationState`。
+模型端点属于可选基础设施。本地规划器会先为每个人计算完整决定；模型只能在人物可感知事实生成的合法候选中重选，并由领域层再次组合、校验后才创建意图。人物台词只能在 completed `voice talk` ActionFact 完成后绑定原事实生成，不覆写 ActionFact、规则 summary 或人物状态。调用失败、没有密钥、局域网主机离线或结果非法时，决策路径保留本地决定；台词路径保留沟通事实但不显示文字气泡。模型返回的台词与叙事固定为 `projection-only`。后代姓名是受限的已验证提议：出生先获得确定性保底姓名，模型只能提出 `givenName`，姓氏、顺序、字符、重名和一次性应用均由本地规则验收并记录在出生事实中；失败仍保留保底名。未来策略输出必须作为待验证建议，不能直接修改 `SimulationState`。
 
 调用方只声明用途：
 
@@ -44,7 +44,7 @@ THREEBODY_MODEL_CONFIG=./model-endpoints.local.json
 `structuredOutput` 有两种取值：
 
 - `prompt`：只靠系统提示约束 JSON，兼容性最好；
-- `native-json`：使用协议的原生结构化输出字段。Ollama 使用 `format: "json"`，Chat Completions 使用 `response_format`，Responses 使用 JSON Schema；Anthropic Messages 当前仍依靠提示约束。
+- `native-json`：使用协议的原生结构化输出字段。Ollama 在调用方提供具体协议时把 JSON Schema 直接传给 `format`，否则回退为 `format: "json"`；Chat Completions 使用 `response_format`，Responses 使用 JSON Schema；Anthropic Messages 当前仍依靠提示约束。
 
 Ollama endpoint 可用 `thinking` 控制思考输出；指向 DeepSeek 官方 API 的 OpenAI-compatible Chat endpoint 只有在显式配置 `thinking` 时才发送其兼容字段：`false` 映射为 `thinking.type=disabled`，`true` 或 effort 字符串映射为启用思考与对应的 `reasoning_effort`。其他 OpenAI-compatible 服务与未配置 `thinking` 的端点不额外收到 DeepSeek 扩展字段。叙事和结构化决策通常设为 `false`，避免输出额度被思考文本耗尽。endpoint 还可设置 `temperature`；局域网小模型的结构化决策建议使用较低温度。
 
@@ -67,7 +67,7 @@ Ollama endpoint 可用 `thinking` 控制思考输出；指向 DeepSeek 官方 AP
 
 口头台词路径：
 
-- 15 个 planning tick 和月末规则结算先完整提交；随后只扫描当月 `status === "completed" && action.kind === "communicate" && channel === "voice"` 且有听者的 ActionFact；
+- 15 个 planning tick 和月末规则结算先完整提交；随后只扫描当月 `status === "completed" && action.kind === "talk" && channel === "voice"` 且有听者的 ActionFact；
 - 每个动作先投影为不含显示文本的 `speech-act-v1` 草稿，其中只保存沟通类型、话题、提议、引用、结构化立场与来源；规划 summary 不是对白模板，只作为“必须保留的意思”随请求发送并用于本地校验；
 - 若该动作对应的已接受模型决定带有通过校验的台词，投影直接复用；没有决策需求的唯一合法回应和后续 tick 说话，按月进入同一 `decision` endpoint 的独立 speech-only 批次；
 - 台词请求只读取说话者的档案、只读 Soul 与有效 HEXACO、本月提交后的当前身体和状态、说话者对听者的当前有向关系、当前处境以及有源近期经历；服务器先按 speechAct 话题与真实听者选择相关记忆，再用承诺、失败和一般重要性补足，并把年龄与 communication 能力投影为句式限制；核心 Soul 由人物 ID、baseline 人格和控制 / 地位敏感度确定性重建，只固定口吻与可激活侧面，不成为新事实或选择理由；这些人物值不是 action tick 精确快照，听者的私有记忆、隐藏知识和全局观察器也不进入请求；

@@ -101,7 +101,7 @@ function eventPersonIds(event: WorldEvent): string[] {
   const ids: string[] = [];
   if ('who' in event && event.who) ids.push(event.who);
   if ('partyIds' in event) ids.push(...event.partyIds);
-  if (event.kind === 'action' && event.action.kind === 'communicate') ids.push(...event.action.audience);
+  if (event.kind === 'action' && event.action.kind === 'talk') ids.push(...((event.diff.understoodByPersonIds as string[] | undefined) ?? []));
   if (event.kind === 'environment') {
     if (typeof event.diff.personId === 'string') ids.push(event.diff.personId);
     if (typeof event.diff.bornPersonId === 'string') ids.push(event.diff.bornPersonId);
@@ -122,8 +122,8 @@ function readableSourceText(value: string): string {
 }
 
 function narrativeSourceResult(event: WorldEvent): string {
-  if (event.kind !== 'action' || event.action.kind !== 'communicate') return readableSourceText(event.result);
-  const content = event.action.content;
+  if (event.kind !== 'action' || event.action.kind !== 'talk') return readableSourceText(event.result);
+  const content = event.action.speakerMeaning;
   if (content.kind === 'accept') return '接受了对方的提议';
   if (content.kind === 'reject') return '拒绝了对方的提议';
   return content.summary;
@@ -151,14 +151,14 @@ function candidateId(branchId: string, candidate: EnhancementCandidate): string 
 function dialogueCandidates(state: SimulationState, eventMap: Map<string, WorldEvent>): EnhancementCandidate[] {
   const representations = new Map<string, Extract<WorldEvent, { kind: 'action' }>>();
   for (const event of state.world.past) {
-    if (event.kind === 'action' && event.action.kind === 'communicate' && event.status === 'completed') {
-      representations.set(event.action.content.id, event);
+    if (event.kind === 'action' && event.action.kind === 'talk' && event.status === 'completed') {
+      representations.set(event.action.speakerMeaning.id, event);
     }
   }
 
   return state.world.past.flatMap((event): EnhancementCandidate[] => {
-    if (event.kind !== 'action' || event.action.kind !== 'communicate' || event.status !== 'completed') return [];
-    const content = event.action.content;
+    if (event.kind !== 'action' || event.action.kind !== 'talk' || event.status !== 'completed') return [];
+    const content = event.action.speakerMeaning;
     const referenced = 'referenceId' in content ? representations.get(content.referenceId) : undefined;
     const assertedSources = Array.isArray(event.diff.assertedFactSourceEventIds) ? event.diff.assertedFactSourceEventIds : [];
     const sourceEventIds = validSourceIds(eventMap, [referenced?.id, ...assertedSources, event.id], 8);

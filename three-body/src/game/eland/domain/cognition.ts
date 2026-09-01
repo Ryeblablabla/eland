@@ -86,6 +86,7 @@ function goalFamilyKey(goal?: FactPredicate): string {
     case 'project-completed': return goal.kind;
     case 'technique-demonstrated': return goal.kind;
     case 'agreement-fulfilled': return goal.kind;
+    case 'agreement-contribution-recorded': return goal.kind;
     case 'death-mourned': return goal.kind;
     case 'remains-interred': return goal.kind;
     case 'memorial-marked': return goal.kind;
@@ -105,15 +106,17 @@ function actionFamilyKey(action: PrimitiveAction): string {
     }
     case 'attend':
       return `attend:${action.target.kind}${action.verification ? ':verification' : ''}`;
-    case 'communicate': {
-      const content = action.content;
+    case 'talk': {
+      const content = action.speakerMeaning;
       const topic = (content.kind === 'request' || content.kind === 'offer') && content.proposal
         ? `proposal-${content.proposal.kind}`
         : content.kind === 'claim' && content.conversation
           ? `conversation-${content.conversation.topic}`
           : content.kind;
-      return `communicate:${topic}:${action.channel}`;
+      return `talk:${topic}`;
     }
+    case 'inscribe':
+      return `inscribe:${action.inscriptionMeaning.kind}`;
   }
 }
 
@@ -355,7 +358,7 @@ export function causalMemoryTraceForAction(state: SimulationState, fact: ActionF
     && fact.action.operation === 'reproduce'
     && fact.diff.conceived === false;
   if (explicitGoalUnmet) consequenceTags.add('goal-unmet');
-  if (fact.action.kind === 'communicate') consequenceTags.add('social');
+  if (fact.action.kind === 'talk') consequenceTags.add('social');
   if (fact.action.kind === 'transfer') consequenceTags.add('resource-transfer');
   if (intent?.projectId) consequenceTags.add('project');
   if (finite(fact.diff.outputQuantity) > 0 || finite(fact.diff.outputMaterialId) > 0 || finite(fact.diff.harvested) > 0) {
@@ -364,8 +367,8 @@ export function causalMemoryTraceForAction(state: SimulationState, fact: ActionF
   if (experiencedHarm(fact) > 0) consequenceTags.add('self-harm');
   const operation = fact.action.kind === 'act'
     ? fact.action.operation
-    : fact.action.kind === 'communicate'
-      ? fact.action.content.kind
+    : fact.action.kind === 'talk'
+      ? fact.action.speakerMeaning.kind
       : undefined;
   return {
     basisKey: cognitiveOutcomeBasisKey(fact.action, intent?.goal),

@@ -1,49 +1,12 @@
 import { Material, type MaterialId } from './material';
 import {
-  actionFactsForPersonWithRetainedLease,
+  actionFactsForPerson,
   compareWorldEventsInCanonicalOrder,
 } from './event-index';
 import type { ActionFact, DecisionAuthorityState, SimulationState } from './model';
 import type { ItemStack, PersonId, PersonState } from './person';
 
 export const RECENT_PERSONAL_PRODUCTION_MONTHS = 12;
-
-const RECENT_PERSONAL_PRODUCTION_WITNESS_PREFIX = 'gameplay:recent-personal-production:witness:';
-const RECENT_PERSONAL_PRODUCTION_SELECTOR_PREFIX = 'retention:recent-personal-production:selector:';
-
-export function recentPersonalProductionLaborLeaseKey(personId: PersonId): string {
-  return `${RECENT_PERSONAL_PRODUCTION_WITNESS_PREFIX}${encodeURIComponent(personId)}`;
-}
-
-export function recentPersonalProductionLaborSelectorLeaseKey(
-  personId: PersonId,
-  eventMonth: number,
-): string {
-  return `${RECENT_PERSONAL_PRODUCTION_SELECTOR_PREFIX}${encodeURIComponent(personId)}:${eventMonth}`;
-}
-
-export function parseRecentPersonalProductionLaborSelectorLeaseKey(
-  leaseKey: string,
-): { personId: PersonId; eventMonth: number } | null {
-  if (!leaseKey.startsWith(RECENT_PERSONAL_PRODUCTION_SELECTOR_PREFIX)) return null;
-  const suffix = leaseKey.slice(RECENT_PERSONAL_PRODUCTION_SELECTOR_PREFIX.length);
-  const separator = suffix.lastIndexOf(':');
-  if (separator <= 0) return null;
-  const encodedPersonId = suffix.slice(0, separator);
-  const rawMonth = suffix.slice(separator + 1);
-  if (!/^\d+$/u.test(rawMonth)) return null;
-  try {
-    const personId = decodeURIComponent(encodedPersonId);
-    const eventMonth = Number(rawMonth);
-    return personId.length > 0
-      && encodeURIComponent(personId) === encodedPersonId
-      && Number.isSafeInteger(eventMonth)
-      ? { personId, eventMonth }
-      : null;
-  } catch {
-    return null;
-  }
-}
 
 /** Production-only capability. Weapons such as Spear are intentionally absent. */
 const PRODUCTION_TOOL_SPECS = new Map<MaterialId, { rank: number; multiplier: number }>([
@@ -121,11 +84,7 @@ export function recentPersonalProductionLaborEvents(
   maxAgeMonths = RECENT_PERSONAL_PRODUCTION_MONTHS,
 ): ActionFact[] {
   const earliestMonth = atMonth - maxAgeMonths;
-  const latest = actionFactsForPersonWithRetainedLease(
-    state,
-    personId,
-    recentPersonalProductionLaborLeaseKey(personId),
-  ).filter((event) => event.atMonth >= earliestMonth
+  const latest = actionFactsForPerson(state, personId).filter((event) => event.atMonth >= earliestMonth
     && event.atMonth <= atMonth
     && isCompletedPersonalProductionLaborEvent(event, personId))
     .sort(compareWorldEventsInCanonicalOrder)

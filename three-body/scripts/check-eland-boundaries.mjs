@@ -73,134 +73,11 @@ const serverDependencyRules = [
     ],
   },
   {
-    source: 'history-retention-codec.ts',
-    forbidden: [
-      {
-        module: 'history-retention-projection',
-        reason: 'the codec must depend on the stable retention contract, not the projection implementation',
-      },
-    ],
-  },
-  {
-    source: 'history-retention-demand-collector.ts',
-    forbidden: [
-      {
-        module: 'history-retention-projection',
-        reason: 'demand collection is an input to projection and must not depend back on it',
-      },
-    ],
-  },
-  {
-    source: 'run-state-bounded-decoder.ts',
-    forbiddenRuntime: [
-      {
-        module: 'run-state-codec',
-        reason: 'bounded decoding must receive codec primitives through its host port',
-      },
-    ],
-  },
-  {
     source: 'sqlite-run-output-artifact-store.ts',
     forbidden: [
       {
         module: 'sqlite-run-store',
         reason: 'the output artifact component must not depend back on its composing store',
-      },
-    ],
-  },
-  {
-    source: 'sqlite-bounded-observer-boundary-publication.ts',
-    forbidden: [
-      {
-        module: 'sqlite-run-store',
-        reason: 'observer-boundary publication must use its narrow host port',
-      },
-      {
-        module: 'sqlite-bounded-nonprojection-publication',
-        reason: 'the two bounded publication coordinators meet only through their shared contract',
-      },
-      {
-        module: 'sqlite-bounded-continuation-artifact-materialization',
-        reason: 'publication coordination must not own continuation artifact materialization',
-      },
-    ],
-    forbiddenSpecifiers: [
-      {
-        specifier: 'node:sqlite',
-        reason: 'transaction and database ownership remain in the composing store',
-      },
-    ],
-  },
-  {
-    source: 'sqlite-bounded-nonprojection-publication.ts',
-    forbidden: [
-      {
-        module: 'sqlite-run-store',
-        reason: 'nonprojection publication must use its narrow host port',
-      },
-      {
-        module: 'sqlite-bounded-observer-boundary-publication',
-        reason: 'the two bounded publication coordinators meet only through their shared contract',
-      },
-      {
-        module: 'sqlite-bounded-continuation-artifact-materialization',
-        reason: 'publication coordination must not own continuation artifact materialization',
-      },
-    ],
-    forbiddenSpecifiers: [
-      {
-        specifier: 'node:sqlite',
-        reason: 'transaction and database ownership remain in the composing store',
-      },
-    ],
-  },
-  {
-    source: 'sqlite-bounded-publication-contract.ts',
-    forbidden: [
-      {
-        module: 'sqlite-run-store',
-        reason: 'the shared publication contract must remain independent of its composing store',
-      },
-      {
-        module: 'sqlite-bounded-observer-boundary-publication',
-        reason: 'the shared publication contract cannot depend on an implementation',
-      },
-      {
-        module: 'sqlite-bounded-nonprojection-publication',
-        reason: 'the shared publication contract cannot depend on an implementation',
-      },
-      {
-        module: 'sqlite-bounded-continuation-artifact-materialization',
-        reason: 'the shared publication contract cannot depend on an implementation',
-      },
-    ],
-    forbiddenSpecifiers: [
-      {
-        specifier: 'node:sqlite',
-        reason: 'the shared publication contract is database-agnostic',
-      },
-    ],
-  },
-  {
-    source: 'sqlite-bounded-continuation-artifact-materialization.ts',
-    forbidden: [
-      {
-        module: 'sqlite-run-store',
-        reason: 'bounded continuation artifact materialization must use its narrow host port',
-      },
-      {
-        module: 'sqlite-bounded-observer-boundary-publication',
-        reason: 'artifact materialization must remain independent of publication coordination',
-      },
-      {
-        module: 'sqlite-bounded-nonprojection-publication',
-        reason: 'artifact materialization must remain independent of publication coordination',
-      },
-    ],
-    forbiddenSpecifiers: [
-      {
-        specifier: 'node:sqlite',
-        reason: 'database, transaction and statement ownership remain in the composing store',
       },
     ],
   },
@@ -278,7 +155,6 @@ function resolveInternalImport(fromFile, specifier) {
 
 function moduleLayer(file) {
   const relative = path.relative(moduleDirectory, file);
-  if (relative === path.join('application', 'monthly-simulation.ts')) return 'facade';
   const first = relative.split(path.sep)[0];
   if (['domain', 'world', 'application', 'projection'].includes(first)) return first;
   if (['population.ts', 'naming.ts', 'character-profiles.ts'].includes(relative)) return 'domain';

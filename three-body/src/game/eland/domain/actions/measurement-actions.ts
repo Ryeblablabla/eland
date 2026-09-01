@@ -1,6 +1,6 @@
 import type { PrimitiveAction } from '../action';
 import {
-  actionFactsForPersonWithRetainedLease,
+  actionFactsForPerson,
   compareWorldEventsInCanonicalOrder,
   worldEventById,
 } from '../event-index';
@@ -80,41 +80,13 @@ function eventPrecedes(left: ActionFact, rightMonth: number): boolean {
   return left.atMonth <= rightMonth;
 }
 
-const PERSONAL_MASS_CALIBRATION_LEASE_PREFIX = 'gameplay:personal-mass-calibration:';
-
-export function personalMassCalibrationLeaseKey(personId: string, instrumentStackId: string): string {
-  return `${PERSONAL_MASS_CALIBRATION_LEASE_PREFIX}${encodeURIComponent(personId)}:${encodeURIComponent(instrumentStackId)}`;
-}
-
-export function parsePersonalMassCalibrationLeaseKey(
-  leaseKey: string,
-): { personId: string; instrumentStackId: string } | null {
-  if (!leaseKey.startsWith(PERSONAL_MASS_CALIBRATION_LEASE_PREFIX)) return null;
-  const suffix = leaseKey.slice(PERSONAL_MASS_CALIBRATION_LEASE_PREFIX.length);
-  const separator = suffix.indexOf(':');
-  if (separator <= 0 || separator === suffix.length - 1) return null;
-  try {
-    const personId = decodeURIComponent(suffix.slice(0, separator));
-    const instrumentStackId = decodeURIComponent(suffix.slice(separator + 1));
-    return personId.length > 0 && instrumentStackId.length > 0
-      && personalMassCalibrationLeaseKey(personId, instrumentStackId) === leaseKey
-      ? { personId, instrumentStackId }
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 export function latestPersonalCalibrationFor(
   state: SimulationState,
   personId: string,
   instrument: MeasurementStackReceipt,
 ): ActionFact | undefined {
-  return actionFactsForPersonWithRetainedLease(
-    state,
-    personId,
-    personalMassCalibrationLeaseKey(personId, instrument.stackId),
-  ).filter((event) => isValidPersonalMassCalibrationFactForInstrument(event, personId, instrument))
+  return actionFactsForPerson(state, personId)
+    .filter((event) => isValidPersonalMassCalibrationFactForInstrument(event, personId, instrument))
     .sort(compareWorldEventsInCanonicalOrder)
     .at(-1);
 }

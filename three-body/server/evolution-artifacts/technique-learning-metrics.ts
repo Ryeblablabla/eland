@@ -338,8 +338,8 @@ export function techniqueLearningMetrics(state: SimulationState) {
   }> = [];
   for (const entry of events) {
     const action = actionRecord(entry.value);
-    const content = objectRecord(action?.content);
-    if (action?.kind !== 'communicate' || content?.kind !== 'request') continue;
+    const content = objectRecord(action?.speakerMeaning);
+    if (action?.kind !== 'talk' || content?.kind !== 'request') continue;
     const directMarker = Object.prototype.hasOwnProperty.call(content, 'techniqueDemonstration');
     const nestedMarker = Object.prototype.hasOwnProperty.call(objectRecord(content.request) ?? {}, 'techniqueDemonstration');
     if (!directMarker && !nestedMarker) continue;
@@ -797,9 +797,9 @@ export function techniqueLearningMetrics(state: SimulationState) {
   const techniqueTeachingEvents = events.filter((entry) => {
     const event = entry.value;
     const action = actionRecord(event);
-    const content = objectRecord(action?.content);
+    const content = objectRecord(action?.speakerMeaning);
     return event.status === 'completed'
-      && action?.kind === 'communicate'
+      && action?.kind === 'talk'
       && content?.kind === 'claim'
       && stringValue(content.id)?.startsWith('teach:') === true
       && stringValue(content.factId)?.startsWith('technique:') === true

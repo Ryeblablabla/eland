@@ -2,8 +2,7 @@ import { Material, materialHas, type MaterialId } from './material';
 import {
   actionFacts,
   compareWorldEventsInCanonicalOrder,
-  retainedColdWorldEventsForLease,
-  worldEventByIdWithRetainedLease,
+  worldEventById,
 } from './event-index';
 import type {
   ActionFact,
@@ -14,6 +13,7 @@ import type {
   MaterialCapabilityStage,
   SimulationState,
 } from './model';
+import type { ProjectFunction } from './project';
 import {
   isMassCalibrationReceipt,
   isMassMeasurementReceipt,
@@ -23,70 +23,35 @@ import {
   sameMeasurementStackIdentity,
 } from './measurement';
 import { validateElectricalPowerTopology } from './electrical-power';
-import type { MeasurementUncertaintyBasis, ProjectFunction, ProjectState } from './project';
+import type { MeasurementUncertaintyBasis, ProjectState } from './project';
 import { projectEventHasEventTimeLead } from './project-leadership';
 import { livingPeople } from './state-index';
 import { actionSatisfiesRecordReplicationReceipt } from './action-executor';
 import { cellId, cellsInRadius, voxelAt } from '../world/grid';
 
-export const DEVELOPMENT_OBSERVER_VERSION = 'material-institution-era-v7' as const;
-
-/** Observer-only leases: planners never query these society-level achievements. */
-export const MODERN_ELECTRICAL_USEFUL_LOAD_LEASE_KEY =
-  'observer:modern-civilization:electrical-useful-load' as const;
-export const MODERN_RECORD_EXPERIMENT_LEASE_KEY =
-  'observer:modern-civilization:independent-record-experiment' as const;
-
-export function modernElectricalUsefulLoadLeaseKey(networkId: string): string {
-  if (typeof networkId !== 'string' || networkId.length === 0) {
-    throw new Error('现代文明用电见证缺少 network ID');
-  }
-  return `${MODERN_ELECTRICAL_USEFUL_LOAD_LEASE_KEY}:${encodeURIComponent(networkId)}`;
-}
-
-export function modernElectricalOperationLeaseKey(networkId: string): string {
-  if (typeof networkId !== 'string' || networkId.length === 0) {
-    throw new Error('现代文明运行见证缺少 network ID');
-  }
-  return `observer:modern-civilization:electrical-operations:${encodeURIComponent(networkId)}`;
-}
-
-export function parseModernElectricalUsefulLoadLeaseKey(leaseKey: string): string | null {
-  const prefix = `${MODERN_ELECTRICAL_USEFUL_LOAD_LEASE_KEY}:`;
-  if (!leaseKey.startsWith(prefix)) return null;
-  try {
-    const networkId = decodeURIComponent(leaseKey.slice(prefix.length));
-    return networkId.length > 0 ? networkId : null;
-  } catch {
-    return null;
-  }
-}
-
-export function modernCompletedMeasurementReceiptLeaseKey(projectId: string): string {
-  if (typeof projectId !== 'string' || projectId.length === 0) {
-    throw new Error('现代文明测量见证缺少 project ID');
-  }
-  return `completed-measurement-project:${projectId}:receipt-chain`;
-}
+export const DEVELOPMENT_OBSERVER_VERSION = 'material-institution-era-v8' as const;
 
 const ERA_ORDER: DevelopmentEraKey[] = [
   'primitive-tribe',
   'agrarian-settlement',
   'ancient-civilization',
-  'modern-civilization',
 ];
 
 export const DEVELOPMENT_ERA_LABELS: Record<DevelopmentEraKey, string> = {
   'primitive-tribe': '原始部落',
   'agrarian-settlement': '农耕定居',
   'ancient-civilization': '古代文明',
-  'modern-civilization': '现代文明（含信息能力）',
+  // Persisted v7 snapshots remain readable, but the retired modern observer
+  // is normalized into the highest current stage.
+  'modern-civilization': '古代文明',
   medieval: '古代文明',
 };
 
-/** Persisted v1-v4 snapshots may still contain the former standalone medieval era. */
+/** Persisted snapshots may still contain former medieval or modern observer labels. */
 export function normalizeDevelopmentEra(era: DevelopmentEraKey): DevelopmentEraKey {
-  return era === 'medieval' ? 'ancient-civilization' : era;
+  return era === 'medieval' || era === 'modern-civilization'
+    ? 'ancient-civilization'
+    : era;
 }
 
 const FACILITIES: ReadonlyMap<MaterialId, {
@@ -195,7 +160,7 @@ export function observeFunctionalBuildings(state: SimulationState): FunctionalBu
         waterByPosition.get(`${x}:${y}:${z}`)?.forEach((installation) => matching.add(installation));
       }
     }
-    if (candidate.action.kind === 'communicate') {
+    if (candidate.action.kind === 'talk') {
       coreByCellId.get(candidate.cellId)?.forEach((installation) => matching.add(installation));
     }
     for (const installation of matching) {
@@ -566,11 +531,6 @@ export interface CivilizationDevelopmentGateFacts {
   readonly storedFoodUnits: number;
   readonly facilities: readonly CivilizationDevelopmentFacilityFacts[];
   readonly functionalInstitutionCount: number;
-  readonly modern: Readonly<{
-    electricalPower: boolean;
-    comparableMeasurement: boolean;
-    independentRecordExperiment: boolean;
-  }>;
 }
 
 /** One gate grammar shared by the full replay observer and bounded exact-fact adapter. */
@@ -597,11 +557,6 @@ export function civilizationDevelopmentGateState(
       ['material:bronze-or-iron:institutional', ancientMetalworkingCapabilitySatisfied([
         ...facts.materialCapabilities,
       ])],
-    ],
-    'modern-civilization': [
-      ['power:complete-network-useful-load', facts.modern.electricalPower],
-      ['measurement:calibrated-comparable-mass', facts.modern.comparableMeasurement],
-      ['record:independent-experiment-reuse', facts.modern.independentRecordExperiment],
     ],
   };
 }
@@ -782,25 +737,11 @@ function modernCivilizationActionFacts(state: SimulationState): ActionFact[] {
     }
   };
   for (const event of actionFacts(state)) retain(event);
-  // Keep the former global key readable for any already encoded v7 sidecar,
-  // while new projections retain one latest useful load per concrete network.
-  const observerLeaseKeys = [
-    MODERN_ELECTRICAL_USEFUL_LOAD_LEASE_KEY,
-    ...((state.world.electricalPower?.networks ?? []).flatMap((network) => [
-      modernElectricalUsefulLoadLeaseKey(network.id),
-      modernElectricalOperationLeaseKey(network.id),
-    ])),
-    MODERN_RECORD_EXPERIMENT_LEASE_KEY,
-  ];
-  for (const leaseKey of observerLeaseKeys) {
-    for (const event of retainedColdWorldEventsForLease(state, leaseKey)) retain(event);
-  }
   for (const project of state.projects) {
     if (project.status !== 'completed'
       || project.desiredFunction !== 'comparable-mass-measurement') continue;
-    const leaseKey = modernCompletedMeasurementReceiptLeaseKey(project.id);
     for (const eventId of project.completionEventIds) {
-      retain(worldEventByIdWithRetainedLease(state, eventId, leaseKey));
+      retain(worldEventById(state, eventId));
     }
   }
   return [...merged.values()].sort(compareWorldEventsInCanonicalOrder);
@@ -910,11 +851,7 @@ export function isIndependentRecordReuseFact(
     || isIndependentRecordReplicationReceiptFact(state, event);
 }
 
-/**
- * Full and bounded observers retain the same first canonical witness. The
- * gate is existential; choosing one deterministic fact keeps its cold lease
- * bounded without changing the threshold.
- */
+/** The gate is existential; choose one deterministic canonical witness. */
 export function firstIndependentRecordReuseFact(state: SimulationState): ActionFact | null {
   const actions = modernCivilizationActionFacts(state);
   for (const event of actions) {
@@ -1103,7 +1040,6 @@ function eraGateState(
   indexTotal: number,
   capabilities: MaterialCapabilityObservation[],
   facilities: FunctionalBuildingObservation[],
-  modernEvidence: ModernCivilizationEvidence,
 ) {
   const establishedCultivation = establishedCultivationEvidence(state);
   const storedFood = state.containers.reduce((sum, container) => sum + container.inventory.reduce((inner, stack) => (
@@ -1120,11 +1056,6 @@ function eraGateState(
       useCount: facility.useEventIds.length,
     })),
     functionalInstitutionCount: state.derived.institutions.length,
-    modern: {
-      electricalPower: modernEvidence.electricalPower !== null,
-      comparableMeasurement: modernEvidence.comparableMeasurement !== null,
-      independentRecordExperiment: modernEvidence.independentRecordExperiment !== null,
-    },
   });
 }
 
@@ -1135,8 +1066,7 @@ export function observeCivilizationDevelopment(
   const facilities = observeFunctionalBuildings(state);
   const materialCapabilities = observeMaterialCapabilities(state);
   const establishedCultivation = establishedCultivationEvidence(state);
-  const modernEvidence = observeModernCivilizationEvidence(state);
-  const gates = eraGateState(state, indexTotal, materialCapabilities, facilities, modernEvidence);
+  const gates = eraGateState(state, indexTotal, materialCapabilities, facilities);
   const candidateEra = highestSatisfiedDevelopmentEra(gates);
   const previous = state.civilization.development;
   const stability = reduceCivilizationDevelopmentStability(
@@ -1171,7 +1101,6 @@ export function observeCivilizationDevelopment(
       ? [...establishedCultivation.plantingEventIds, ...establishedCultivation.harvestEventIds]
       : []),
     ...state.derived.institutions.flatMap((institution) => institution.evidenceEventIds),
-    ...modernEvidence.supportingEventIds,
   ])];
   const gateProgress = targetGates.length ? satisfiedGateIds.length / targetGates.length : 1;
   const stabilityProgress = upward && requiredStableMonths > 0

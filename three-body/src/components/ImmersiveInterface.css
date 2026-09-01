@@ -920,161 +920,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.civilization-index__achievement {
-  width: 100%;
-  max-width: 420px;
-  border-top: 0.5px solid rgba(255, 255, 255, 0.1);
-}
-
-.civilization-index__achievement > summary {
-  display: grid;
-  min-height: 44px;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 8px;
-  border-radius: 8px;
-  outline: none;
-  cursor: pointer;
-  list-style: none;
-}
-
-.civilization-index__achievement > summary::-webkit-details-marker {
-  display: none;
-}
-
-.civilization-index__achievement > summary:hover {
-  background: var(--ui-fill-1);
-}
-
-.civilization-index__achievement > summary:focus-visible {
-  box-shadow: 0 0 0 2px var(--ui-focus);
-}
-
-.civilization-index__achievement > summary > span:first-child {
-  display: grid;
-  min-width: 0;
-}
-
-.civilization-index__achievement > summary small {
-  color: var(--ui-label-tertiary);
-  font-size: 10px;
-  line-height: 15px;
-  letter-spacing: 0.08em;
-}
-
-.civilization-index__achievement > summary strong {
-  overflow: hidden;
-  color: rgba(216, 255, 249, 0.92);
-  font-size: 13px;
-  font-weight: 520;
-  line-height: 20px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.civilization-index__achievement-disclosure {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  color: rgba(117, 216, 201, 0.82);
-  font-size: 11px;
-  line-height: 16px;
-  white-space: nowrap;
-}
-
-.civilization-index__achievement-disclosure svg {
-  transition: transform 160ms ease;
-}
-
-.civilization-index__achievement[open] .civilization-index__achievement-disclosure svg {
-  transform: rotate(90deg);
-}
-
-.civilization-index__achievement-body {
-  display: grid;
-  gap: 12px;
-  margin: 0 8px 6px;
-  padding: 12px;
-  border-left: 1px solid rgba(117, 216, 201, 0.25);
-  background: linear-gradient(90deg, rgba(117, 216, 201, 0.06), transparent 82%);
-}
-
-.civilization-index__achievement-body > p {
-  margin: 0;
-  color: var(--ui-label-tertiary);
-  font-size: 11px;
-  line-height: 17px;
-}
-
-.civilization-index__achievement-body ul {
-  display: grid;
-  gap: 7px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.civilization-index__achievement-body li {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 6px;
-  color: var(--ui-label-tertiary);
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.civilization-index__achievement-body li > i {
-  color: var(--ui-label-tertiary);
-  font-style: normal;
-  text-align: center;
-}
-
-.civilization-index__achievement-body li.is-observed > i,
-.civilization-index__achievement-body li.is-observed > span {
-  color: rgba(216, 255, 249, 0.9);
-}
-
-.civilization-index__achievement-body li > small {
-  color: var(--ui-label-tertiary);
-  font-size: 10px;
-  line-height: 15px;
-}
-
-.civilization-index__achievement-progress {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 6px 12px;
-  color: var(--ui-label-tertiary);
-  font-size: 10px;
-  line-height: 15px;
-}
-
-.civilization-index__achievement-progress strong {
-  color: var(--ui-label-secondary);
-  font-size: 11px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.civilization-index__achievement-track {
-  display: block;
-  height: 3px;
-  grid-column: 1 / -1;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--ui-fill-2);
-}
-
-.civilization-index__achievement-track > i {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: #75d8c9;
-}
-
 .civilization-index--empty {
   align-content: center;
   color: var(--ui-label-tertiary);
@@ -1414,78 +1259,10 @@
   background: var(--ui-fill-2);
 }
 
-.model-select__trigger[data-state="open"] {
-  background: var(--ui-fill-2);
-}
-
-.model-select__trigger svg {
-  width: 16px;
-  height: 16px;
-  color: var(--ui-label-tertiary);
-  stroke-width: 1.8px;
-  transition: transform 160ms var(--ui-ease-out);
-}
-
-.model-select__trigger[data-state="open"] svg {
-  transform: rotate(180deg);
-}
-
 .model-select__trigger:disabled {
   background: var(--ui-fill-2);
   color: var(--ui-label-disabled);
   cursor: not-allowed;
-}
-
-.model-select__content {
-  z-index: 900 !important;
-  width: var(--radix-select-trigger-width);
-  min-width: var(--radix-select-trigger-width);
-  max-height: min(288px, var(--radix-select-content-available-height));
-  overflow: hidden;
-  border: 0.5px solid rgba(255, 255, 255, 0.12) !important;
-  border-radius: 12px !important;
-  background: #292929 !important;
-  color: rgba(255, 255, 255, 0.84) !important;
-  box-shadow: 0 4px 16.4px rgba(0, 0, 0, 0.28) !important;
-  transform-origin: var(--radix-select-content-transform-origin);
-  animation: model-select-enter 180ms cubic-bezier(0.23, 1, 0.32, 1) both !important;
-}
-
-.model-select__content [data-slot="select-viewport"] {
-  width: 100%;
-  height: auto;
-  min-width: 100%;
-  padding: 8px;
-}
-
-.model-select__item {
-  height: 36px;
-  padding: 8px 36px 8px 8px !important;
-  border-radius: 10px !important;
-  outline: none;
-  color: rgba(255, 255, 255, 0.84) !important;
-  font-family: var(--font-ui);
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 20px;
-  cursor: pointer;
-}
-
-.model-select__item[data-highlighted] {
-  background: rgba(255, 255, 255, 0.05) !important;
-}
-
-.model-select__item [data-slot="select-item-indicator"] {
-  right: 8px;
-  width: 18px;
-  height: 18px;
-  color: rgba(255, 255, 255, 0.84);
-}
-
-.model-select__item [data-slot="select-item-indicator"] svg {
-  width: 18px;
-  height: 18px;
-  stroke-width: 1.8px;
 }
 
 .model-settings__endpoints {
@@ -2330,11 +2107,6 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes model-select-enter {
-  from { opacity: 0; transform: scale(0.97); }
-  to { opacity: 1; transform: scale(1); }
-}
-
 @media (hover: none), (pointer: coarse) {
   .immersive-touch-trigger {
     opacity: 0.56;
@@ -2640,14 +2412,6 @@
 
   .ambient-history__entry {
     animation: none;
-  }
-
-  .model-select__content {
-    animation: none !important;
-  }
-
-  .model-select__trigger svg {
-    transition: none;
   }
 
   .history-entry__disclosure svg {

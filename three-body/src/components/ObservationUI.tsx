@@ -266,21 +266,33 @@ function PersonRelationGraph({ agent }: { agent: SocietyAgent }) {
   );
 }
 
-const MEMORY_LANE_LABEL = {
-  episodic: '亲历',
-  semantic: '认识',
-  social: '关系印象',
-  procedural: '做事经验',
-  prospective: '仍在意',
-  dialogue: '对话',
-} as const;
+const PERSON_MIND_SECTION_TITLES = ['当前关切', '经历', '信念', '最近思考'] as const;
 
-const MEMORY_PRECISION_LABEL = {
-  exact: '记得很清楚',
-  specific: '还记得细节',
-  general: '只剩概括',
-  faint: '已经模糊',
-} as const;
+interface PersonMindSection {
+  title: typeof PERSON_MIND_SECTION_TITLES[number];
+  entries: string[];
+}
+
+function parsePersonMindMarkdown(markdown: string): PersonMindSection[] {
+  const entriesByTitle = new Map<string, string[]>();
+  let currentTitle: string | undefined;
+  for (const rawLine of markdown.split(/\r?\n/u)) {
+    const line = rawLine.trim();
+    const heading = /^#\s+(.+)$/u.exec(line)?.[1];
+    if (heading && PERSON_MIND_SECTION_TITLES.some((title) => title === heading)) {
+      currentTitle = heading;
+      entriesByTitle.set(currentTitle, []);
+      continue;
+    }
+    if (!currentTitle || !line || line === '_无_' || line.startsWith('<!--')) continue;
+    const entry = /^-\s+(?:\[[mgd]\d+\]\s*)?(.+)$/u.exec(line)?.[1];
+    if (entry) entriesByTitle.get(currentTitle)?.push(entry);
+  }
+  return PERSON_MIND_SECTION_TITLES.map((title) => ({
+    title,
+    entries: entriesByTitle.get(title) ?? [],
+  }));
+}
 
 function PersonMemory({
   agent,
@@ -293,34 +305,39 @@ function PersonMemory({
   loading: boolean;
   error: string;
 }) {
-  const remembered = memory?.remembered ?? [];
+  const sections = useMemo(
+    () => parsePersonMindMarkdown(memory?.markdown ?? ''),
+    [memory?.markdown],
+  );
+  const entryCount = sections.reduce((sum, section) => sum + section.entries.length, 0);
   return (
     <section aria-label={`${agent.name}此刻能想起的记忆`} className="person-action-history">
       <div className="person-action-history__heading">
-        <h3>此刻记得</h3>
-        {!loading && !error && <span>{remembered.length} 条</span>}
+        <h3>心智记忆</h3>
+        {!loading && !error && <span>{entryCount} 条</span>}
       </div>
-      <p className="person-action-history__detail">这是人物现在还能召回的内容，不是完整历史档案。细节会被压缩、模糊或遗忘。</p>
-      {loading && remembered.length === 0 ? (
+      <p className="person-action-history__detail">这是人物此刻保存下来的记忆文档。经历会模糊或遗忘，想法也不一定等于事实。</p>
+      {loading && !memory?.markdown ? (
         <p className="person-action-history__empty">正在回忆…</p>
       ) : error ? (
         <p className="person-action-history__error">{error}</p>
-      ) : remembered.length === 0 ? (
-        <p className="person-action-history__empty">此刻没有能清楚想起的事</p>
+      ) : !memory?.markdown ? (
+        <p className="person-action-history__empty">此刻还没有形成记忆文档</p>
       ) : (
-        <ol className="person-action-history__list">
-          {remembered.map((item) => (
-            <li className={`person-action-history__item person-action-history__item--${item.lane}`} key={item.id}>
-              <div className="person-action-history__meta">
-                <time>{item.firstMonth === item.lastMonth ? monthLabel(item.lastMonth) : `${monthLabel(item.firstMonth)}—${monthLabel(item.lastMonth)}`}</time>
-                <span>{MEMORY_PRECISION_LABEL[item.precision]}</span>
-              </div>
-              <strong>{MEMORY_LANE_LABEL[item.lane]}{item.unresolved ? ' · 还没放下' : ''}</strong>
-              <p>{item.gist}</p>
-              {item.personNames.length > 0 && <p className="person-action-history__detail">涉及：{item.personNames.join('、')}</p>}
-            </li>
+        <div className="person-mind-sections">
+          {sections.map((section) => (
+            <section className="person-mind-section" key={section.title}>
+              <h4>{section.title}</h4>
+              {section.entries.length ? (
+                <ul>
+                  {section.entries.map((entry, index) => <li key={`${section.title}-${index}`}>{entry}</li>)}
+                </ul>
+              ) : (
+                <p>暂无</p>
+              )}
+            </section>
           ))}
-        </ol>
+        </div>
       )}
     </section>
   );
@@ -450,8 +467,16 @@ export function FocusInspector({
   if (agent) {
     eyebrow = '人物';
     name = agent.name;
-    activity = agent.doing || activeIntent?.summary || '此刻没有明确行动';
-    status = agentStateLabel(agent);
+    activity = agent.activity.reason || agent.doing || activeIntent?.summary || '此刻没有明确行动';
+    const activityLabel = agent.activity.kind === 'travelling'
+      ? '赶路'
+      : agent.activity.kind === 'acting'
+        ? '行动中'
+        : agent.activity.kind === 'waiting'
+          ? '等待'
+          : '空闲';
+    const activityMonths = Math.max(1, observedMonth - agent.activity.sinceMonth + 1);
+    status = `${agentStateLabel(agent)} · ${activityLabel}${activityMonths > 1 ? ` ${activityMonths} 个月` : ''}`;
   } else if (structure) {
     eyebrow = '结构';
     name = structure.name;

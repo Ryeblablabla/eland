@@ -1,6 +1,6 @@
 import type { DecisionAuthorityState, PhysicalStructure } from './model';
 import { physicalStructuresOf } from './physical-structure-index';
-import type { PersonState } from './person';
+import { isAlive, type PersonState } from './person';
 import { shelterGeometryAt } from './structure';
 import { worldEventById } from './event-index';
 import {
@@ -23,7 +23,7 @@ function defaultVisibleCells(person: PersonState): number[] {
   return cellsInRadius(person.position.cellId, radius);
 }
 
-type ShelterReadState = Pick<DecisionAuthorityState, 'clock' | 'world'>;
+type ShelterReadState = Pick<DecisionAuthorityState, 'clock' | 'world' | 'people'>;
 
 function rememberedEvidence(
   state: ShelterReadState,
@@ -69,6 +69,13 @@ export function findReachableShelter(
     if (!seenNow && rememberedSourceIds.length === 0) continue;
     for (const position of structure.interiorPositions) {
       if (!shelterGeometryAt(state.world.grid, position)) continue;
+      const visiblyOccupied = visible.has(position.cellId) && state.people.some((candidate) => (
+        candidate.id !== person.id
+          && isAlive(candidate)
+          && candidate.position.cellId === position.cellId
+          && candidate.position.z === position.z
+      ));
+      if (visiblyOccupied) continue;
       const path = findStandingPath(state.world.grid, person.position, position);
       if (!path.length) continue;
       candidates.push({

@@ -11,16 +11,13 @@ import {
   type PersonId,
 } from '../../domain/person';
 import { lifePlanningStage } from '../../domain/life-stage';
-import { acceptedExchangeFor, exchangeTermFulfilled } from '../../domain/social-facts';
 import {
   hasFulfillmentOpportunity,
   hasRequiredSocialResponse,
   isFulfillmentOption,
-  isProductionOption,
   isRequiredSocialOption,
   isStateAchievementGoal,
 } from '../rule-planner';
-import { clamp } from './state-utils';
 import { actionOptionSemantics } from '../../domain/action-option-semantics';
 import { characterAgendaStateOf } from '../../domain/character-agenda';
 import { compileOpenConversationOption } from '../conversation-options';
@@ -169,47 +166,34 @@ function severeExposure(context: DecisionContext): boolean {
 }
 
 export function decisionProbability(state: SimulationState, context: DecisionContext, atMonth: number): { probability: number; reasons: string[] } {
-  const person = context.person;
-  const reasons: string[] = [];
-  let probability = personCanDecide(state, context, atMonth) ? 0.045 : 0.01;
-  if (!context.activeIntent) {
-    probability += 0.44;
-    reasons.push('当前没有持续目标');
-    if (context.options.some(isProductionOption)) {
-      probability += 0.16;
-      reasons.push('空闲时存在可执行的生产或探索机会');
-    }
+  if (!personCanDecide(state, context, atMonth)) return { probability: 0, reasons: ['当前不能形成自主决定'] };
+  if (!context.activeIntent) return { probability: 1, reasons: ['当前没有持续目标，需要形成新的主观方向'] };
+  const stalled = atMonth - context.activeIntent.lastProgressAtMonth >= 2;
+  if (stalled) return { probability: 1, reasons: ['当前意图连续没有可见进展，需要重新理解或改换办法'] };
+  if (severeExposure(context)) return { probability: 1, reasons: ['身体正经历可感知危险，需要重评方向'] };
+  if (hasRequiredSocialResponse(context) || hasFulfillmentOpportunity(context)) {
+    return { probability: 1, reasons: ['一项真实回应或承诺到达了当前行动边界'] };
   }
-  if (context.activeIntent && atMonth - context.activeIntent.lastProgressAtMonth >= 2) {
-    probability += hasUnfinishedProductionIntent(context) ? 0.48 : 0.22;
-    reasons.push(hasUnfinishedProductionIntent(context) ? '未完成的生产目标已经停滞' : '意图停滞');
+  if (characterAgendaModelReviewDue(context, atMonth)) {
+    return { probability: 1, reasons: ['长期关切出现了新证据或到了复核时点'] };
   }
-  if (severeExposure(context)) {
-    probability += 0.72;
-    reasons.push('寒冷或炎热已经进入新的危险阶段，需要重评长期手段');
-  }
-  const acceptedExchange = acceptedExchangeFor(state, person.id, atMonth);
-  if (acceptedExchange && !exchangeTermFulfilled(state, acceptedExchange.offer.action.kind === 'communicate' ? acceptedExchange.offer.action.content.id : '', person.id)) {
-    probability += 0.72;
-    reasons.push('已接受的交换等待本人交付');
-  }
-  if (context.options.some((option) => isFulfillmentOption(option)
-    && actionOptionSemantics(option).socialContext?.cooperationKind === 'assist')) {
-    probability += 0.72;
-    reasons.push('已接受的求助等待本人履行');
-  }
-  if (!reasons.length) reasons.push('每月非零重新考虑概率');
-  return { probability: clamp(probability, 0.01, 0.82), reasons };
+  const socialOpening = context.options.some((option) => (
+    option.domain === 'social'
+    && actionOptionSemantics(option).obligation === 'optional'
+  ));
+  return socialOpening
+    ? { probability: 0.55, reasons: ['眼前出现了自主交流或协商机会'] }
+    : { probability: 0.08, reasons: ['稳定意图仍允许偶尔重新思考'] };
 }
 
 /**
- * 模型只能在本地已编译的候选中选择。这里再次使用完整领域上下文校验，
- * 因而协议层只检查 ID 仍不足以让建议进入权威意图。
+ * The model owns the subjective MentalAct. Its optional first step is still
+ * re-grounded against the latest local world before it can become an Intent.
  */
 export function validateModelDecision(
   context: DecisionContext,
   proposed: Decision,
-  localDecision: Decision,
+  localDecision?: Decision,
 ): Decision | null {
   const required = context.options.filter(isRequiredSocialOption);
   const fulfillment = context.options.filter(isFulfillmentOption);
@@ -222,9 +206,7 @@ export function validateModelDecision(
           ...(proposed.characterAgendaUpdate
             ? { characterAgendaUpdate: structuredClone(proposed.characterAgendaUpdate) }
             : {}),
-          ...(proposed.memoryConsolidation
-            ? { memoryConsolidation: structuredClone(proposed.memoryConsolidation) }
-            : {}),
+          ...(proposed.mentalAct ? { mentalAct: structuredClone(proposed.mentalAct) } : {}),
         };
   }
   if (proposed.kind !== 'start' && proposed.kind !== 'revise') return null;
@@ -234,24 +216,24 @@ export function validateModelDecision(
   if (!required.length && fulfillment.length && !fulfillment.some((option) => option.id === selected.id)) return null;
   if (!composeIntentChoice(context.options, context.followUpOptions, selected.id, proposed.followUpOptionId)) return null;
 
-  const communication = selected.nextAction.kind === 'communicate'
+  const communication = selected.nextAction.kind === 'talk'
     ? selected.nextAction
-    : selected.completionAction?.kind === 'communicate'
+    : selected.completionAction?.kind === 'talk'
       ? selected.completionAction
       : null;
   const proposedUtterance = proposed.utterance?.trim();
   const proposedGrounding = proposed.groundingSourceFactIds;
   const compiledOpenConversation = selected.openConversationGrounding
-    ? compileOpenConversationOption(selected, proposedGrounding ?? [])
+    ? compileOpenConversationOption(context.state, context.person, selected, proposedGrounding ?? [])
     : null;
   if (selected.openConversationGrounding && (!proposedUtterance || !proposedGrounding || !compiledOpenConversation)) {
     return null;
   }
   if (!selected.openConversationGrounding && proposedGrounding !== undefined) return null;
   const contradictoryStructuredReply = Boolean(proposedUtterance && communication) && (
-    communication?.content.kind === 'accept'
+    communication?.speakerMeaning.kind === 'accept'
       ? /拒绝|不同意|不愿意|不接受|[?？]/u.test(proposedUtterance ?? '')
-      : communication?.content.kind === 'reject'
+      : communication?.speakerMeaning.kind === 'reject'
         ? /同意|接受|愿意|成交/u.test(proposedUtterance ?? '')
         : false
   );
@@ -269,15 +251,13 @@ export function validateModelDecision(
     ...(proposed.characterAgendaUpdate
       ? { characterAgendaUpdate: structuredClone(proposed.characterAgendaUpdate) }
       : {}),
-    ...(proposed.memoryConsolidation
-      ? { memoryConsolidation: structuredClone(proposed.memoryConsolidation) }
-      : {}),
+    ...(proposed.mentalAct ? { mentalAct: structuredClone(proposed.mentalAct) } : {}),
   };
   const active = context.activeIntent;
   if (!active) return { kind: 'start', ...shared };
   if (proposed.kind === 'revise' && proposed.intentId !== active.id) return null;
 
-  const localForSameOption = localDecision.kind === 'revise' && localDecision.optionId === selected.id
+  const localForSameOption = localDecision?.kind === 'revise' && localDecision.optionId === selected.id
     ? localDecision
     : null;
   const interruptionKind = required.length
@@ -286,7 +266,7 @@ export function validateModelDecision(
       ? 'fulfillment' as const
       : selected.recordUseBasis
         ? 'record-use' as const
-        : communication?.content.kind === 'claim' && communication.content.conversation
+        : communication
           ? 'voluntary-conversation' as const
         : localForSameOption?.interruptionKind;
   const survivalHibernationInterruption = localForSameOption?.interruptionKind === 'survival-reflex'

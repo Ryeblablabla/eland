@@ -1,7 +1,9 @@
 import type { PrimitiveAction, RepresentationInput } from './action';
 import type { WorldEvent } from './model';
 import { materialDefinition, materialHas } from './material';
-import type { PersonId, PersonState } from './person';
+import type { PersonId, PersonState, RelationshipEvidenceAnchor } from './person';
+import { relationshipEvidenceSourceEventIds } from './relation';
+import { languageBroadcastFromDiff } from './language-perception';
 
 export const LIVE_PERSON_SOCIAL_EVENT_ID_LIMIT = 4_096;
 export const LIVE_PERSON_SOCIAL_DESCRIPTOR_SOURCE_ID_LIMIT = 4_096;
@@ -10,76 +12,93 @@ export type LivePersonSocialStrictEvidenceKind =
   | 'electrical-remote-work'
   | 'measurement-uncertainty';
 
-function encodedPersonId(personId: PersonId): string {
-  if (typeof personId !== 'string' || personId.length === 0) {
-    throw new Error('live social person ID 无效');
-  }
-  return encodeURIComponent(personId);
+interface SourceArraySnapshot<T> {
+  array: readonly T[];
+  length: number;
+  first?: T;
+  last?: T;
 }
 
-export function livePersonSocialEvidenceGroupKey(personId: PersonId): string {
-  return `live-person-social:${encodedPersonId(personId)}:sources`;
+interface LivePersonSocialSourceCache {
+  stringSources: SourceArraySnapshot<string>[];
+  anchorSources: SourceArraySnapshot<RelationshipEvidenceAnchor>[];
+  deathEventIds: string[];
+  eventIds: string[];
 }
 
-export function livePersonSocialEvidenceLeaseKey(personId: PersonId): string {
-  return `gameplay:live-person-social:${encodedPersonId(personId)}:sources`;
+const livePersonSocialSourceCaches = new WeakMap<PersonState, LivePersonSocialSourceCache>();
+const EMPTY_SOCIAL_SOURCE_IDS: readonly string[] = Object.freeze([]);
+const EMPTY_RELATIONSHIP_ANCHORS: readonly RelationshipEvidenceAnchor[] = Object.freeze([]);
+
+function sourceSnapshot<T>(array: readonly T[]): SourceArraySnapshot<T> {
+  return { array, length: array.length, first: array[0], last: array.at(-1) };
 }
 
-export function livePersonSocialStrictEvidenceGroupKey(
-  personId: PersonId,
-  kind: LivePersonSocialStrictEvidenceKind,
-): string {
-  return `live-person-social:${encodedPersonId(personId)}:strict:${kind}`;
+function sameSourceSnapshots<T>(
+  previous: readonly SourceArraySnapshot<T>[],
+  current: readonly (readonly T[])[],
+): boolean {
+  return previous.length === current.length && current.every((array, index) => {
+    const snapshot = previous[index];
+    return snapshot?.array === array
+      && snapshot.length === array.length
+      && snapshot.first === array[0]
+      && snapshot.last === array.at(-1);
+  });
 }
 
-export function livePersonSocialStrictEvidenceLeaseKey(
-  personId: PersonId,
-  kind: LivePersonSocialStrictEvidenceKind,
-): string {
-  return `gameplay:live-person-social:${encodedPersonId(personId)}:strict:${kind}`;
+function currentSocialSourceArrays(person: PersonState): {
+  stringSources: readonly (readonly string[])[];
+  anchorSources: readonly (readonly RelationshipEvidenceAnchor[])[];
+  deathEventIds: string[];
+} {
+  const stringSources: (readonly string[])[] = [
+    ...person.memories.map((memory) => memory.sourceEventIds),
+    ...person.conditions.map((condition) => condition.sourceEventIds),
+    ...person.relations.map((relation) => relation.sourceEventIds),
+    ...(person.bereavements ?? []).map((bereavement) => bereavement.sourceEventIds),
+    person.maternalTeachingSourceEventIds ?? EMPTY_SOCIAL_SOURCE_IDS,
+  ];
+  const anchorSources = person.relations.flatMap((relation) => {
+    const ledger = relation.evidenceLedger?.version === 'relationship-evidence-ledger-v1'
+      ? relation.evidenceLedger
+      : undefined;
+    return ledger ? [
+      ledger.substantive,
+      ledger.directIntimacy,
+      ledger.sharedLife,
+      ledger.decisionBoundaries ?? EMPTY_RELATIONSHIP_ANCHORS,
+    ] : [];
+  });
+  return {
+    stringSources,
+    anchorSources,
+    deathEventIds: (person.bereavements ?? []).map((bereavement) => bereavement.deathEventId),
+  };
 }
 
-export function parseLivePersonSocialEvidenceGroupKey(
-  value: string,
-): { ownerId: PersonId; kind: 'broad' | LivePersonSocialStrictEvidenceKind } | null {
-  const match = /^live-person-social:([^:]+):(sources|strict:(electrical-remote-work|measurement-uncertainty))$/u.exec(value);
-  if (!match) return null;
-  try {
-    const ownerId = decodeURIComponent(match[1]!);
-    if (!ownerId) return null;
-    const kind = match[2] === 'sources' ? 'broad' as const : match[3] as LivePersonSocialStrictEvidenceKind;
-    const canonical = kind === 'broad'
-      ? livePersonSocialEvidenceGroupKey(ownerId)
-      : livePersonSocialStrictEvidenceGroupKey(ownerId, kind);
-    return canonical === value ? { ownerId, kind } : null;
-  } catch {
-    return null;
-  }
+function sameStrings(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-export function parseLivePersonSocialEvidenceLeaseKey(
-  value: string,
-): { ownerId: PersonId; kind: 'broad' | LivePersonSocialStrictEvidenceKind } | null {
-  const match = /^gameplay:live-person-social:([^:]+):(sources|strict:(electrical-remote-work|measurement-uncertainty))$/u.exec(value);
-  if (!match) return null;
-  try {
-    const ownerId = decodeURIComponent(match[1]!);
-    if (!ownerId) return null;
-    const kind = match[2] === 'sources' ? 'broad' as const : match[3] as LivePersonSocialStrictEvidenceKind;
-    const canonical = kind === 'broad'
-      ? livePersonSocialEvidenceLeaseKey(ownerId)
-      : livePersonSocialStrictEvidenceLeaseKey(ownerId, kind);
-    return canonical === value ? { ownerId, kind } : null;
-  } catch {
-    return null;
-  }
-}
-
+/**
+ * Source lists use append-or-replace mutation in the authoritative engine.
+ * Cache validation therefore compares every lane identity plus its boundary
+ * elements; append, replacement, reordering and the current push-based
+ * condition updates all invalidate without hashing thousands of IDs. The
+ * cache is disposable and never serialized or used as domain authority.
+ */
 export function livePersonSocialSourceEventIds(person: PersonState): string[] {
+  const current = currentSocialSourceArrays(person);
+  const cached = livePersonSocialSourceCaches.get(person);
+  if (cached
+    && sameSourceSnapshots(cached.stringSources, current.stringSources)
+    && sameSourceSnapshots(cached.anchorSources, current.anchorSources)
+    && sameStrings(cached.deathEventIds, current.deathEventIds)) return cached.eventIds;
   const values = [
     ...person.memories.flatMap((memory) => memory.sourceEventIds),
     ...person.conditions.flatMap((condition) => condition.sourceEventIds),
-    ...person.relations.flatMap((relation) => relation.sourceEventIds),
+    ...person.relations.flatMap((relation) => relationshipEvidenceSourceEventIds(relation)),
     ...(person.bereavements ?? []).flatMap((bereavement) => [
       bereavement.deathEventId,
       ...bereavement.sourceEventIds,
@@ -95,6 +114,12 @@ export function livePersonSocialSourceEventIds(person: PersonState): string[] {
       `living person ${person.id} social source IDs 超出有界续接上限 ${LIVE_PERSON_SOCIAL_EVENT_ID_LIMIT}`,
     );
   }
+  livePersonSocialSourceCaches.set(person, {
+    stringSources: current.stringSources.map(sourceSnapshot),
+    anchorSources: current.anchorSources.map(sourceSnapshot),
+    deathEventIds: current.deathEventIds,
+    eventIds,
+  });
   return eventIds;
 }
 
@@ -157,8 +182,8 @@ function proposalSubject(content: Extract<RepresentationInput, { kind: 'request'
   return `${content.kind}:${proposal.kind}`;
 }
 
-function semanticSubject(action: Extract<PrimitiveAction, { kind: 'communicate' }>): string | null {
-  const content = action.content;
+function semanticSubject(action: Extract<PrimitiveAction, { kind: 'talk' }>): string | null {
+  const content = action.speakerMeaning;
   if (content.kind === 'claim') {
     if (content.conversation) return `claim:conversation:${content.conversation.topic}`;
     if (content.factId) return `claim:fact:${content.factId}`;
@@ -172,10 +197,9 @@ function semanticSubject(action: Extract<PrimitiveAction, { kind: 'communicate' 
 }
 
 export function liveSocialCommunicationSubjectKey(
-  action: Extract<PrimitiveAction, { kind: 'communicate' }>,
+  action: Extract<PrimitiveAction, { kind: 'talk' }>,
 ): string | null {
-  const subject = semanticSubject(action);
-  return subject ? `${subject}|audience=${[...action.audience].sort().join(',')}` : null;
+  return semanticSubject(action);
 }
 
 export interface LiveSocialGroundedConversationDescriptor {
@@ -191,7 +215,8 @@ export interface LiveSocialGroundedConversationDescriptor {
 }
 
 export interface LiveSocialCommunicationDescriptor {
-  audience: readonly PersonId[];
+  perceivedByPersonIds: readonly PersonId[];
+  understoodByPersonIds: readonly PersonId[];
   subjectKey?: string;
   basisSourceEventIds: readonly string[];
   groundedConversation?: LiveSocialGroundedConversationDescriptor;
@@ -228,12 +253,6 @@ export interface LiveSocialEvidenceDescriptor {
   };
 }
 
-export interface RetainedLiveSocialEvidenceDescriptor {
-  ownerId: PersonId;
-  absoluteIndex: number;
-  descriptor: LiveSocialEvidenceDescriptor;
-}
-
 function canonicalStringIds(values: unknown, label: string): string[] {
   if (!Array.isArray(values)
     || values.length > LIVE_PERSON_SOCIAL_DESCRIPTOR_SOURCE_ID_LIMIT
@@ -244,8 +263,8 @@ function canonicalStringIds(values: unknown, label: string): string[] {
 }
 
 function actionStaticBasisSourceIds(event: Extract<WorldEvent, { kind: 'action' }>): string[] {
-  if (event.action.kind !== 'communicate') return [];
-  const content = event.action.content;
+  if (event.action.kind !== 'talk') return [];
+  const content = event.action.speakerMeaning;
   const conversationSources = content.kind === 'claim'
     ? content.conversation?.sourceFactIds ?? []
     : [];
@@ -268,11 +287,12 @@ export function liveSocialEvidenceDescriptorFromWorldEvent(
   event: WorldEvent,
 ): LiveSocialEvidenceDescriptor {
   const action = event.kind === 'action' ? event : undefined;
-  const communication = action?.action.kind === 'communicate'
+  const communication = action?.action.kind === 'talk'
     ? action.action
     : undefined;
-  const content = communication?.content;
+  const content = communication?.speakerMeaning;
   const conversation = content?.kind === 'claim' ? content.conversation : undefined;
+  const languageBroadcast = action ? languageBroadcastFromDiff(action.diff) : undefined;
   const supportRecipientIds = action ? [
     ...(typeof action.diff.caredPersonId === 'string' ? [action.diff.caredPersonId] : []),
     ...(action.action.kind === 'transfer'
@@ -321,7 +341,8 @@ export function liveSocialEvidenceDescriptorFromWorldEvent(
         completed: action.status === 'completed',
         ...(communication ? {
           communication: Object.freeze({
-            audience: Object.freeze([...new Set(communication.audience)].sort()),
+            perceivedByPersonIds: Object.freeze([...(languageBroadcast?.perceivedByPersonIds ?? [])].sort()),
+            understoodByPersonIds: Object.freeze([...(languageBroadcast?.understoodByPersonIds ?? [])].sort()),
             ...(liveSocialCommunicationSubjectKey(communication)
               ? { subjectKey: liveSocialCommunicationSubjectKey(communication)! } : {}),
             basisSourceEventIds: Object.freeze(actionStaticBasisSourceIds(action)),
@@ -363,147 +384,6 @@ export function liveSocialEvidenceDescriptorFromWorldEvent(
   });
 }
 
-export function cloneValidatedLiveSocialEvidenceDescriptor(
-  input: LiveSocialEvidenceDescriptor,
-): LiveSocialEvidenceDescriptor {
-  if (!input
-    || typeof input.eventId !== 'string'
-    || input.eventId.length === 0
-    || !Number.isSafeInteger(input.atMonth)
-    || input.atMonth < 0
-    || !Number.isSafeInteger(input.orderInMonth)
-    || input.orderInMonth < 0
-    || !Number.isSafeInteger(input.planningTick)
-    || input.planningTick < 0
-    || !Number.isSafeInteger(input.orderInTick)
-    || input.orderInTick < 0
-    || typeof input.agreementFulfilled !== 'boolean'
-    || typeof input.electricalRemoteWorkEligible !== 'boolean'
-    || typeof input.measurementUncertaintyEligible !== 'boolean') {
-    throw new Error('live social descriptor canonical identity 无效');
-  }
-  const action = input.action;
-  if (action && (typeof action.actorId !== 'string'
-    || action.actorId.length === 0
-    || typeof action.status !== 'string'
-    || !['move', 'transfer', 'act', 'attend', 'communicate'].includes(action.actionKind)
-    || typeof action.completed !== 'boolean')) {
-    throw new Error('live social descriptor action schema 无效');
-  }
-  if (action?.intentId !== undefined
-    && (typeof action.intentId !== 'string' || action.intentId.length === 0)) {
-    throw new Error('live social descriptor intent ID 无效');
-  }
-  const supportRecipientIds = canonicalStringIds(
-    action?.supportRecipientIds ?? [],
-    'live social descriptor support recipients',
-  );
-  const communication = action?.communication;
-  const audience = canonicalStringIds(
-    communication?.audience ?? [],
-    'live social descriptor audience',
-  );
-  const basisSourceEventIds = canonicalStringIds(
-    communication?.basisSourceEventIds ?? [],
-    'live social descriptor basis sources',
-  );
-  const grounded = communication?.groundedConversation;
-  if (grounded && (typeof grounded.basisKey !== 'string'
-    || grounded.basisKey.length === 0
-    || typeof grounded.topic !== 'string'
-    || (grounded.turn !== 'opening' && grounded.turn !== 'response')
-    || typeof grounded.speakerId !== 'string'
-    || grounded.speakerId.length === 0
-    || typeof grounded.listenerId !== 'string'
-    || grounded.listenerId.length === 0
-    || typeof grounded.basisVerified !== 'boolean'
-    || (grounded.referenceEventId !== undefined
-      && (typeof grounded.referenceEventId !== 'string' || grounded.referenceEventId.length === 0))
-    || (grounded.stance !== undefined
-      && grounded.stance !== 'supportive' && grounded.stance !== 'guarded'))) {
-    throw new Error('live social descriptor grounded conversation schema 无效');
-  }
-  const conversationSourceFactIds = canonicalStringIds(
-    grounded?.sourceFactIds ?? [],
-    'live social descriptor conversation sources',
-  );
-  const blockedDelivery = action?.blockedDelivery;
-  if (blockedDelivery && [
-    blockedDelivery.dropId,
-    blockedDelivery.projectId,
-    blockedDelivery.requestEventId,
-  ].some((value) => typeof value !== 'string' || value.length === 0)) {
-    throw new Error('live social descriptor blocked delivery schema 无效');
-  }
-  const environment = input.environment;
-  if (environment && typeof environment.change !== 'string') {
-    throw new Error('live social descriptor environment schema 无效');
-  }
-  const participantIds = canonicalStringIds(
-    environment?.participantIds ?? [],
-    'live social descriptor participants',
-  );
-  const excludedPairKeys = canonicalStringIds(
-    environment?.excludedPairKeys ?? [],
-    'live social descriptor excluded pairs',
-  );
-  if (environment?.bornPersonId !== undefined
-    && (typeof environment.bornPersonId !== 'string' || environment.bornPersonId.length === 0)) {
-    throw new Error('live social descriptor born person ID 无效');
-  }
-  return Object.freeze({
-    eventId: input.eventId,
-    atMonth: input.atMonth,
-    orderInMonth: input.orderInMonth,
-    planningTick: input.planningTick,
-    orderInTick: input.orderInTick,
-    ...(action ? {
-      action: Object.freeze({
-        actorId: action.actorId,
-        ...(action.intentId ? { intentId: action.intentId } : {}),
-        status: action.status,
-        actionKind: action.actionKind,
-        completed: action.completed,
-        ...(communication ? {
-          communication: Object.freeze({
-            audience: Object.freeze(audience),
-            ...(communication.subjectKey !== undefined
-              ? { subjectKey: communication.subjectKey } : {}),
-            basisSourceEventIds: Object.freeze(basisSourceEventIds),
-            ...(grounded ? {
-              groundedConversation: Object.freeze({
-                basisKey: grounded.basisKey,
-                topic: grounded.topic,
-                turn: grounded.turn,
-                speakerId: grounded.speakerId,
-                listenerId: grounded.listenerId,
-                sourceFactIds: Object.freeze(conversationSourceFactIds),
-                ...(grounded.referenceEventId
-                  ? { referenceEventId: grounded.referenceEventId } : {}),
-                ...(grounded.stance ? { stance: grounded.stance } : {}),
-                basisVerified: grounded.basisVerified,
-              }),
-            } : {}),
-          }),
-        } : {}),
-        supportRecipientIds: Object.freeze(supportRecipientIds),
-        ...(blockedDelivery ? { blockedDelivery: Object.freeze({ ...blockedDelivery }) } : {}),
-      }),
-    } : {}),
-    agreementFulfilled: input.agreementFulfilled,
-    electricalRemoteWorkEligible: input.electricalRemoteWorkEligible,
-    measurementUncertaintyEligible: input.measurementUncertaintyEligible,
-    ...(environment ? {
-      environment: Object.freeze({
-        change: environment.change,
-        participantIds: Object.freeze(participantIds),
-        excludedPairKeys: Object.freeze(excludedPairKeys),
-        ...(environment.bornPersonId ? { bornPersonId: environment.bornPersonId } : {}),
-      }),
-    } : {}),
-  });
-}
-
 function remoteWorkCandidate(event: WorldEvent, ownerId: PersonId): boolean {
   if (event.kind !== 'action' || event.who !== ownerId) return false;
   if (event.action.kind === 'move') {
@@ -516,7 +396,7 @@ function remoteWorkCandidate(event: WorldEvent, ownerId: PersonId): boolean {
     return true;
   }
   if (event.status !== 'completed' || event.cause !== 'intent'
-    || event.action.kind === 'communicate') return false;
+    || event.action.kind === 'talk') return false;
   if (event.action.kind === 'act') {
     if (event.action.mechanicalPowerBasis || event.action.electricalPowerBasis) return false;
     return event.action.operation !== 'ingest' && event.action.operation !== 'dehydrate';

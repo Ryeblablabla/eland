@@ -42,25 +42,16 @@
 
 ## 历史证据
 
-以下内容保留是为了复核因果假设、失败样本、守卫和实验结论，不是为了维持旧接口：
+当前工作树只保留紧凑历史与仍在使用的近期报告，避免旧实验在检索和 Agent 上下文中反复冒充当前事实：
 
-- [v8–v33 历史迭代账本](./evolution-20-version-ledger.md)：冻结索引；表内状态是作出决定时的快照。
+- [v8–v33 历史迭代账本](./evolution-20-version-ledger.md)：冻结结论表；状态是当时的决定快照。
+- [2026-09-01 前实验归档索引](./evolution-experiment-archive.md)：列出已从工作树移除的逐轮报告及恢复方法；全文仍在 Git 历史中。
 - [能力里程碑观察器 v1](./capability-milestones-causal-observer-v1.md)：已被 v2 取代，但含独有的旧矩阵和污染审计。
-- [文明领地观察实验](./civilization-territory-v2-experiment-2026-08-15.md)。
-- [古代文明桥接规则实验](./evolution-ancient-civilization-bridge-experiment-2026-08-22.md)：公共厅堂发起、铸造场承接、青铜工具采用与教学的三种子配对。
-- [年轻信任与共同活动实验](./evolution-young-trust-ticks-experiment-2026-08-22.md)：按人格采用 3–5 刻度的定向关系积累和年轻信任加成。
-- [生殖自主同意实验](./evolution-autonomous-reproduction-consent-experiment-2026-08-22.md)：移除固定生殖关系分数，以有来源候选、个人 appraisal 和明确可撤回协议取代。
-- [BDI 项目满足与家庭准备度实验](./evolution-bdi-family-readiness-experiment-2026-08-22.md)：项目完成 episode、需要缓解、家庭准备度与生殖目标结果的三种子初步审计；结论为 `revise/preliminary`。
-- [人物真实对话与长期关切人工审阅](./agent-dialogue-agenda-human-review-2026-08-30.md)：最新 prompt 单世界 60 月真实模型样本，逐条审阅 17 条可见台词与 5 条代表 agenda；结论为 `revise`。
-- [共同生活归属满足与十代连续性实验](./evolution-social-satiation-generation-10-experiment-2026-08-23.md)：已有共同生活连续满足归属需要、四种子 10/30/50/100 年矩阵与第 10 代权威出生链；十代可达性通过，跨种子稳定性结论为 `revise`。
-- [文明高粮食停滞与时代断层修复实验](./evolution-civ61-stagnation-fixes-experiment-2026-08-22.md)：储备动机、动作投影、历史耕作门槛与铁器项目链的四项机制修复，以及三种子 10/30 年初步配对；群体结论为 `revise/preliminary`。
-- [搜索耗尽项目重复重开实验](./evolution-project-reopen-churn-experiment-2026-08-22.md)：跨项目终局机会记忆、精确来源续证和建造假说重开约束的三种子 10/30 年配对；结论为 `accept/preliminary`。
-- 所有 `evolution-*-experiment-YYYY-MM-DD.md`、`evolution-*-audit-YYYY-MM-DD.md`、带日期的长程报告与端到端复盘。
-- `three-body/data/experiments/**/manifest.md` 和 `three-body/exports/**/SUMMARY.md` 等冻结运行旁证。
+- [人物真实对话与长期关切人工审阅](./agent-dialogue-agenda-human-review-2026-08-30.md)：最新 prompt 单世界 60 月人工审阅；结论为 `revise`。
+- [耕地扩展、人物行动与关系记忆实验](./evolution-cultivation-and-dialogue-memory-experiment-2026-09-01.md)：当前 v90j 多时长矩阵与因果收口。
+- [创世原型人格与经历叠层实验](./evolution-founder-persona-experience-experiment-2026-09-01.md)：当前人格先验、experience 与人格化召回实验。
 
-历史报告中的 `three-body/data/runs/<id>/*.json` 可能是 SQLite 切换前的真实路径。不要把它机械改写成当前接口；若文件已迁入 SQLite，在报告顶部说明迁移即可。
-
-实验报告的状态必须是已经发生的事实，例如“接受”“拒绝”“按门槛停止”“历史矩阵未完成”。不允许永久保留没有负责人和运行任务的“进行中”“以后补跑”。需要复验时，以当前代码新建带日期的实验，不改写旧结论。
+历史报告中的 `three-body/data/runs/<id>/*.json` 可能是 SQLite 切换前的真实路径。它们是当时的证据标识，不代表当前存储协议。需要复验时，以当前代码新建带日期的实验，不改写旧结论。
 
 ## Knowledge Base 镜像与生成数据
 
@@ -80,7 +71,8 @@ npm run sync:docs
 
 - 当前规范与代码冲突：修正文档，不为旧文字回退代码。
 - 旧规范被新规范完整覆盖、没有独有实验数据：直接删除，并更新所有引用。
-- 重复摘要不含独有证据：删除；保留逐版报告和冻结账本中的唯一一份事实。
-- 历史实验含独有种子、矩阵、失败样本或证据路径：保留，明确状态，不当作当前规范。
+- 重复摘要不含独有证据：删除，只保留一份当前说明。
+- 已收口实验：把假设、矩阵、决定、失败样本和证据标识压入冻结账本或归档索引，逐轮全文从工作树删除；需要时从 Git 历史或外部产物库恢复。
+- 当前实验：只保留仍参与本轮判断的报告；收口后进入上述压缩流程，不永久积累带日期的逐轮文档。
 - 生成文件：只修改源并重新生成。
 - 根目录 `README.md` 只保留玩家世界观与体验叙事，工程说明放在本索引、`AGENTS.md` 和对应模块 README。

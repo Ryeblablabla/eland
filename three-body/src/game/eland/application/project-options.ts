@@ -31,6 +31,7 @@ import { techniqueOutputMaterialId } from '../domain/technique-demonstration';
 import { registerProjectParticipantMembership } from '../domain/project-participant-index';
 import type { ProjectPressureView } from './project-pressure';
 import { mechanicalPowerProjectHasCurrentRecoveryWait } from './mechanical-power-options';
+import { hibernationRescueProposal } from './hibernation-rescue-options';
 import { findStandingPath, surfaceMaterial } from '../world/grid';
 import {
   appendProjectLeadershipSuccession,
@@ -64,12 +65,14 @@ import {
 } from './projects/project-completion';
 import {
   activeLogisticsEpisode,
+  activeLogisticsEpisodeWaitsForVisibleWildlife,
   closeProjectSearchCampaigns,
   endActiveLogisticsEpisode,
   endingReasonForProject,
   endingStatusForProject,
   endLogisticsEpisode,
   logisticsAdvanceEvidence,
+  movementRouteWaitsForVisibleWildlife,
   recordProjectProgress,
   searchCampaignBudgetReached,
   searchEpisodeCommittedActionIds,
@@ -129,14 +132,14 @@ function projectPlanBasisTransitionAtMonth(
       || response.kind !== 'action'
       || response.status !== 'completed'
       || response.who !== request.responderId
-      || response.action.kind !== 'communicate'
-      || response.action.content.kind !== 'claim'
-      || response.action.content.factId !== request.techniqueId
-      || response.action.content.projectKnowledgeResponse?.version !== 'project-knowledge-response-v1'
-      || response.action.content.projectKnowledgeResponse.projectId !== project.id
-      || response.action.content.projectKnowledgeResponse.requestEventId !== request.requestEventId
-      || response.action.content.projectKnowledgeResponse.requesterId !== owner.id
-      || response.action.content.projectKnowledgeResponse.outputMaterialId !== request.outputMaterialId
+      || response.action.kind !== 'talk'
+      || response.action.speakerMeaning.kind !== 'claim'
+      || response.action.speakerMeaning.factId !== request.techniqueId
+      || response.action.speakerMeaning.projectKnowledgeResponse?.version !== 'project-knowledge-response-v1'
+      || response.action.speakerMeaning.projectKnowledgeResponse.projectId !== project.id
+      || response.action.speakerMeaning.projectKnowledgeResponse.requestEventId !== request.requestEventId
+      || response.action.speakerMeaning.projectKnowledgeResponse.requesterId !== owner.id
+      || response.action.speakerMeaning.projectKnowledgeResponse.outputMaterialId !== request.outputMaterialId
       || response.diff.projectKnowledgeResponse !== true
       || response.diff.projectKnowledgeProjectId !== project.id
       || response.diff.projectKnowledgeRequestEventId !== request.requestEventId
@@ -220,11 +223,21 @@ export function projectHasLegitimateWait(
     if (seedOutstanding) return false;
     return projectCultivationCells(project).some((cellId) => {
       const materialId = surfaceMaterial(state.world.grid, cellId);
-      return materialId === Material.CropSprout || materialId === Material.CropMature;
+      return materialId === Material.CropSprout;
     });
   }
   if (owner.conditions.some((condition) => condition.kind === 'dehydrated-hibernation')) return true;
   const episode = activeLogisticsEpisode(project);
+  if (activeLogisticsEpisodeWaitsForVisibleWildlife(state, owner, episode)) return true;
+  const ownerProjectIntent = [...intentsOwnedBy(state, owner.id)].reverse().find((intent) => (
+    intent.projectId === project.id
+    && (intent.status === 'active' || intent.status === 'suspended')
+  ));
+  if (ownerProjectIntent?.nextAction.kind === 'move'
+    && movementRouteWaitsForVisibleWildlife(state, owner, {
+      cellId: ownerProjectIntent.nextAction.toCellId,
+      z: ownerProjectIntent.nextAction.toZ ?? owner.position.z,
+    })) return true;
   if (episode?.status === 'active' && episode.actorId !== owner.id) return true;
   const openContribution = project.materialContributionRequests?.some((request) => {
     const demand = project.materialDemands?.find((candidate) => candidate.materialId === request.materialId);
@@ -333,6 +346,13 @@ function projectReviewWindowElapsed(
   return atMonth > timing.reviewDeadline && atMonth - timing.progressAnchor >= 4
     ? timing
     : null;
+}
+
+const ACTIONLESS_PROJECT_GRACE_MONTHS = 2;
+
+function projectActionlessGraceElapsed(project: ProjectState, atMonth: number): boolean {
+  return atMonth - Math.max(project.createdAtMonth, project.lastProgressAtMonth)
+    >= ACTIONLESS_PROJECT_GRACE_MONTHS;
 }
 
 function projectHasCurrentRecoveryStep(
@@ -454,7 +474,7 @@ export function synchronizeProject(state: SimulationState, project: ProjectState
     return;
   }
   refreshProjectPressure(state, project, atMonth);
-  if (project.desiredFunction === 'healing') {
+  if (project.desiredFunction === 'healing' && !project.hibernationRescueBasis) {
     const unresolved = project.beneficiaryIds.some((personId) => {
       const beneficiary = personById(state, personId);
       return Boolean(beneficiary && isAlive(beneficiary)
@@ -472,13 +492,31 @@ export function synchronizeProject(state: SimulationState, project: ProjectState
       return;
     }
   }
+  const legitimateWait = projectHasLegitimateWait(state, owner, project, atMonth);
+  const openExternalRequest = projectHasOpenBoundedExternalRequest(state, project, atMonth);
+  const hasRecoveryStep = projectHasCurrentRecoveryStep(state, owner, project);
+  if (projectActionlessGraceElapsed(project, atMonth)
+    && !legitimateWait
+    && !openExternalRequest
+    && !hasRecoveryStep) {
+    freezeTerminalInquiryOpportunityBasis(state, owner, project, atMonth);
+    project.status = 'blocked';
+    project.blockedAtMonth = atMonth;
+    project.blockedReason = '连续两个月没有可执行的材料、知识、空间或协作步骤，且不存在有来源的等待依据';
+    project.reservations = [];
+    project.materialDemands = [];
+    endActiveLogisticsEpisode(project, atMonth, 'exhausted', 'project-blocked');
+    closeProjectSearchCampaigns(project, atMonth);
+    closeProjectHypothesisCampaign(project, atMonth, 'project-blocked');
+    return;
+  }
   const reviewTiming = projectReviewWindowElapsed(state, owner, project, atMonth);
   const exhaustedInquiryHasRecovery = Boolean(reviewTiming)
     && projectInquiryExplicitlyExhausted(project)
-    && projectHasCurrentRecoveryStep(state, owner, project);
+    && hasRecoveryStep;
   if (reviewTiming
-    && !projectHasLegitimateWait(state, owner, project, atMonth)
-    && !projectHasOpenBoundedExternalRequest(state, project, atMonth)
+    && !legitimateWait
+    && !openExternalRequest
     && !exhaustedInquiryHasRecovery) {
     freezeTerminalInquiryOpportunityBasis(state, owner, project, atMonth);
     project.status = 'blocked';
@@ -558,15 +596,15 @@ export function recordProjectAction(state: SimulationState, projectId: string, f
     && (fact.action.kind === 'act'
       || fact.action.kind === 'transfer'
       || fact.action.kind === 'attend'
-      || (fact.action.kind === 'communicate' && fact.action.channel === 'record'));
+      || fact.action.kind === 'inscribe');
   const knowledgeContribution = fact.status === 'completed'
-    && fact.action.kind === 'communicate'
-    && fact.action.content.kind === 'claim'
-    && Boolean(fact.action.content.projectKnowledgeResponse)
+    && fact.action.kind === 'talk'
+    && fact.action.speakerMeaning.kind === 'claim'
+    && Boolean(fact.action.speakerMeaning.projectKnowledgeResponse)
     && fact.diff.projectKnowledgeResponse === true
     && fact.diff.projectKnowledgeProjectId === project.id
     && fact.diff.projectKnowledgeRequestEventId
-      === fact.action.content.projectKnowledgeResponse?.requestEventId;
+      === fact.action.speakerMeaning.projectKnowledgeResponse?.requestEventId;
   if (fact.status === 'completed'
     && fact.action.kind === 'transfer'
     && fact.action.from.kind === 'person'
@@ -723,6 +761,18 @@ function previewProjectState(
   return { state: previewState, project: previewProject };
 }
 
+function projectStepCrossesVisibleWildlife(
+  state: SimulationState,
+  person: PersonState,
+  step: ProjectStep,
+): boolean {
+  return step.action.kind === 'move'
+    && movementRouteWaitsForVisibleWildlife(state, person, {
+      cellId: step.action.toCellId,
+      z: step.action.toZ ?? person.position.z,
+    });
+}
+
 /**
  * Compile one owner project against isolated person/project clones. A caller
  * may pass a person clone with planning-only knowledge changes; compiler-made
@@ -756,7 +806,7 @@ export function previewOwnedProjectStep(
     visibleDropsFor(previewState, previewPerson),
     previewProject,
   );
-  if (!step) return null;
+  if (!step || projectStepCrossesVisibleWildlife(previewState, previewPerson, step)) return null;
   return structuredClone({
     ...step,
     ...(step.planKnowledgeId
@@ -811,7 +861,7 @@ export function buildProjectOptions(
   for (const project of requestedMaterialProjects(state, person).slice(0, 1)) {
     const preview = previewProjectState(state, project);
     const step = projectContributionStep(preview.state, person, preview.project);
-    if (step) options.push({
+    if (step && !projectStepCrossesVisibleWildlife(preview.state, person, step)) options.push({
       ...projectOption(preview.project, step),
       reason: `${step.reason}；这项贡献来自本人实际收到的项目材料请求`,
       projectPressure: Math.max(64, project.pressure),
@@ -878,10 +928,27 @@ export function buildProjectOptions(
     if (projectFunctionSatisfied(state, project)) continue;
     const preview = previewProjectState(state, project);
     const step = compileProjectStep(preview.state, person, visibleDrops, preview.project);
-    if (step) options.push(projectOption(preview.project, step));
+    if (step && !projectStepCrossesVisibleWildlife(preview.state, person, step)) {
+      options.push(projectOption(preview.project, step));
+    }
     else if (projectInquiryExplicitlyExhausted(preview.project)) {
       commitPreviewTerminalInquiryCampaign(project, preview.project);
       blockExplicitlyExhaustedProject(state, person, project, state.clock.elapsedMonths + 1);
+    }
+  }
+  const rescueProposal = hibernationRescueProposal(
+    state,
+    person,
+    visiblePeople,
+    state.clock.elapsedMonths + 1,
+  );
+  if (rescueProposal && !own.some((project) => (
+    project.hibernationRescueBasis?.basisKey === rescueProposal.hibernationRescueBasis?.basisKey
+  ))) {
+    const rescueProject = instantiateProject(rescueProposal);
+    const rescueStep = compileProjectStep(state, person, visibleDrops, rescueProject);
+    if (rescueStep && !projectStepCrossesVisibleWildlife(state, person, rescueStep)) {
+      options.push(projectOption(rescueProject, rescueStep, rescueProposal));
     }
   }
   if (options.length || own.some((project) => project.status === 'active')) return options;
@@ -912,7 +979,7 @@ export function buildProjectOptions(
       for (const project of overlappingProjects.filter((candidate) => adoptableIds.has(candidate.id))) {
         const preview = previewProjectState(state, project);
         const step = compileProjectStep(preview.state, person, visibleDrops, preview.project);
-        if (step) return [{
+        if (step && !projectStepCrossesVisibleWildlife(preview.state, person, step)) return [{
           ...projectOption(preview.project, step),
           reason: `${step.reason}；当前住所已有局部重叠的遮蔽项目，继续同一结构比另开适应项目更有用`,
           projectPressure: Math.max(35, project.pressure - 8),
@@ -922,13 +989,15 @@ export function buildProjectOptions(
     }
     const project = instantiateProject(adaptation);
     const step = compileProjectStep(state, person, visibleDrops, project);
-    if (step) return [projectOption(project, step, adaptation)];
+    if (step && !projectStepCrossesVisibleWildlife(state, person, step)) {
+      return [projectOption(project, step, adaptation)];
+    }
   }
 
   for (const project of adoptableConstructionProjects(state, person, new Set(visibleCells))) {
     const preview = previewProjectState(state, project);
     const step = compileProjectStep(preview.state, person, visibleDrops, preview.project);
-    if (step) {
+    if (step && !projectStepCrossesVisibleWildlife(preview.state, person, step)) {
       const linked = personHasProjectLink(
         state,
         project,
@@ -960,7 +1029,9 @@ export function buildProjectOptions(
     const executable = pressureGroup.flatMap((candidate) => {
       const project = instantiateProject(candidate);
       const step = compileProjectStep(state, person, visibleDrops, project);
-      return step && openingStepUsesRenewalCommitment(state, person, project, step)
+      return step
+        && !projectStepCrossesVisibleWildlife(state, person, step)
+        && openingStepUsesRenewalCommitment(state, person, project, step)
         ? [{ proposal: candidate, project, step }]
         : [];
     });
@@ -984,20 +1055,34 @@ export function ensureProject(
   decisionContext?: ProjectDecisionContext,
 ): ProjectState {
   const existing = projectById(state, proposal.id);
-  if (existing) return existing;
+  if (existing) {
+    if (proposal.hibernationRescueBasis
+      && existing.hibernationRescueBasis?.basisKey === proposal.hibernationRescueBasis.basisKey) {
+      existing.beneficiaryIds = [...new Set([...existing.beneficiaryIds, ...proposal.beneficiaryIds])];
+      existing.triggerFactIds = [...new Set([...existing.triggerFactIds, ...proposal.triggerFactIds])];
+      if (!existing.contributorIds.includes(proposal.ownerId)) {
+        existing.contributorIds.push(proposal.ownerId);
+        registerProjectParticipantMembership(state, existing);
+      }
+    }
+    return existing;
+  }
   if (decisionContext) {
-    const overlapping = state.projects.find((project) => activeProjectOverlapsLocalProposal(
-      state,
-      project,
-      decisionContext.person,
-      proposal.desiredFunction,
-      proposal.beneficiaryIds,
-      proposal.site,
-      proposal.shelterRequirement,
-      proposal.targetKnowledgeId,
-      new Set(decisionContext.visibleCells),
-      decisionContext.atMonth,
-    ));
+    const overlapping = proposal.hibernationRescueBasis
+      ? state.projects.find((project) => project.status === 'active'
+        && project.hibernationRescueBasis?.basisKey === proposal.hibernationRescueBasis?.basisKey)
+      : state.projects.find((project) => activeProjectOverlapsLocalProposal(
+        state,
+        project,
+        decisionContext.person,
+        proposal.desiredFunction,
+        proposal.beneficiaryIds,
+        proposal.site,
+        proposal.shelterRequirement,
+        proposal.targetKnowledgeId,
+        new Set(decisionContext.visibleCells),
+        decisionContext.atMonth,
+      ));
     if (overlapping) {
       overlapping.beneficiaryIds = [...new Set([
         ...overlapping.beneficiaryIds,
@@ -1007,6 +1092,11 @@ export function ensureProject(
         ...overlapping.triggerFactIds,
         ...proposal.triggerFactIds,
       ])];
+      if (proposal.hibernationRescueBasis
+        && !overlapping.contributorIds.includes(proposal.ownerId)) {
+        overlapping.contributorIds.push(proposal.ownerId);
+        registerProjectParticipantMembership(state, overlapping);
+      }
       return overlapping;
     }
   }
@@ -1021,7 +1111,10 @@ export function recompileProjectNextAction(state: SimulationState, person: Perso
   if (!project || project.status !== 'active') return null;
   synchronizeProject(state, project, state.clock.elapsedMonths + 1);
   if (project.status !== 'active') return null;
-  const step = compileProjectStep(state, person, visibleDropsFor(state, person), project);
+  const compiledStep = compileProjectStep(state, person, visibleDropsFor(state, person), project);
+  const step = compiledStep && !projectStepCrossesVisibleWildlife(state, person, compiledStep)
+    ? compiledStep
+    : null;
   if (!step) {
     if (projectIsLedBy(project, person.id)) {
       const explicitlyExhausted = projectInquiryExplicitlyExhausted(project);

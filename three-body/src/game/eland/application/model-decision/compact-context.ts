@@ -6,6 +6,7 @@ import {
   type DecisionProbeHandleMap,
 } from './capability-handles';
 import type { RecentDialogueContextLine } from './recent-dialogue';
+import { buildCharacterTurnNote } from '../../domain/person-soul';
 
 export interface CompactDecisionRequestContext {
   schemaVersion: 'decision-context-compact-v1';
@@ -119,7 +120,6 @@ function compactSocialContext(
 interface IndexedDecisionOption {
   index: number;
   option: DecisionRequestContext['options'][number];
-  score: number;
 }
 
 function compactStableHash(value: string): number {
@@ -141,18 +141,6 @@ function compactTargetKey(option: { target?: DecisionRequestContext['options'][n
   if (target.kind === 'animal') return `animal:${target.animalId}`;
   if (target.kind === 'container') return `container:${target.containerId}`;
   return `remains:${target.remainsId}`;
-}
-
-function compactOptionScore(
-  context: DecisionRequestContext,
-  option: DecisionRequestContext['options'][number],
-): number {
-  const appraisal = context.person.cognition.optionAppraisals.find((item) => item.optionId === option.id);
-  if (!appraisal) return 0;
-  return appraisal.motivation * 2
-    + appraisal.aspiration
-    + appraisal.expectedSuccess * 35
-    - appraisal.uncertainty * 20;
 }
 
 function diversifiedPrimaryOptions(
@@ -189,7 +177,6 @@ export function compactDecisionOptionIndices(context: DecisionRequestContext): n
   const indexed: IndexedDecisionOption[] = context.options.map((option, index) => ({
     index,
     option,
-    score: compactOptionScore(context, option),
   }));
   const modelVisible = indexed.filter(({ option }) => !(
     option.semantics.conversation?.turn === 'opening'
@@ -206,10 +193,8 @@ export function compactDecisionOptionIndices(context: DecisionRequestContext): n
   const protectedIndexes = new Set(protectedOptions.map(({ index }) => index));
   const ordinary = modelVisible
     .filter(({ index }) => !protectedIndexes.has(index))
-    .sort((left, right) => right.score - left.score
-      || left.option.id.localeCompare(right.option.id)
-      || left.index - right.index);
-  const primary = diversifiedPrimaryOptions(ordinary, 4);
+    .sort((left, right) => left.option.id.localeCompare(right.option.id) || left.index - right.index);
+  const primary = diversifiedPrimaryOptions(ordinary, 8);
   const selectedIndexes = new Set([...protectedIndexes, ...primary.map(({ index }) => index)]);
   const explorationCandidates = ordinary
     .filter(({ index }) => !selectedIndexes.has(index))
@@ -340,6 +325,23 @@ export function buildCompactDecisionRequestContext(
       cellId, z, trust, bond, fear,
     }));
   const soul = context.person.soul;
+  const experience = context.person.experience ?? {
+    version: 'person-experience-layer-v1' as const,
+    authority: 'sourced-memory-and-learning' as const,
+    adaptivePersonality: {
+      version: 'adaptive-personality-v1' as const,
+      authority: 'sourced-experience' as const,
+      effectivePersonality: context.person.personality,
+      styleMatrix: soul.styleMatrix,
+      learnedShifts: [],
+      rule: '没有可用的有来源人格变化。',
+    },
+    activeCues: [],
+    rule: '没有可用的有来源经历 cue。',
+  };
+  const activeFacet = activatedSoulFacet(context);
+  const characterNote = buildCharacterTurnNote(soul, experience, activeFacet.id);
+  const { styleMatrix: currentDelivery, ...adaptivePersonality } = experience.adaptivePersonality;
   const selectedOptionIds = new Set(selectedOptions.map((option) => option.id));
   const appraisals = context.person.cognition.optionAppraisals
     .filter((appraisal) => selectedOptionIds.has(appraisal.optionId))
@@ -374,9 +376,30 @@ export function buildCompactDecisionRequestContext(
       motiveSensitivity: context.person.motiveSensitivity,
       soul: {
         innerVoice: soul.innerVoice,
-        activeFacet: activatedSoulFacet(context),
+        ...(soul.prototype ? { prototypeSummary: soul.prototype.personalitySummary } : {}),
+      },
+      characterNote,
+      experience: {
+        ...experience,
+        adaptivePersonality: {
+          ...adaptivePersonality,
+          currentDelivery,
+          learnedShifts: experience.adaptivePersonality.learnedShifts.map(({ sourceEventIds, ...shift }) => ({
+            ...shift,
+            sourceCount: sourceEventIds.length,
+          })),
+        },
+        activeCues: experience.activeCues.map(({ memoryIds, sourceEventIds, ...cue }) => ({
+          ...cue,
+          memoryHandles: memoryIds.flatMap((itemId) => {
+            const handle = memoryHandleById.get(itemId);
+            return handle ? [handle] : [];
+          }),
+          sourceCount: sourceEventIds.length,
+        })),
       },
       position: context.person.position,
+      mindMarkdown: context.person.mindMarkdown,
       inventory: context.person.inventory.slice(0, 6).map(({ stackId, name, properties, quantity }) => ({
         handle: handles.held.find((item) => item.stackId === stackId)?.handle,
         name,
@@ -396,6 +419,7 @@ export function buildCompactDecisionRequestContext(
         personIds,
         ...(exactUtterance ? { exactUtterance } : {}),
       })),
+      recentMentalActs: context.person.recentMentalActs,
       kinship: {
         parents: context.person.kinship.parents.map(({ name, sex, relation }) => ({ name, sex, relation })),
         children: context.person.kinship.children.map(({ name, sex, relation }) => ({ name, sex, relation })),
@@ -406,6 +430,7 @@ export function buildCompactDecisionRequestContext(
     },
     situation: {
       month: context.clock.elapsedMonths,
+      ...(context.clock.planningTick !== undefined ? { planningTick: context.clock.planningTick } : {}),
       climate: context.climate,
       epoch: context.epoch,
       weather: context.weather,
@@ -540,4 +565,3 @@ export function buildCompactDecisionRequestContext(
     },
   };
 }
-

@@ -1,8 +1,8 @@
 /**
  * Stable capabilities used by ELAND's outer infrastructure adapters.
  *
- * Product/UI callers use `simulation.ts`. Persistence, bounded execution and
- * model gateways sometimes need ports that are intentionally not part of that
+ * Product/UI callers use `simulation.ts`. Persistence, sessions and model
+ * gateways sometimes need ports that are intentionally not part of that
  * product API. Keeping those imports here prevents server code from coupling
  * to arbitrary application implementation paths.
  */

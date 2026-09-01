@@ -35,7 +35,10 @@ import { livingPeople } from '../../domain/state-index';
 import { seededFraction } from '../../world/generator';
 import { advanceProjects } from '../project-options';
 import { decisionBudgetExemption, decisionProbability } from './model-review';
-import { drainInterruptedIntentReturns } from './intent-execution';
+import {
+  drainInterruptedIntentReturns,
+  settleTerminalProjectWaitingIntents,
+} from './intent-execution';
 import type { ObservationProjector } from './observation-projector';
 import {
   applySimulationObservationProjection,
@@ -44,6 +47,7 @@ import {
 import { copyState } from './state-utils';
 import { buildDecisionContexts } from './tick-planner';
 import { reconcileCharacterAgendasForMonth } from '../character-agenda';
+import { recordVisibleFacilityDiscoveries } from '../facility-awareness';
 
 export interface PreparedMonth {
   state: SimulationState;
@@ -87,6 +91,7 @@ export function prepareMonth(
     person.position.previousZ = person.position.z;
     person.position.lastPath = [person.position.cellId];
     person.position.tickPath = [person.position.cellId];
+    person.currentActionText = '本月尚未采取行动';
   }
   const climateEvents = resolveClimate(state, atMonth);
   const eraTransition = climateEvents.some((candidate) => candidate.diff.eraTransition === true);
@@ -113,6 +118,7 @@ export function prepareMonth(
   events.push(...synchronizeAgreementResponseDeadlineSuspensions(state, atMonth, events.length, events));
   events.push(...advanceAgreementLifecycle(state, atMonth, events.length));
   events.push(...advancePermissionLifecycle(state, atMonth, events.length));
+  events.push(...recordVisibleFacilityDiscoveries(state, atMonth, events.length));
   maintainDueMemories(state, atMonth);
   maintainAgentMemoryStore(state, atMonth);
   const exitedHibernationPersonIds = new Set(hibernationPhaseEvents
@@ -270,6 +276,7 @@ export function finishMonth(
   appendCommittedEvents(state, events);
   consolidateDuePersonalities(state, atMonth);
   advanceProjects(state, atMonth);
+  settleTerminalProjectWaitingIntents(state, atMonth);
   advanceCollectiveLifecycle(state, atMonth);
   advanceGovernanceLifecycle(state, atMonth);
   state.lastStep = events;

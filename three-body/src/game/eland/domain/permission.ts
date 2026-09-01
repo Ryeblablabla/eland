@@ -3,11 +3,15 @@ import { agreementById } from './agreement';
 import { activeMembership } from './collective';
 import type { ActionFact, PermissionFact, SimulationState } from './model';
 import type { MaterialId } from './material';
-import type { PersonId } from './person';
-import { isAlive } from './person';
+import { materialHas } from './material';
+import type { PersonId, PersonState } from './person';
+import { inventoryQuantity, isAlive } from './person';
 import { personById } from './state-index';
 
 export type ResourcePermissionStatus = 'active' | 'revoked' | 'expired' | 'ended';
+
+/** Shared physical reserve target used by cognition and permission allocation. */
+export const PERSONAL_RESERVE_UNITS = 4;
 
 export interface ResourcePermission {
   id: string;
@@ -67,6 +71,144 @@ export function activePermissionsFor(state: SimulationState, personId: PersonId)
     && (permission.grantorId === personId || permission.granteeId === personId));
 }
 
+function taggedInventoryQuantity(person: PersonState, tag: 'edible' | 'drinkable'): number {
+  return person.inventory.reduce((sum, stack) => (
+    stack.quantity > 0 && materialHas(stack.materialId, tag) ? sum + stack.quantity : sum
+  ), 0);
+}
+
+function activeProjectRequiredQuantity(
+  state: SimulationState,
+  ownerId: PersonId,
+  materialId: MaterialId,
+): number {
+  return state.projects
+    .filter((project) => project.status === 'active' && project.ownerId === ownerId)
+    .flatMap((project) => project.materialDemands ?? [])
+    .filter((demand) => demand.materialId === materialId && demand.outstandingQuantity > 0)
+    .reduce((sum, demand) => sum + demand.requiredQuantity, 0);
+}
+
+/**
+ * Infer whether taking one unit improves a sourced deficit without creating an
+ * equal deficit for the grantor.  This is a motive calculation, not permission
+ * legality and not a per-person or per-seed behavior script.
+ */
+export function inferPermissionUseBasis(
+  state: SimulationState,
+  permission: ResourcePermission,
+  grantee: PersonState,
+  grantor: PersonState,
+) {
+  if (permission.status !== 'active'
+    || permission.granteeId !== grantee.id
+    || permission.grantorId !== grantor.id) return undefined;
+  const materialId = permission.materialId;
+  const receiverMaterialQuantity = inventoryQuantity(grantee, materialId);
+  const grantorMaterialQuantity = inventoryQuantity(grantor, materialId);
+  const grantorProjectReserve = activeProjectRequiredQuantity(state, grantor.id, materialId);
+  const projectDemand = state.projects
+    .filter((project) => project.status === 'active' && project.ownerId === grantee.id)
+    .flatMap((project) => (project.materialDemands ?? [])
+      .filter((demand) => demand.materialId === materialId
+        && demand.outstandingQuantity > 0
+        && receiverMaterialQuantity < demand.requiredQuantity)
+      .map((demand) => ({ project, demand })))
+    .sort((left, right) => right.project.pressure - left.project.pressure
+      || left.project.createdAtMonth - right.project.createdAtMonth
+      || left.project.id.localeCompare(right.project.id))[0];
+  const resourceTag = materialHas(materialId, 'edible')
+    ? 'edible' as const
+    : materialHas(materialId, 'drinkable')
+      ? 'drinkable' as const
+      : undefined;
+  const grantorResourceQuantity = resourceTag
+    ? taggedInventoryQuantity(grantor, resourceTag)
+    : grantorMaterialQuantity;
+  const grantorReserve = Math.max(
+    grantorProjectReserve,
+    resourceTag ? PERSONAL_RESERVE_UNITS : 0,
+  );
+  if (projectDemand && grantorMaterialQuantity > grantorReserve) {
+    const { project, demand } = projectDemand;
+    const sourceFactIds = [...new Set([
+      ...permission.sourceEventIds,
+      ...project.triggerFactIds,
+      ...demand.sourceFactIds,
+    ])].slice(-24);
+    return {
+      version: 'permission-use-basis-v1' as const,
+      permissionId: permission.id,
+      kind: 'project-demand' as const,
+      materialId,
+      requiredQuantity: demand.requiredQuantity,
+      receiverQuantity: receiverMaterialQuantity,
+      grantorQuantity: grantorMaterialQuantity,
+      projectId: project.id,
+      projectDemandBranchKey: demand.branchKey,
+      sourceFactIds,
+      basisKey: [
+        'permission-use-basis-v1',
+        `permission=${permission.id}`,
+        'kind=project-demand',
+        `project=${project.id}`,
+        `branch=${demand.branchKey}`,
+        `material=${materialId}`,
+        `required=${demand.requiredQuantity}`,
+        `receiver=${receiverMaterialQuantity}`,
+        `grantor=${grantorMaterialQuantity}`,
+      ].join('|'),
+    };
+  }
+  if (!resourceTag) return undefined;
+  const receiverResourceQuantity = taggedInventoryQuantity(grantee, resourceTag);
+  if (receiverResourceQuantity >= PERSONAL_RESERVE_UNITS
+    || grantorResourceQuantity <= PERSONAL_RESERVE_UNITS) return undefined;
+  const sourceFactIds = [...new Set([
+    ...permission.sourceEventIds,
+    ...grantee.inventory.flatMap((stack) => materialHas(stack.materialId, resourceTag) ? stack.sourceEventIds : []),
+    ...grantor.inventory.flatMap((stack) => materialHas(stack.materialId, resourceTag) ? stack.sourceEventIds : []),
+  ])].slice(-24);
+  return {
+    version: 'permission-use-basis-v1' as const,
+    permissionId: permission.id,
+    kind: 'personal-reserve' as const,
+    materialId,
+    requiredQuantity: PERSONAL_RESERVE_UNITS,
+    receiverQuantity: receiverResourceQuantity,
+    grantorQuantity: grantorResourceQuantity,
+    sourceFactIds,
+    basisKey: [
+      'permission-use-basis-v1',
+      `permission=${permission.id}`,
+      'kind=personal-reserve',
+      `resource=${resourceTag}`,
+      `material=${materialId}`,
+      `required=${PERSONAL_RESERVE_UNITS}`,
+      `receiver=${receiverResourceQuantity}`,
+      `grantor=${grantorResourceQuantity}`,
+    ].join('|'),
+  };
+}
+
+export function permissionUseBasisIsCurrent(
+  state: SimulationState,
+  permission: ResourcePermission | undefined,
+  action: Extract<PrimitiveAction, { kind: 'transfer' }>,
+): boolean {
+  const basis = action.permissionUseBasis;
+  if (!permission || !basis || basis.permissionId !== permission.id) return false;
+  const grantee = personById(state, permission.granteeId);
+  const grantor = personById(state, permission.grantorId);
+  if (!grantee || !grantor) return false;
+  const current = inferPermissionUseBasis(state, permission, grantee, grantor);
+  return Boolean(current
+    && current.basisKey === basis.basisKey
+    && current.kind === basis.kind
+    && current.materialId === basis.materialId
+    && current.requiredQuantity === basis.requiredQuantity);
+}
+
 export function permissionAuthorizesTransfer(
   permission: ResourcePermission | undefined,
   actorId: PersonId,
@@ -84,6 +226,7 @@ export function permissionAuthorizesTransfer(
     && action.to.kind === 'person'
     && action.to.personId === permission.granteeId
     && action.materialId === permission.materialId
+    && action.permissionUseBasis?.permissionId === permission.id
     && actualQuantity > 0
     && actualQuantity <= permission.maxQuantityPerTransfer);
 }
@@ -97,8 +240,8 @@ function membersStillShareCollective(state: SimulationState, collectiveId: strin
 export function recordPermissionAction(state: SimulationState, fact: ActionFact): void {
   if (fact.status !== 'completed') return;
   const action = fact.action;
-  if (action.kind === 'communicate' && action.content.kind === 'accept') {
-    const agreement = agreementById(state, action.content.referenceId);
+  if (action.kind === 'talk' && action.speakerMeaning.kind === 'accept') {
+    const agreement = agreementById(state, action.speakerMeaning.referenceId);
     if (!agreement || agreement.status !== 'active' || agreement.proposal.kind !== 'permission') return;
     const proposal = agreement.proposal;
     if (fact.who !== proposal.granteeId
@@ -124,8 +267,8 @@ export function recordPermissionAction(state: SimulationState, fact: ActionFact)
     agreement.fulfilledByPersonIds = [...agreement.partyIds];
     return;
   }
-  if (action.kind === 'communicate' && action.content.kind === 'revoke') {
-    const permission = permissionById(state, action.content.permissionId);
+  if (action.kind === 'talk' && action.speakerMeaning.kind === 'revoke') {
+    const permission = permissionById(state, action.speakerMeaning.permissionId);
     if (!permission || permission.status !== 'active' || permission.grantorId !== fact.who) return;
     permission.status = 'revoked';
     permission.endedAtMonth = fact.atMonth;
@@ -134,7 +277,9 @@ export function recordPermissionAction(state: SimulationState, fact: ActionFact)
   }
   if (action.kind !== 'transfer' || !action.authorizationRef) return;
   const permission = permissionById(state, action.authorizationRef);
-  if (!permission || !permissionAuthorizesTransfer(permission, fact.who, action, fact.atMonth, Number(fact.diff.quantity))) return;
+  if (!permission
+    || fact.diff.permissionAuthorized !== true
+    || !permissionAuthorizesTransfer(permission, fact.who, action, fact.atMonth, Number(fact.diff.quantity))) return;
   permission.useEventIds = [...new Set([...permission.useEventIds, fact.id])];
   permission.sourceEventIds = [...new Set([...permission.sourceEventIds, fact.id])];
 }

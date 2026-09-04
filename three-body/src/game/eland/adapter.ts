@@ -30,6 +30,7 @@ import {
 import { retrieveAgentMemories } from './domain/agent-memory';
 import { projectPersonMindMarkdown } from './domain/person-mind';
 import { languageBroadcastFromDiff } from './domain/language-perception';
+import { relationshipEpisodesWith } from './domain/relationship-episode';
 
 export { projectPlayerNarrative } from './projection/player-narrative';
 export type { WorldEventLookup } from './projection/player-narrative';
@@ -440,6 +441,10 @@ function actionHistoryDetail(state: SimulationState, lookup: StateLookup, event:
 
 function personView(state: SimulationState, lookup: SocietyProjectionLookup, person: PersonState): SocietyAgent {
   const meaningfulRelations = meaningfulRelationsOf(person);
+  const relationshipPersonIds = [...new Set([
+    ...meaningfulRelations.map((relation) => relation.personId),
+    ...(person.relationshipEpisodes ?? []).map((episode) => episode.otherPersonId),
+  ])];
   const needs = needsFor(person, meaningfulRelations);
   const currentAgeMonths = ageMonths(person, state.clock.elapsedMonths);
   const activeIntent = person.activeIntentId ? lookup.intentsById.get(person.activeIntentId) : undefined;
@@ -512,18 +517,37 @@ function personView(state: SimulationState, lookup: SocietyProjectionLookup, per
     body: { ...person.body, ageMonths: currentAgeMonths },
     conditions: person.conditions.map((condition) => ({ id: condition.id, kind: condition.kind, label: CONDITION_LABELS[condition.kind] ?? condition.kind, stage: condition.stage, sinceMonth: condition.sinceMonth })),
     inventory: person.inventory.map((stack) => ({ id: stack.id, materialId: stack.materialId, name: materialDefinition(stack.materialId).name, quantity: stack.quantity })),
-    relations: meaningfulRelations.flatMap((relation) => {
-      const other = lookup.peopleById.get(relation.personId);
+    relations: relationshipPersonIds.flatMap((personId) => {
+      const relation = meaningfulRelations.find((candidate) => candidate.personId === personId);
+      const subjective = relationshipEpisodesWith(person, personId).at(-1);
+      const other = lookup.peopleById.get(personId);
       if (!other) return [];
       return [{
         personId: other.id,
         name: other.name,
         portrait: portraitForPerson(other, ageMonths(other, state.clock.elapsedMonths)),
         state: personStateOf(other),
-        trust: relation.trust,
-        bond: relation.bond,
-        fear: relation.fear,
-        sourceEventIds: [...relation.sourceEventIds],
+        trust: relation?.trust ?? 0,
+        bond: relation?.bond ?? 0,
+        fear: relation?.fear ?? 0,
+        sourceEventIds: [...new Set([
+          ...(relation?.sourceEventIds ?? []),
+          ...(subjective?.sourceFactIds ?? []),
+        ])],
+        ...(subjective ? {
+          subjective: {
+            meanings: [...subjective.appraisal.meanings],
+            interpretation: subjective.appraisal.interpretation,
+            ...(subjective.appraisal.unresolvedExpectation
+              ? { unresolvedExpectation: subjective.appraisal.unresolvedExpectation }
+              : {}),
+            ...(subjective.appraisal.desiredResponse
+              ? { desiredResponse: subjective.appraisal.desiredResponse }
+              : {}),
+            experiencedAtMonth: subjective.experiencedAtMonth,
+            sourceEventIds: [...subjective.sourceFactIds],
+          },
+        } : {}),
       }];
     }),
     ...(visualAction ? { visualAction } : {}),

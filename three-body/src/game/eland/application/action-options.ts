@@ -34,14 +34,14 @@ import {
   neighbors4,
   surfaceStandingPosition,
   surfaceMaterial,
-  standingPathMovementTicks,
+  standingPathTravelEstimate,
   topPosition,
   topZ,
   voxelAt,
 } from '../world/grid';
 import { seededFraction } from '../world/generator';
 import { buildSocialOptions } from './social-options';
-import { PLANNING_TICKS_PER_MONTH } from '../domain/calendar';
+import { physicalWorkCapacityMultiplier } from '../domain/calendar';
 import { compileAgreementContinuations } from './agreement-continuation';
 import { relationTo } from '../domain/relation';
 import { inferPermissionUseBasis, permissionById } from '../domain/permission';
@@ -134,6 +134,7 @@ import {
 } from './action-failure-retry';
 import { buildReproductionOptions } from './reproduction-options';
 import { buildPersonMindView } from '../domain/person-mind';
+import { movementMetabolicMultiplier } from '../domain/trait';
 
 export {
   isCurrentlyBodyBlockedPlacement,
@@ -309,13 +310,14 @@ function withPlanning(
   pathCache: Map<string, ReturnType<typeof findStandingPath>>,
 ): ActionOption | null {
   if (isFailureRetryCoolingDown(state, person, option, atMonth, failureRetryContext)) return null;
-  let plannedOption = option;
+  const plannedOption = option;
   if (option.nextAction.kind === 'talk' && option.target?.kind === 'person') {
     const target = personById(state, option.target.personId);
     if (!target || !isAlive(target)) return null;
   }
   if (optionHasCurrentlyBodyBlockedPlacement(state, person, plannedOption)) return null;
   let estimatedMonths = 1;
+  let travelMovementEffort = 0;
   if (plannedOption.nextAction.kind === 'move') {
     const cacheKey = `${plannedOption.nextAction.toCellId}:${plannedOption.nextAction.toZ ?? ''}`;
     let path = pathCache.get(cacheKey);
@@ -327,11 +329,23 @@ function withPlanning(
       pathCache.set(cacheKey, path);
     }
     if (!path.length) return null;
-    estimatedMonths = Math.max(1, Math.ceil(standingPathMovementTicks(state.world.grid, path) / PLANNING_TICKS_PER_MONTH));
+    const travel = standingPathTravelEstimate(
+      state.world.grid,
+      path,
+      physicalWorkCapacityMultiplier({
+        locomotion: person.baselineCapacities.locomotion,
+        hydration: person.body.hydration,
+        nutrition: person.body.nutrition,
+        conditions: person.conditions,
+      }),
+    );
+    estimatedMonths = travel.months;
+    travelMovementEffort = travel.movementEffort;
   }
   const risks: string[] = [];
-  if (person.body.hydration - estimatedMonths * 1.6 < 18) risks.push('途中可能脱水');
-  if (person.body.nutrition - estimatedMonths * 1.5 < 18) risks.push('途中可能饥饿');
+  const movementMetabolism = movementMetabolicMultiplier(person);
+  if (person.body.hydration - travelMovementEffort * 0.125 * movementMetabolism - estimatedMonths * 1.6 < 18) risks.push('途中可能脱水');
+  if (person.body.nutrition - travelMovementEffort * 0.08 * movementMetabolism - estimatedMonths * 1.5 < 18) risks.push('途中可能饥饿');
   const inferredDomain = option.nextAction.kind === 'talk' || option.target?.kind === 'person' || option.goal.kind === 'near-person'
     ? 'social'
     : 'strategic';
@@ -1176,18 +1190,35 @@ function buildOptions(
 
   options.push(...buildReproductionOptions(state, person, visiblePeople, atMonth));
 
-  const vulnerableCarrier = localPeople.find((other) => other.inventory.some((stack) => stack.materialId === Material.Food && stack.quantity > 0));
-  if (vulnerableCarrier && person.body.nutrition < 24 && inventoryQuantity(person, Material.Food) === 0) {
-    const targetStack = vulnerableCarrier.inventory.find((stack) => stack.materialId === Material.Food && stack.quantity > 0);
-    if (targetStack) options.push({
-      id: `take-without-permission:${vulnerableCarrier.id}:${targetStack.id}`,
-      summary: `尝试从${vulnerableCarrier.name}处取得食物`,
-      reason: '自身营养进入危险区，眼前他人持有食物',
-      goal: { kind: 'inventory-at-least', materialId: Material.Food, quantity: 1 },
-      nextAction: { kind: 'transfer', materialId: Material.Food, quantity: 1, from: { kind: 'person', personId: vulnerableCarrier.id }, to: { kind: 'person', personId: person.id }, stackId: targetStack.id },
-      target: { kind: 'person', personId: vulnerableCarrier.id },
+  // Possibility is physical, motive is subjective. Nearby possessions remain
+  // visible as possible unauthorized taking; the model decides whether to try,
+  // and the owner may resist. Hunger/trust scores never manufacture the wish.
+  for (const { carrier, stack } of localPeople.flatMap((carrier) => carrier.inventory
+    .filter((stack) => stack.quantity > 0)
+    .slice(0, 2)
+    .map((stack) => ({ carrier, stack })))) {
+    options.push({
+      id: `take-without-permission:${carrier.id}:${stack.id}`,
+      summary: `未经同意尝试从${carrier.name}处拿走${materialDefinition(stack.materialId).name}`,
+      reason: '对方的物品在近身范围；尝试不等于成功，对方可抵抗，事件会留下未经授权的社会后果',
+      goal: {
+        kind: 'inventory-at-least', materialId: stack.materialId,
+        quantity: inventoryQuantity(person, stack.materialId) + 1,
+      },
+      nextAction: {
+        kind: 'transfer', materialId: stack.materialId, quantity: 1,
+        from: { kind: 'person', personId: carrier.id },
+        to: { kind: 'person', personId: person.id }, stackId: stack.id,
+      },
+      target: { kind: 'person', personId: carrier.id },
       estimatedDuration: 'one-month',
-      sourceFactIds: targetStack.sourceEventIds,
+      sourceFactIds: [...new Set([
+        ...stack.sourceEventIds,
+        ...(relationTo(person, carrier.id)?.sourceEventIds ?? []),
+      ])],
+      semantics: defineActionOptionSemantics({
+        purpose: 'resource', minimumLifeStage: 'adolescent', needKinds: [],
+      }),
     });
   }
 
@@ -1215,35 +1246,46 @@ function buildOptions(
   }
 
   const rope = person.inventory.find((stack) => stack.materialId === Material.Rope && stack.quantity > 0);
-  const restraintTarget = localPeople.find((other) => {
-    if (other.conditions.some((condition) => condition.kind === 'restrained')) return false;
-    const relation = relationTo(person, other.id);
-    const unableToResist = other.body.health <= 20 || other.conditions.some((condition) => condition.kind === 'wound' && condition.stage === 3);
-    return unableToResist && (person.body.nutrition < 18 || (relation?.fear ?? 0) > 45);
-  });
-  if (rope && restraintTarget) options.push({
+  if (rope) for (const restraintTarget of localPeople.filter((other) => (
+    !other.conditions.some((condition) => condition.kind === 'restrained')
+  ))) options.push({
     id: `combine-restraint:${rope.id}:${restraintTarget.id}`,
-    summary: `尝试让绳与${restraintTarget.name}的身体结合`,
-    reason: '对方严重虚弱或重伤，资源压力或恐惧使强制约束成为可选手段',
+    summary: `尝试用绳约束${restraintTarget.name}`,
+    reason: '绳与对方都在近身范围；这只是可尝试的强制行为，对方的实际抵抗能力决定是否形成拘束',
     goal: { kind: 'condition', personId: restraintTarget.id, condition: 'restrained', present: true },
-    nextAction: { kind: 'act', operation: 'combine', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: rope.id }, { kind: 'person', personId: restraintTarget.id }] },
-    target: { kind: 'person', personId: restraintTarget.id }, estimatedDuration: 'one-month',
-    sourceFactIds: [...rope.sourceEventIds, ...(relationTo(person, restraintTarget.id)?.sourceEventIds ?? [])],
+    nextAction: {
+      kind: 'act', operation: 'combine',
+      targets: [
+        { kind: 'inventory-stack', personId: person.id, stackId: rope.id },
+        { kind: 'person', personId: restraintTarget.id },
+      ],
+    },
+    target: { kind: 'person', personId: restraintTarget.id },
+    estimatedDuration: 'one-month',
+    sourceFactIds: [...new Set([
+      ...rope.sourceEventIds,
+      ...(relationTo(person, restraintTarget.id)?.sourceEventIds ?? []),
+    ])],
+    semantics: defineActionOptionSemantics({
+      purpose: 'conflict', minimumLifeStage: 'adolescent', needKinds: [],
+    }),
   });
 
-  const fearedOpponent = localPeople.find((other) => {
-    const relation = relationTo(person, other.id);
-    return (relation?.trust ?? 0) < 12 && ((relation?.fear ?? 0) > 45 || person.body.nutrition < 18);
-  });
-  if (fearedOpponent) options.push({
-    id: `exert-person:${fearedOpponent.id}:${atMonth}`,
-    summary: `对${fearedOpponent.name}施力`,
-    reason: '极低信任与恐惧或资源压力使近身冲突成为可选手段',
-    goal: { kind: 'body-at-most', personId: fearedOpponent.id, field: 'health', value: Math.max(0, fearedOpponent.body.health - 4) },
-    nextAction: { kind: 'act', operation: 'exert', targets: [{ kind: 'person', personId: fearedOpponent.id }] },
-    target: { kind: 'person', personId: fearedOpponent.id },
+  for (const opponent of localPeople) options.push({
+    id: `exert-person:${opponent.id}:${atMonth}`,
+    summary: `对${opponent.name}施力并可能造成伤害`,
+    reason: '对方在近身范围；这是有真实身体、见证与关系后果的可选冲突行为，不是系统的建议',
+    goal: {
+      kind: 'body-at-most', personId: opponent.id, field: 'health',
+      value: Math.max(0, opponent.body.health - 4),
+    },
+    nextAction: { kind: 'act', operation: 'exert', targets: [{ kind: 'person', personId: opponent.id }] },
+    target: { kind: 'person', personId: opponent.id },
     estimatedDuration: 'one-month',
-    sourceFactIds: relationTo(person, fearedOpponent.id)?.sourceEventIds ?? [],
+    sourceFactIds: relationTo(person, opponent.id)?.sourceEventIds ?? [],
+    semantics: defineActionOptionSemantics({
+      purpose: 'conflict', minimumLifeStage: 'adolescent', needKinds: [],
+    }),
   });
 
   const projectTeaching = projectKnowledgeTeachingOpportunity(state, person, atMonth);
@@ -1629,6 +1671,15 @@ export function recompileNextAction(
     const target = personById(state, targetPersonId);
     if (!target || !isAlive(target)) return null;
     if (intent.completionAction.kind === 'talk') {
+      // A stored move -> talk chain was compiled because this particular
+      // speech act required an embodied rendezvous (for example an exchange
+      // response). Do not collapse it into a long-range broadcast merely
+      // because language in general can propagate beyond the listener.
+      if (intent.nextAction.kind === 'move') {
+        return sameLocation(target, person)
+          ? intent.completionAction
+          : { kind: 'move', toCellId: target.position.cellId, toZ: target.position.z };
+      }
       if (positionsCanShareLanguage(target.position, person.position)) return intent.completionAction;
       const rendezvous = conversationalRendezvous(state, person, target);
       return rendezvous

@@ -29,12 +29,21 @@ export interface IntentChoice {
  * resumed without losing their identity or progress.
  */
 export function isResumableIntent(
-  intent: Pick<Intent, 'lifecycle' | 'projectId' | 'recordUseBasis' | 'returnToIntentId' | 'stateGoalUntilMonth'>,
+  intent: Pick<Intent,
+    | 'lifecycle'
+    | 'projectId'
+    | 'recordUseBasis'
+    | 'returnToIntentId'
+    | 'stateGoalUntilMonth'
+    | 'characterAgendaItemId'
+    | 'plan'>,
 ): boolean {
   return Boolean(intent.projectId
     || intent.recordUseBasis
     || intent.returnToIntentId
     || intent.lifecycle
+    || intent.characterAgendaItemId
+    || (intent.plan?.steps.length ?? 0) > 1
     || intent.stateGoalUntilMonth !== undefined);
 }
 

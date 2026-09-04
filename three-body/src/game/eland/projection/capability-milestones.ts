@@ -231,7 +231,7 @@ function migrationResidenceAfter(
 function detectorConditions(): Record<DetectorKey, readonly string[]> {
   return {
     birth: ['月度身体结算生成 bornPersonId 与父母 ID', '新人物的 geneticParents 与出生事实一致'],
-    conception: ['普通路径形成有效双方生殖协议；魅魔路径保存 succubus-unilateral 单方授权', 'reproduce 原语完成且 conceived=true'],
+    conception: ['双方分别明确接受同一生殖提议，并在有效的 active 协议窗口内行动', 'reproduce 原语引用该协议并完成，且 conceived=true；人物特质不改变同意条件'],
     'dependent-care': ['照护者与未独立儿童存在亲子或真实照护关系', '携带、转移物资或协助脱水产生可解析动作事实'],
     'dependent-protection': ['儿童处于依赖年龄且与照护者有亲子或真实照护关系', '乱纪元危险中 completed 动作明确保存 assistedDependentId 或 carriedPersonIds'],
     kinship: ['出生事实保存父母与新生儿 ID', '人物状态保存同一 geneticParents 关系'],
@@ -299,7 +299,7 @@ function detectorConditions(): Record<DetectorKey, readonly string[]> {
     'instrument-observation': ['人物先用有制造来源的实体仪器和参考物完成本人校准', '随后 completed attend 保存有分辨率区间、校准事件与仪器/对象完整来源的 typed 测量回执'],
     experiment: ['技术来源含成功物质操作', '重复试验或主动 attend 核验提升技术可信度'],
     'decision-rule': ['共同体成员提出具体范围的 unanimous 规则', '全体现有成员接受并生成 active DecisionRule'],
-    mandate: ['全体同意规则先成为 DecisionRule', '成员随后按规则接受限时 Mandate'],
+    mandate: ['成员明确接受的表决规则先成为 DecisionRule', '成员随后按该规则表决限时 Mandate'],
     'exercised-mandate': ['限时授权保存持有人与物资范围', '成员真实贡献且协调者真实分配同一种物资'],
     'returned-mandate': ['授权曾被成员真实行使', '期限到达或成员关系结束后 mandate 转为 expired/ended'],
     prediction: ['人物说出带时间窗的纪元预言且被他人实际理解', 'EraPrediction 保存预测者、理解者、目标纪元与来源'],

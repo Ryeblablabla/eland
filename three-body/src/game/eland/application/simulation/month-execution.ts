@@ -63,6 +63,7 @@ import type { ObservationProjector } from './observation-projector';
 import { clamp } from './state-utils';
 import { hasCoLocatedLivingParent, planLocallyForTick } from './tick-planner';
 import { refreshPersonMindMarkdown } from '../../domain/person-mind';
+import { commitRegionalPopulationMonthEnd } from '../regional-arrivals';
 
 export interface ModelAttemptSummary {
   total: number;
@@ -679,6 +680,10 @@ export function finishMonthExecution(execution: MonthExecution): SimulationState
     execution.projectionCadence,
     execution.observationProjector,
   );
+  // Boundary arrivals are committed only after terminal outcomes have been
+  // resolved. They therefore cannot revive an ended civilization and were
+  // never part of this month's participant/model roster.
+  commitRegionalPopulationMonthEnd(finishedState, atMonth);
   for (const person of finishedState.people) {
     refreshPersonMindMarkdown(finishedState, person, atMonth);
   }

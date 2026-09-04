@@ -16,6 +16,7 @@ const sim = await import(pathToFileURL(bundle('src/game/eland/simulation.ts', 's
 const executor = await import(pathToFileURL(bundle('src/game/eland/domain/action-executor.ts', 'exec.mjs')).href + `?t=${Date.now()}`);
 const works = await import(pathToFileURL(bundle('src/game/eland/domain/works.ts', 'works.mjs')).href + `?t=${Date.now()}`);
 const structure = await import(pathToFileURL(bundle('src/game/eland/domain/structure.ts', 'structure.mjs')).href + `?t=${Date.now()}`);
+const civilization = await import(pathToFileURL(bundle('src/game/eland/domain/civilization-index.ts', 'civilization-index.mjs')).href + `?t=${Date.now()}`);
 const { createInitialState } = sim;
 const { executePrimitiveAction } = executor;
 const { Material } = await import(pathToFileURL(bundle('src/game/eland/domain/material.ts', 'material.mjs')).href + `?t=${Date.now()}`);
@@ -52,6 +53,7 @@ const action = {
 
 const fact = executePrimitiveAction(state, person, action, 1, 0, { cause: 'intent', actionTick: 0 });
 assert.equal(fact.status, 'completed', `搭建应成功：${fact.result}`);
+state.world.past.push(fact);
 
 const work = state.world.works?.[0];
 assert.ok(work, '应生成 Works 实体');
@@ -92,6 +94,7 @@ const modifyAction = {
 };
 const fact2 = executePrimitiveAction(state, person, modifyAction, 1, 1, { cause: 'intent', actionTick: 1 });
 assert.equal(fact2.status, 'completed', `加件应成功：${fact2.result}`);
+state.world.past.push(fact2);
 const updated = state.world.works[0];
 assert.equal(updated.components.find((c) => c.materialId === Material.Wood)?.quantity, 8, '组件应合并');
 console.log('[works] 加件通过');
@@ -118,11 +121,92 @@ const collabAction = {
 const relationMod = await import(pathToFileURL(bundle('src/game/eland/domain/relation.ts', 'relation.mjs')).href + `?t=${Date.now()}`);
 const fact3 = executePrimitiveAction(state, partner, collabAction, 1, 2, { cause: 'intent', actionTick: 2 });
 assert.equal(fact3.status, 'completed', `协作加件应成功：${fact3.result}`);
+state.world.past.push(fact3);
 const relAB = relationMod.relationTo(person, partner.id);
 const relBA = relationMod.relationTo(partner, person.id);
 assert.ok(relAB && relBA, '协作应在两人之间留下双向关系');
 assert.ok(state.world.works[0].builderIds.includes(partner.id), '第二建造者应入列');
 console.log('[works] 协作关系证据通过');
+
+// 功能承认：造物的名称和建造事件本身不能进入文明观察。
+state.clock.elapsedMonths = 1;
+const beforeUse = civilization.calculateCivilizationIndex(state);
+assert.equal(beforeUse.components.territory.evidence.usedWorks, 0, '未被使用的造物不应成为文明设施');
+
+// 先写入一条无法回放的声称，观察器应该忽略它。
+works.recordWorkUse(state.world, {
+  workId: state.world.works[0].id,
+  kind: 'use',
+  functionKey: '文本声称的神奇功能',
+  actorId: person.id,
+  atMonth: 2,
+  sourceEventId: 'missing-event',
+  evidencePaths: ['diff.appliedEffects'],
+});
+assert.equal(works.observeWorkAdoption(state.world.works[0], state.world.past, 2).receipts.length, 0,
+  '缺失来源事件的功能声称必须被忽略');
+
+const useAction = {
+  kind: 'world-interact',
+  adjudication: {
+    version: 'world-adjudicated-interaction-v1',
+    request: '在棚架下试着避雨，记下身体感受',
+    targets: [{ kind: 'voxel', position: anchor }],
+    status: 'completed',
+    result: '棚架承担了遮蔽用途',
+    effects: [{ kind: 'knowledge', summary: '站在棚架旁可减少雨水直接冲刷' }],
+  },
+};
+const useFact = executePrimitiveAction(state, person, useAction, 2, 3, { cause: 'intent', actionTick: 3 });
+assert.equal(useFact.status, 'completed', `使用应成功：${useFact.result}`);
+state.world.past.push(useFact);
+assert.equal(works.recordWorkUsesFromCompletedAction(state.world, useFact).length, 1,
+  '执行器单点接线应为显式指向造物的 completed 行为产生回执');
+state.clock.elapsedMonths = 2;
+const afterUse = civilization.calculateCivilizationIndex(state);
+assert.equal(afterUse.components.territory.evidence.usedWorks, 1, '可回放的真实使用应让造物进入文明观察');
+assert.equal(afterUse.components.technology.evidence.workUseReceipts, 1, '伪造回执不应被计入');
+
+// 示范除了来源行为，还必须能从该行为的结构化 diff 核对见证者。
+const demonstrationFact = executePrimitiveAction(state, partner, useAction, 3, 4, { cause: 'intent', actionTick: 4 });
+assert.equal(demonstrationFact.status, 'completed');
+demonstrationFact.diff.witnessPersonIds = [person.id];
+state.world.past.push(demonstrationFact);
+assert.equal(works.recordWorkUsesFromCompletedAction(state.world, demonstrationFact)[0]?.kind, 'demonstration');
+state.clock.elapsedMonths = 3;
+const adoption = works.observeWorkAdoption(state.world.works[0], state.world.past, 3);
+assert.equal(adoption.receipts.length, 2);
+assert.deepEqual(new Set(adoption.userIds), new Set([person.id, partner.id]));
+assert.deepEqual(adoption.witnessIds, [person.id]);
+const afterDemonstration = civilization.calculateCivilizationIndex(state);
+assert.equal(afterDemonstration.components.social.evidence.diffusedWorks, 1,
+  '第二人使用且有可核对见证时，才构成造物传播证据');
+console.log('[works] 使用、示范与文明观察回执通过');
+
+// 体素结构使用也从账本折叠，而不是从 name 或 complete 布尔值推断。
+const physicalStructure = {
+  id: 'structure:test:open-form',
+  name: '任意名称不参与功能判定',
+  occupiedCells: [person.position.cellId],
+  interiorCells: [person.position.cellId],
+  interiorPositions: [{ cellId: person.position.cellId, z: person.position.z }],
+  materialIds: [Material.Wood],
+  weatherProtection: 60,
+  thermalInsulation: 20,
+  capacity: 1,
+  complete: true,
+  sourceEventIds: [fact.id],
+};
+assert.equal(structure.observePhysicalStructureUseReceipts(physicalStructure, [fact]).length, 0,
+  '结构的自身建造事件不是功能使用');
+const structureReceipts = structure.observePhysicalStructureUseReceipts(
+  physicalStructure,
+  [fact, useFact, demonstrationFact],
+);
+assert.equal(structureReceipts.length, 2);
+assert.ok(structureReceipts.some((receipt) => receipt.kind === 'demonstration'
+  && receipt.witnessIds.includes(person.id)), '带可核对见证者的结构行为应产生示范回执');
+console.log('[works] 通用体素结构使用回执通过');
 
 // 衰减与塌落
 state.world.works[0] = { ...updated, condition: 25.5 };

@@ -19,6 +19,7 @@ import type { CharacterAgendaDecisionEvidence } from './character-agenda';
 import type { AgentMemoryStoreState } from './agent-memory';
 import type { PersonMindView } from './person-mind';
 import type { LanguageBroadcast } from './language-perception';
+import type { RegionalPopulationState } from './regional-population';
 
 export * from './action';
 export * from './material';
@@ -28,6 +29,7 @@ export * from './electrical-power';
 export * from './mortuary';
 export * from './mental-act';
 export * from './person-mind';
+export * from './regional-population';
 
 export type EpochKind = 'stable' | 'chaotic';
 export type ClimateKind = 'temperate' | 'cold' | 'heat' | 'fire';
@@ -253,8 +255,19 @@ export interface ActionFact extends BaseEvent {
 
 export interface EnvironmentFact extends BaseEvent {
   kind: 'environment';
-  change: 'founding' | 'climate' | 'weather' | 'prediction' | 'relationship' | 'animal' | 'body' | 'condition' | 'death' | 'resource' | 'material';
+  change: 'founding' | 'climate' | 'weather' | 'prediction' | 'relationship' | 'animal' | 'body' | 'condition' | 'death' | 'resource' | 'material' | 'work-collapse';
   who?: PersonId;
+  result: string;
+  diff: Record<string, unknown>;
+}
+
+export interface PopulationFact extends BaseEvent {
+  kind: 'population';
+  change: 'regional-source-established' | 'regional-arrival' | 'first-encounter';
+  personIds: PersonId[];
+  sourceCommunityId?: string;
+  journeyId?: string;
+  sourceEventIds: string[];
   result: string;
   diff: Record<string, unknown>;
 }
@@ -280,7 +293,7 @@ export interface PermissionFact extends BaseEvent {
   result: string;
 }
 
-export type WorldEvent = DecisionOpportunityFact | DecisionFact | ActionFact | EnvironmentFact | AgreementFact | PermissionFact;
+export type WorldEvent = DecisionOpportunityFact | DecisionFact | ActionFact | EnvironmentFact | PopulationFact | AgreementFact | PermissionFact;
 
 export interface PracticeObservation {
   key: string;
@@ -597,6 +610,8 @@ export interface SimulationState {
     physicalStructureIndex?: PhysicalStructureIndex;
   };
   people: PersonState[];
+  /** Off-map regional sources and already-scheduled boundary journeys. */
+  regionalPopulation?: RegionalPopulationState;
   /**
    * Unified owner-scoped cognitive memory. Optional only for compact fixtures;
    * state adoption creates the current version without migrating legacy data.

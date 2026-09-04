@@ -20,6 +20,63 @@ export type MentalActOrientation =
   | 'exploration'
   | 'rest';
 
+/**
+ * The durable, model-authored translation of one intention.
+ *
+ * These are plans, not facts: keeping the complete translation lets a later
+ * compiler resume or turn it into a Project instead of throwing every step
+ * away after the first primitive action.  World results never belong here.
+ */
+export interface MentalPlanTranslation {
+  version: 'mental-plan-translation-v1';
+  steps: string[];
+  disposition: 'act' | 'continue' | 'pause' | 'abandon' | 'stay';
+  /** Stable request-scoped handle used by Plan; never interpreted as a fact. */
+  firstStepHandle?: string;
+  continuationHandle?: string;
+  /** A request-scoped reference to one of this person's suspended intentions. */
+  resumeIntentHandle?: string;
+  /** A request-scoped reference to a suspended intention the person gives up. */
+  abandonIntentHandle?: string;
+  /** A free-form action awaiting an independently authored world resolution. */
+  worldAction?: {
+    description: string;
+    expectedResult?: string;
+  };
+}
+
+export type MentalRelationshipMeaning =
+  | 'gratitude'
+  | 'care'
+  | 'affection'
+  | 'attraction'
+  | 'respect'
+  | 'solidarity'
+  | 'obligation'
+  | 'hurt'
+  | 'anger'
+  | 'fear'
+  | 'suspicion'
+  | 'jealousy'
+  | 'rivalry'
+  | 'grief'
+  | 'ambivalence'
+  | 'uncertainty';
+
+/**
+ * A model-authored interpretation of sourced experience. It changes the
+ * observer's remembered meaning, never the other person's state or consent.
+ */
+export interface MentalRelationshipAppraisal {
+  version: 'mental-relationship-appraisal-v1';
+  otherPersonId: string;
+  meanings: MentalRelationshipMeaning[];
+  interpretation: string;
+  unresolvedExpectation?: string;
+  desiredResponse?: string;
+  sourceEventIds: string[];
+}
+
 export interface MentalAct {
   version: 'mental-act-v2';
   kind: MentalActKind;
@@ -38,6 +95,10 @@ export interface MentalAct {
   strategy: string;
   assumptions: string[];
   expectedObservation?: string;
+  /** Complete Plan output retained for continuation, audit and Project lift. */
+  plan?: MentalPlanTranslation;
+  /** Optional subjective meaning formed from one or more real social facts. */
+  relationshipAppraisal?: MentalRelationshipAppraisal;
   /** Plan Agent correction grounded in prior experienced failure facts. */
   planFeedback?: {
     correction: string;

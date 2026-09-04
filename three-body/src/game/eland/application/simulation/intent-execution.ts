@@ -4,7 +4,7 @@ import {
   executePrimitiveAction,
   goalSatisfied,
 } from '../../domain/action-executor';
-import type { ActionOption, PrimitiveAction } from '../../domain/action';
+import type { ActionOption, IntentOutcomeReceipt, PrimitiveAction } from '../../domain/action';
 import { agreementById, agreementsForPerson } from '../../domain/agreement';
 import { recordIntentGoalOutcome } from '../../domain/cognition';
 import {
@@ -21,7 +21,9 @@ import { lifePlanningStage } from '../../domain/life-stage';
 import { remember } from '../../domain/memory';
 import { broadcastLanguage, type LanguageBroadcast } from '../../domain/language-perception';
 import { materialHas } from '../../domain/material';
+import type { MentalAct } from '../../domain/mental-act';
 import { spokenTextSupportsMeaning } from '../../domain/spoken-meaning';
+import { recordRelationshipEpisode } from '../../domain/relationship-episode';
 import type {
   ActionFact,
   Decision,
@@ -122,6 +124,39 @@ function groundedConversationForOption(option: ActionOption | undefined) {
     && action.speakerMeaning.kind === 'claim'
     ? action.speakerMeaning.conversation
     : undefined;
+}
+
+function commitMentalRelationshipAppraisal(
+  state: SimulationState,
+  person: PersonState,
+  context: DecisionContext,
+  mentalAct: MentalAct | undefined,
+  decisionEventId: string,
+  atMonth: number,
+): void {
+  const appraisal = mentalAct?.relationshipAppraisal;
+  if (!appraisal || !context.visiblePeople.some((candidate) => candidate.id === appraisal.otherPersonId)) return;
+  const knownEvents = new Set([...state.world.past, ...(context.currentMonthEvents ?? [])].map((event) => event.id));
+  if (!appraisal.sourceEventIds.length || appraisal.sourceEventIds.some((sourceId) => !knownEvents.has(sourceId))) return;
+  const rememberedWithPerson = person.memories.some((memory) => (
+    memory.personIds.includes(appraisal.otherPersonId)
+      && appraisal.sourceEventIds.some((sourceId) => memory.sourceEventIds.includes(sourceId))
+  ));
+  if (!rememberedWithPerson) return;
+  recordRelationshipEpisode(person, {
+    id: `relationship-episode:${decisionEventId}`,
+    otherPersonId: appraisal.otherPersonId,
+    experiencedAtMonth: atMonth,
+    sourceFactIds: [...appraisal.sourceEventIds],
+    appraisal: {
+      meanings: [...appraisal.meanings],
+      interpretation: appraisal.interpretation,
+      ...(appraisal.unresolvedExpectation
+        ? { unresolvedExpectation: appraisal.unresolvedExpectation }
+        : {}),
+      ...(appraisal.desiredResponse ? { desiredResponse: appraisal.desiredResponse } : {}),
+    },
+  });
 }
 
 type IntentIdentityKind = 'ordinary' | 'interrupt' | 'agreement';
@@ -259,6 +294,70 @@ function completedAttendObservedDifferentKnowledgeFact(
   return fact.diff.factId;
 }
 
+function factCarriesNewEvidence(fact: ActionFact): boolean {
+  if (fact.action.kind === 'attend') return fact.status === 'completed';
+  if (fact.action.kind === 'world-interact') {
+    return Array.isArray(fact.diff.appliedEffects)
+      && fact.diff.appliedEffects.some((effect) => (
+        Boolean(effect) && typeof effect === 'object'
+          && (effect as Record<string, unknown>).kind === 'knowledge'
+      ));
+  }
+  return fact.action.kind === 'act'
+    && ['combine', 'exert', 'expose'].includes(fact.action.operation)
+    && (fact.status === 'completed'
+      || fact.status === 'failed'
+      || Object.keys(fact.diff).length > 0);
+}
+
+function outcomeReceiptForFact(
+  intent: Intent,
+  fact: ActionFact,
+  goalSatisfiedBefore: boolean,
+  goalSatisfiedAfter: boolean,
+): IntentOutcomeReceipt {
+  const execution = fact.status === 'completed'
+    ? 'performed' as const
+    : fact.status === 'progressed'
+      ? 'progressed' as const
+      : fact.status === 'failed'
+        ? 'failed' as const
+        : 'not-started' as const;
+  const goalProgress = goalSatisfiedAfter && !goalSatisfiedBefore
+    ? 'achieved' as const
+    : goalSatisfiedBefore && !goalSatisfiedAfter
+      ? 'regressed' as const
+      : fact.status === 'progressed'
+        ? 'unknown' as const
+        : 'none' as const;
+  const carriesEvidence = factCarriesNewEvidence(fact);
+  const observedFactId = fact.action.kind === 'attend' && typeof fact.diff.factId === 'string'
+    ? fact.diff.factId
+    : undefined;
+  const evidence = goalProgress === 'achieved'
+    ? 'confirming' as const
+    : intent.goal.kind === 'knowledge' && observedFactId
+      ? observedFactId === intent.goal.factId ? 'confirming' as const : 'refuting' as const
+    : fact.status === 'failed' && carriesEvidence
+      ? 'refuting' as const
+      : carriesEvidence
+        ? intent.goal.kind === 'knowledge' ? 'novel' as const : 'inconclusive' as const
+        : 'none' as const;
+  return {
+    version: 'intent-outcome-receipt-v1',
+    atMonth: fact.atMonth,
+    actionEventId: fact.id,
+    execution,
+    goalProgress,
+    evidence,
+    sourceEventIds: [fact.id],
+  };
+}
+
+function appendOutcomeReceipt(intent: Intent, receipt: IntentOutcomeReceipt): void {
+  intent.outcomeReceipts = [...(intent.outcomeReceipts ?? []), receipt].slice(-24);
+}
+
 function boundedReviewDurationMonths(duration: ActionOption['estimatedDuration'], estimatedMonths?: number): number {
   const base = duration === 'long'
     ? 12
@@ -338,7 +437,22 @@ export function startIntent(
   if (choice.projectId && linkedProject?.status !== 'active') return null;
   const projectTarget = bindIntentProjectTarget(choice.goal, linkedProject);
   const previous = activeIntent(state, person);
-  if (previous) {
+  const desiredSummary = linkedProject?.summary ?? choice.summary;
+  const sameThread = (intent: Intent): boolean => Boolean(
+    (intent.projectId && intent.projectId === projectTarget.projectId)
+      || (intent.characterAgendaItemId
+        && intent.characterAgendaItemId === choice.characterAgendaItemId)
+      || (intent.summary === desiredSummary
+        && JSON.stringify(intent.goal) === JSON.stringify(projectTarget.goal)),
+  );
+  const suspendedMatches = state.intents.filter((intent) => intent.ownerId === person.id
+    && intent.status === 'suspended'
+    && !intent.suspendedByIntentId
+    && intent.waitingFor !== 'world-change'
+    && sameThread(intent));
+  const activeMatch = previous && sameThread(previous) ? previous : undefined;
+  const reusable = activeMatch ?? suspendedMatches.at(-1);
+  if (previous && previous !== activeMatch) {
     const previousReviewAtMonth = intentReviewAtMonth(previous);
     const overdueAndUnmet = previousReviewAtMonth !== undefined
       && atMonth > previousReviewAtMonth
@@ -362,6 +476,15 @@ export function startIntent(
         personIds: previous.target?.kind === 'person' ? [previous.target.personId] : [],
         sourceEventIds: [...previous.actionEventIds],
       });
+    } else if (isResumableIntent(previous)
+      && !(previous.projectId && previous.projectId === projectTarget.projectId)
+      && !(previous.characterAgendaItemId
+        && previous.characterAgendaItemId === choice.characterAgendaItemId)) {
+      // A person may change focus without erasing a real long-running thread.
+      // Only one intent executes at a time; the model can later choose which
+      // suspended thread to resume from its monthly situation.
+      previous.status = 'suspended';
+      previous.suspendedAtMonth = atMonth;
     } else {
       previous.status = 'abandoned';
       recordIntentGoalOutcome(
@@ -372,6 +495,39 @@ export function startIntent(
         intentGoalSourceIds(state, previous, [decisionEventId]),
       );
     }
+  }
+  for (const duplicate of suspendedMatches) {
+    if (duplicate.id === reusable?.id) continue;
+    duplicate.status = 'abandoned';
+    delete duplicate.suspendedAtMonth;
+    recordIntentGoalOutcome(
+      state,
+      duplicate,
+      'not-evaluated',
+      atMonth,
+      intentGoalSourceIds(state, duplicate, [decisionEventId]),
+    );
+  }
+  if (reusable) {
+    const wasSuspended = reusable.status === 'suspended';
+    reusable.summary = desiredSummary;
+    reusable.domain = choice.domain;
+    reusable.goal = structuredClone(projectTarget.goal);
+    reusable.nextAction = structuredClone(choice.nextAction);
+    if (choice.completionAction) reusable.completionAction = structuredClone(choice.completionAction);
+    else delete reusable.completionAction;
+    if (choice.target) reusable.target = structuredClone(choice.target);
+    else delete reusable.target;
+    if (projectTarget.projectId) reusable.projectId = projectTarget.projectId;
+    else delete reusable.projectId;
+    if (choice.characterAgendaItemId) reusable.characterAgendaItemId = choice.characterAgendaItemId;
+    if (choice.characterAgendaApproachId) reusable.characterAgendaApproachId = choice.characterAgendaApproachId;
+    reusable.sourceFactIds = [...new Set([...(reusable.sourceFactIds ?? []), ...choice.sourceFactIds])];
+    reusable.status = 'active';
+    if (wasSuspended) reusable.lastResumedAtMonth = atMonth;
+    delete reusable.suspendedAtMonth;
+    person.activeIntentId = reusable.id;
+    return reusable;
   }
   const boundedStateAchievement = choice.domain === 'strategic'
     && choice.goal.kind !== 'project-completed'
@@ -855,6 +1011,7 @@ export function applyDecision(
   ));
   const id = `e-${atMonth}-decision-${person.id}-${planningTick}-${orderInMonth}`;
   const mentalAct = 'mentalAct' in decision ? decision.mentalAct : undefined;
+  if (usedModel) commitMentalRelationshipAppraisal(state, person, context, mentalAct, id, atMonth);
   const languageBroadcast = usedModel && mentalAct?.utterance.trim()
     ? broadcastLanguage({
         seed: state.seed,
@@ -1017,6 +1174,7 @@ export function applyDecision(
   };
   if (decision.kind === 'start') {
     const started = startIntent(state, person, decisionContext, decision.optionId, decision.followUpOptionId, id, atMonth);
+    if (started && mentalAct?.plan) started.plan = structuredClone(mentalAct.plan);
     attachLifeReview(started);
     attachCharacterAgenda(started);
     intentId = started?.id;
@@ -1026,6 +1184,7 @@ export function applyDecision(
     const started = decision.mode === 'interrupt' && decision.interruptionKind
         ? startInterruptIntent(state, person, decisionContext, decision.optionId, id, atMonth, decision.interruptionKind)
         : startIntent(state, person, decisionContext, decision.optionId, decision.followUpOptionId, id, atMonth);
+    if (started && mentalAct?.plan) started.plan = structuredClone(mentalAct.plan);
     attachLifeReview(started);
     attachCharacterAgenda(started);
     intentId = started?.id;
@@ -1037,6 +1196,7 @@ export function applyDecision(
       : `${person.name}未能改换目标`;
   } else if (decision.kind === 'suspend' && current?.id === decision.intentId) {
     current.status = 'suspended';
+    current.suspendedAtMonth = atMonth;
     delete person.activeIntentId;
     intentId = current.id;
     result = `${person.name}暂停：${current.summary}`;
@@ -1045,28 +1205,55 @@ export function applyDecision(
     const resumed = candidate?.ownerId === person.id
       && candidate.status === 'suspended'
       && !candidate.suspendedByIntentId
+      && candidate.waitingFor !== 'world-change'
       ? candidate
       : undefined;
     if (resumed) {
-      if (current) current.status = 'suspended';
+      if (current) {
+        if (isResumableIntent(current)) {
+          current.status = 'suspended';
+          current.suspendedAtMonth = atMonth;
+        } else {
+          current.status = 'abandoned';
+          recordIntentGoalOutcome(
+            state,
+            current,
+            'not-evaluated',
+            atMonth,
+            intentGoalSourceIds(state, current, [id]),
+          );
+        }
+      }
       resumed.status = 'active';
       delete resumed.waitingFor;
+      resumed.lastResumedAtMonth = atMonth;
+      delete resumed.suspendedAtMonth;
       person.activeIntentId = resumed.id;
       intentId = resumed.id;
       result = `${person.name}恢复：${resumed.summary}`;
     }
-  } else if (decision.kind === 'abandon' && current?.id === decision.intentId) {
-    current.status = 'abandoned';
-    recordIntentGoalOutcome(
-      state,
-      current,
-      'not-evaluated',
-      atMonth,
-      intentGoalSourceIds(state, current, [id]),
-    );
-    delete person.activeIntentId;
-    intentId = current.id;
-    result = `${person.name}放弃：${current.summary}`;
+  } else if (decision.kind === 'abandon') {
+    const candidate = intentById(state, decision.intentId);
+    const abandoned = candidate?.ownerId === person.id
+      && !candidate.suspendedByIntentId
+      && (candidate.status === 'active' || candidate.status === 'suspended')
+      ? candidate
+      : undefined;
+    if (abandoned) {
+      abandoned.status = 'abandoned';
+      delete abandoned.waitingFor;
+      delete abandoned.suspendedAtMonth;
+      recordIntentGoalOutcome(
+        state,
+        abandoned,
+        'not-evaluated',
+        atMonth,
+        intentGoalSourceIds(state, abandoned, [id]),
+      );
+      if (person.activeIntentId === abandoned.id) delete person.activeIntentId;
+      intentId = abandoned.id;
+      result = `${person.name}放弃：${abandoned.summary}`;
+    }
   } else if (decision.kind === 'idle') {
     const acceptedAgenda = attachCharacterAgenda(null);
     if (acceptedAgenda) {
@@ -1481,6 +1668,7 @@ export function executeActiveIntent(
     return null;
   }
   intent.nextAction = next;
+  const goalSatisfiedBeforeAction = goalSatisfied(state, person, intent.goal);
   const recordUseConfidenceBefore = intent.recordUseBasis
     ? person.knowledge.find((knowledge) => knowledge.id === intent.recordUseBasis?.knowledgeId)?.confidence
     : undefined;
@@ -1637,6 +1825,14 @@ export function executeActiveIntent(
     if (!recordReplicationReceiptCompleted) delete fact.diff.recordUseReplicationReceipt;
   }
   if (fact.action.kind === 'act' && fact.action.operation === 'reproduce') intent.lastReproductionAttemptAtMonth = atMonth;
+  const satisfiedAfterAction = goalSatisfied(state, person, intent.goal);
+  const outcomeReceipt = outcomeReceiptForFact(
+    intent,
+    fact,
+    goalSatisfiedBeforeAction,
+    satisfiedAfterAction,
+  );
+  appendOutcomeReceipt(intent, outcomeReceipt);
   person.currentActionText = fact.result;
   if (fact.status === 'blocked' || fact.status === 'failed') {
     intent.status = fact.status === 'failed' ? 'failed' : 'blocked';
@@ -1673,8 +1869,9 @@ export function executeActiveIntent(
       person.currentActionText = `观察结果改变，需要重评：${fact.result}`;
       return fact;
     }
-    intent.lastProgressAtMonth = atMonth;
-    intent.progress = clamp(intent.progress + (fact.status === 'completed' ? 0.32 : 0.16), 0, 0.95);
+    if (outcomeReceipt.goalProgress !== 'none' || outcomeReceipt.evidence !== 'none') {
+      intent.lastProgressAtMonth = atMonth;
+    }
     const representationCompleted = intent.goal.kind === 'representation-made'
       && fact.action.kind === 'talk'
       && fact.action.speakerMeaning.id === intent.goal.representationId
@@ -1694,7 +1891,6 @@ export function executeActiveIntent(
       ? compileAgreementContinuations(state, acceptedAgreementId, atMonth).map((continuation) => installAgreementContinuation(state, intent, continuation, atMonth)).filter(Boolean)
       : [];
     const currentContinues = installed.some((candidate) => candidate?.id === intent.id);
-    const satisfiedAfterAction = goalSatisfied(state, person, intent.goal);
     const maintainUntilMonth = intentMaintainUntilMonth(intent);
     const maintainedStateCompleted = maintainUntilMonth !== undefined
       && satisfiedAfterAction

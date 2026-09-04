@@ -16,7 +16,7 @@ import { personById, projectById } from './state-index';
 interface DecisionRuleBase {
   id: string;
   collectiveId: string;
-  method: 'unanimous';
+  method: 'unanimous' | 'majority-vote';
   mandateDurationMonths: number;
   status: 'active' | 'retired';
   acceptedAtMonth: number;
@@ -237,16 +237,24 @@ function activeProposal<T extends 'decision-rule' | 'mandate'>(state: Simulation
     : undefined;
 }
 
-function matchesCurrentMembers(state: SimulationState, agreement: Agreement & { proposal: { proposerId: PersonId; requiredApproverIds: PersonId[]; collectiveId: string } }) {
+function matchesCurrentMembers(
+  state: SimulationState,
+  agreement: Agreement & { proposal: { proposerId: PersonId; requiredApproverIds: PersonId[]; collectiveId: string } },
+  method: DecisionRule['method'],
+) {
   const collective = state.collectives.find((candidate) => candidate.id === agreement.proposal.collectiveId);
   const members = collective ? activeMemberIds(state, collective) : [];
   const expected = new Set(members.filter((id) => id !== agreement.proposal.proposerId));
   const proposed = new Set(agreement.proposal.requiredApproverIds);
+  const support = members.filter((id) => agreement.acceptedByPersonIds.includes(id)).length;
+  const accepted = method === 'unanimous'
+    ? support === members.length
+    : support >= Math.floor(members.length / 2) + 1;
   return collective && members.length >= 2
     && members.includes(agreement.proposal.proposerId)
     && expected.size === proposed.size
     && [...expected].every((id) => proposed.has(id))
-    && members.every((id) => agreement.acceptedByPersonIds.includes(id))
+    && accepted
     ? { collective, members }
     : null;
 }
@@ -255,7 +263,7 @@ function fulfillAgreement(agreement: Agreement, fact: ActionFact): void {
   agreement.status = 'fulfilled';
   agreement.resolvedAtMonth = fact.atMonth;
   agreement.fulfillmentEventIds = [...new Set([...agreement.fulfillmentEventIds, fact.id])];
-  agreement.fulfilledByPersonIds = [...agreement.partyIds];
+  agreement.fulfilledByPersonIds = [...new Set(agreement.acceptedByPersonIds)];
 }
 
 function closeMandateCoordinationCycle(
@@ -322,8 +330,8 @@ export function recordGovernanceAction(state: SimulationState, fact: ActionFact)
 
   const ruleAgreement = activeProposal(state, fact.action.speakerMeaning.referenceId, 'decision-rule');
   if (ruleAgreement?.proposal.kind === 'decision-rule') {
-    const match = matchesCurrentMembers(state, ruleAgreement);
-    if (!match || ruleAgreement.proposal.method !== 'unanimous') return;
+    const match = matchesCurrentMembers(state, ruleAgreement, ruleAgreement.proposal.method);
+    if (!match) return;
     const id = `decision-rule:${ruleAgreement.id}`;
     if (!match.collective.decisionRules.some((rule) => rule.id === id)) {
       const common = {
@@ -356,8 +364,11 @@ export function recordGovernanceAction(state: SimulationState, fact: ActionFact)
 
   const mandateAgreement = activeProposal(state, fact.action.speakerMeaning.referenceId, 'mandate');
   if (mandateAgreement?.proposal.kind !== 'mandate') return;
-  const match = matchesCurrentMembers(state, mandateAgreement);
-  const rule = match?.collective.decisionRules.find((candidate) => candidate.id === mandateAgreement.proposal.decisionRuleId && candidate.status === 'active');
+  const collective = state.collectives.find((candidate) => candidate.id === mandateAgreement.proposal.collectiveId);
+  const rule = collective?.decisionRules.find((candidate) => (
+    candidate.id === mandateAgreement.proposal.decisionRuleId && candidate.status === 'active'
+  ));
+  const match = rule ? matchesCurrentMembers(state, mandateAgreement, rule.method) : null;
   if (!match || !rule || !match.members.includes(mandateAgreement.proposal.holderId)) return;
   let dutyProject: ProjectState | undefined;
   if (rule.scope === 'assign-recurring-duty') {

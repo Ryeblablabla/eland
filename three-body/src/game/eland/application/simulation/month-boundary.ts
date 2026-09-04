@@ -167,14 +167,14 @@ export function prepareMonth(
       probability, sample, triggered, reasons,
       result: triggered
         ? interactionReview
-          ? `${context.person.name}本月准备落实对话中定下的下一步`
+          ? `${context.person.name}本月出现落实对话后续的复核机会`
           : exemption === 'bootstrap'
-          ? `${context.person.name}获得开局初始决策`
+          ? `${context.person.name}本月出现形成开局方向的复核机会`
           : exemption === 'required-response'
-            ? `${context.person.name}本月必须回应一项社会请求`
+            ? `${context.person.name}本月出现必须回应的社会请求`
             : exemption === 'agenda-revision'
-              ? `${context.person.name}本月重新考虑一项被现实否定的长期办法`
-            : `${context.person.name}本月重新考虑下一步`
+              ? `${context.person.name}本月出现重审被现实否定办法的机会`
+            : `${context.person.name}本月出现重新考虑下一步的机会`
         : `${context.person.name}本月延续已有意图`,
     };
     events.push(opportunity);

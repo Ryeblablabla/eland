@@ -496,6 +496,49 @@
   gap: 5px;
 }
 
+.person-relations__subjective {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+
+.person-relations__subjective article {
+  border-left: 2px solid rgba(102, 214, 198, 0.42);
+  padding: 7px 9px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.person-relations__subjective p {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 4px;
+}
+
+.person-relations__subjective p span {
+  color: rgba(216, 229, 228, 0.72);
+  font-size: 11px;
+}
+
+.person-relations__subjective time {
+  margin-left: auto;
+  color: rgba(216, 229, 228, 0.44);
+  font-size: 10px;
+}
+
+.person-relations__subjective blockquote {
+  margin: 0;
+  color: rgba(239, 244, 243, 0.88);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.person-relations__subjective small {
+  display: block;
+  margin-top: 3px;
+  color: rgba(216, 229, 228, 0.58);
+}
+
 .person-relations__legend-dot {
   width: 5px;
   height: 5px;

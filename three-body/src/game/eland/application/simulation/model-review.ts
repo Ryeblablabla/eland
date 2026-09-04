@@ -56,9 +56,28 @@ function isEmergencyDecisionContext(context: DecisionContext): boolean {
       || condition.kind === 'illness') && condition.stage >= 2);
 }
 
-/** One objective refutation earns one bounded model reconsideration. */
+function factIdsAfterLastModelDecision(context: DecisionContext): Set<string> {
+  let lastDecisionIndex = -1;
+  for (let index = context.state.world.past.length - 1; index >= 0; index -= 1) {
+    const event = context.state.world.past[index];
+    if (event.kind === 'decision' && event.usedModel && event.who === context.person.id) {
+      lastDecisionIndex = index;
+      break;
+    }
+  }
+  return new Set(context.state.world.past
+    .slice(lastDecisionIndex + 1)
+    .map((event) => event.id));
+}
+
+function includesFreshFact(freshFactIds: ReadonlySet<string>, factIds: readonly string[]): boolean {
+  return factIds.some((factId) => freshFactIds.has(factId));
+}
+
+/** One unreviewed real outcome earns one model reconsideration. */
 export function characterAgendaRevisionDue(context: DecisionContext, atMonth: number): boolean {
   if (context.activeIntent) return false;
+  const freshFactIds = factIdsAfterLastModelDecision(context);
   return characterAgendaStateOf(context.person, atMonth).items.some((item) => {
     if (item.status === 'fulfilled' || item.status === 'abandoned' || item.status === 'suspended') return false;
     return item.approaches.some((approach) => {
@@ -67,10 +86,7 @@ export function characterAgendaRevisionDue(context: DecisionContext, atMonth: nu
         && (latest.outcome === 'refuted'
           || latest.outcome === 'blocked'
           || (latest.outcome === 'parked' && latest.evidenceFactIds.length > 0))
-        // Cooldown belongs to this factual result. An unrelated dialogue or
-        // social model decision must not keep postponing reconsideration.
-        && atMonth - latest.atMonth >= CHARACTER_AGENDA_MODEL_REVIEW_COOLDOWN_MONTHS
-        && latest.atMonth >= item.lastReviewedAtMonth);
+        && includesFreshFact(freshFactIds, latest.evidenceFactIds));
     });
   });
 }
@@ -96,23 +112,21 @@ export function lastModelDecisionMonth(state: Pick<SimulationState, 'world'>, pe
   return null;
 }
 
-const CHARACTER_AGENDA_MODEL_REVIEW_COOLDOWN_MONTHS = 3;
-
 /**
- * Event/state driven opening for subjective agenda review. This is deliberately
- * independent of the number of executable options, but has a per-person
- * cooldown so an affordance gap cannot create a monthly request loop.
+ * Event/state driven opening for subjective agenda review. Calendar age and a
+ * concern's horizon never open this edge by themselves: a concrete outcome,
+ * memory, or newly grounded affordance must have appeared after the person's
+ * latest model decision.
  */
 export function characterAgendaModelReviewDue(
   context: DecisionContext,
   atMonth: number,
 ): boolean {
-  const lastModelMonth = lastModelDecisionMonth(context.state, context.person.id);
-  if (lastModelMonth !== null && atMonth - lastModelMonth < CHARACTER_AGENDA_MODEL_REVIEW_COOLDOWN_MONTHS) {
-    return false;
-  }
   const agenda = characterAgendaStateOf(context.person, atMonth);
-  const open = agenda.items.filter((item) => item.status !== 'fulfilled' && item.status !== 'abandoned');
+  const freshFactIds = factIdsAfterLastModelDecision(context);
+  const open = agenda.items.filter((item) => item.status !== 'fulfilled'
+    && item.status !== 'abandoned'
+    && item.status !== 'suspended');
   if (!context.activeIntent && open.length === 0) return true;
   // Month one is already the founder's bootstrap boundary. If an active
   // intention is present, let it perform at least one real action before a
@@ -124,20 +138,21 @@ export function characterAgendaModelReviewDue(
   // opens this edge; the recorded model decision then consumes the edge, so
   // an old memory cannot create a periodic reflection loop.
   const memorySignals = agendaMemorySignals(context.state, context.person, atMonth);
-  const firstReviewBaseline = context.activeIntent?.createdAtMonth ?? atMonth;
   const hasFreshUnrepresentedMemory = open.length === 0 && memorySignals.some((memory) => (
-    lastModelMonth === null
-      ? memory.lastExperiencedAtMonth > firstReviewBaseline
-      : memory.lastExperiencedAtMonth >= lastModelMonth
+    includesFreshFact(freshFactIds, memory.sourceEventIds)
   ));
   if (hasFreshUnrepresentedMemory) return true;
 
-  const locallyAvailableFactIds = new Set([
+  const locallyAvailableFactIds = [...new Set([
     ...memorySignals.flatMap((memory) => memory.sourceEventIds),
     ...context.options.slice(0, 8).flatMap((option) => option.sourceFactIds),
-  ]);
+  ])].filter((factId) => freshFactIds.has(factId));
   const needsFreshReview = open.some((item) => {
-    if (item.targetAtMonth <= atMonth && item.lastReviewedAtMonth < atMonth) return true;
+    const latestOutcome = item.approaches
+      .map((approach) => approach.evaluations.at(-1))
+      .filter((evaluation) => evaluation !== undefined)
+      .find((evaluation) => includesFreshFact(freshFactIds, evaluation.evidenceFactIds));
+    if (latestOutcome) return true;
     if (item.status !== 'incubating' && item.status !== 'blocked' && item.status !== 'suspended') return false;
     const considered = new Set([
       ...item.sourceFactIds,
@@ -149,13 +164,9 @@ export function characterAgendaModelReviewDue(
         ]),
       ]),
     ]);
-    return [...locallyAvailableFactIds].some((factId) => !considered.has(factId));
+    return locallyAvailableFactIds.some((factId) => !considered.has(factId));
   });
   if (needsFreshReview) return true;
-  if (!context.activeIntent && open.length > 0) {
-    const lastSubjectiveReview = Math.max(...open.map((item) => item.lastReviewedAtMonth));
-    return atMonth - lastSubjectiveReview >= 6;
-  }
   return false;
 }
 
@@ -212,12 +223,41 @@ export function validateModelDecision(
           ...(proposed.mentalAct ? { mentalAct: structuredClone(proposed.mentalAct) } : {}),
         };
   }
-  if (proposed.kind === 'suspend' || proposed.kind === 'abandon') {
+  if (proposed.kind === 'suspend') {
     if (required.length || fulfillment.length) return null;
     if (!context.activeIntent || proposed.intentId !== context.activeIntent.id) return null;
     return {
-      kind: proposed.kind,
+      kind: 'suspend',
       intentId: proposed.intentId,
+      reason: proposed.reason,
+      ...(proposed.mentalAct ? { mentalAct: structuredClone(proposed.mentalAct) } : {}),
+    };
+  }
+  if (proposed.kind === 'resume') {
+    if (required.length || fulfillment.length) return null;
+    const candidate = context.state.intents.find((intent) => intent.id === proposed.intentId);
+    if (candidate?.ownerId !== context.person.id
+      || candidate.status !== 'suspended'
+      || candidate.suspendedByIntentId
+      || candidate.waitingFor === 'world-change') return null;
+    return {
+      kind: 'resume',
+      intentId: candidate.id,
+      reason: proposed.reason,
+      ...(proposed.mentalAct ? { mentalAct: structuredClone(proposed.mentalAct) } : {}),
+    };
+  }
+  if (proposed.kind === 'abandon') {
+    if (required.length || fulfillment.length) return null;
+    const candidate = context.activeIntent?.id === proposed.intentId
+      ? context.activeIntent
+      : context.state.intents.find((intent) => intent.id === proposed.intentId);
+    if (candidate?.ownerId !== context.person.id
+      || candidate.suspendedByIntentId
+      || (candidate.status !== 'active' && candidate.status !== 'suspended')) return null;
+    return {
+      kind: 'abandon',
+      intentId: candidate.id,
       reason: proposed.reason,
       ...(proposed.mentalAct ? { mentalAct: structuredClone(proposed.mentalAct) } : {}),
     };

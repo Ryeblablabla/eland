@@ -104,7 +104,7 @@ export const PERSON_TRAITS: readonly PersonTraitDefinition[] = [
   { id: 'cold-born', name: '寒裔', description: '寒冷伤害降低 40%，炎热造成的额外水分消耗提高 20%。', inheritanceChance: 0.35 },
   { id: 'heat-born', name: '炎裔', description: '炎热伤害及其额外水分消耗降低 35%，寒冷伤害提高 20%。', inheritanceChance: 0.35 },
   { id: 'matrilineal', name: '母脉', description: '激活母姓与母系命名，强化母系遗传、亲子羁绊及母亲首次技术教导。', inheritanceChance: 0.5 },
-  { id: 'succubus', name: '魅魔', description: '成年女性可凭单方同意与同地成年男性尝试生育，不受关系、协议、身体储备和家庭准备度门槛限制，分娩后没有产后恢复期。', inheritanceChance: 0, spontaneousChance: 0.03, spontaneousSex: 'female' },
+  { id: 'succubus', name: '魅魔', description: '分娩后无需进入产后恢复期。这项特质只改变持有者本人的产后生理过程，不构成任何人的生殖同意或协议。', inheritanceChance: 0, spontaneousChance: 0.03, spontaneousSex: 'female' },
   { id: 'twin-bearer', name: '双生', description: '本人参与形成的妊娠必定诞下双胞胎，但妊娠中止风险提高。', inheritanceChance: 0, spontaneousChance: 0.03 },
   { id: 'gluttonous', name: '饕餮', description: '五项基础能力各提高 20，但每月营养消耗提高 50%。', inheritanceChance: 0, spontaneousChance: 0.03 },
 ] as const;

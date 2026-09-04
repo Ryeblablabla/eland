@@ -13,7 +13,11 @@ import {
 import { emptyCivilizationIndex } from '../../domain/civilization-index';
 import { createCognitionState, ensureCognitionState } from '../../domain/cognition';
 import { primeEventIndex, worldEventById } from '../../domain/event-index';
-import { historyEventCount, initializeHistoryCursorFromFullHistory } from '../../domain/history';
+import {
+  appendCommittedEvents,
+  historyEventCount,
+  initializeHistoryCursorFromFullHistory,
+} from '../../domain/history';
 import { Material } from '../../domain/material';
 import {
   MECHANICAL_POWER_WORLD_VERSION,
@@ -29,6 +33,7 @@ import {
 import type {
   EnvironmentFact,
   EvolutionReport,
+  PopulationFact,
   SimulationConfig,
   SimulationState,
 } from '../../domain/model';
@@ -45,6 +50,7 @@ import {
   grantProphetKnowledge,
   inheritPersonTraits,
   normalizePersonTraits,
+  spontaneousPersonTraits,
   traitDefinition,
 } from '../../domain/trait';
 import { normalizeAnimalEcologies } from '../../domain/wildlife-ecology';
@@ -79,6 +85,11 @@ import {
   createEmptyPersonMindMarkdown,
   refreshPersonMindMarkdown,
 } from '../../domain/person-mind';
+import {
+  ensureExistingPersonOrigins,
+  establishRegionalPopulation,
+  restoreRegionalPopulationFromHistory,
+} from '../regional-arrivals';
 
 export const MAX_SIMULATION_YEARS = 1_000;
 export const MAX_SIMULATION_MONTHS = MAX_SIMULATION_YEARS * MONTHS_PER_YEAR;
@@ -226,6 +237,13 @@ function initialPerson(seed: number, profile: CharacterProfile, spawnCell: numbe
       personalitySummary: profile.personalitySummary,
       reactionPatterns: structuredClone(profile.reactionPatterns),
     },
+    origin: {
+      version: 'person-origin-v1',
+      kind: 'founding',
+      enteredAtMonth: 0,
+      summary: '作为初始在地先民进入地图',
+      sourceEventIds: [FOUNDER_COHORT_EVENT_ID],
+    },
     bornAtMonth: -founderAge,
     lifespanMonths: applyTraitLifespanModifier(createLifespanMonths(seed, profile.id, founderAge), traits),
     sex: profile.sex,
@@ -346,6 +364,12 @@ export function createInitialState(
     derived: { practices: [], institutions: [], milestones: [], regions: [], structures: [] },
     lastStep: [],
   };
+  const regionalSource = establishRegionalPopulation(state, 0);
+  if (regionalSource) {
+    regionalSource.orderInMonth = 1;
+    regionalSource.orderInTick = 1;
+    appendCommittedEvents(state, [regionalSource]);
+  }
   const physicalStructureIndex = derivePhysicalStructureIndex(state);
   state.world.physicalStructureIndex = physicalStructureIndex;
   refreshStructureCompatibilityMirror(state, physicalStructureIndex);
@@ -436,6 +460,29 @@ export function adoptSimulationState(
       : emptyMechanicalPowerWorldState();
   } else migrateMechanicalPowerWorldState(state.world.mechanicalPower);
   ensureNamingMetadata(state.people);
+  ensureExistingPersonOrigins(state);
+  state.regionalPopulation ??= restoreRegionalPopulationFromHistory(state) ?? undefined;
+  if (state.regionalPopulation) {
+    state.regionalPopulation.encounteredPairKeys ??= [...new Set(state.world.past.flatMap((event) => (
+      event.kind === 'population' && event.change === 'first-encounter' && event.personIds.length === 2
+        ? [[...event.personIds].sort().join('|')]
+        : []
+    )))].sort();
+  }
+  initializeHistoryCursorFromFullHistory(state);
+  const regionalSource = establishRegionalPopulation(state, state.clock.elapsedMonths);
+  if (regionalSource) {
+    const monthEvents = state.world.past.filter((event) => event.atMonth === state.clock.elapsedMonths);
+    regionalSource.orderInMonth = monthEvents.reduce(
+      (maximum, event) => Math.max(maximum, event.orderInMonth + 1),
+      0,
+    );
+    regionalSource.orderInTick = monthEvents
+      .filter((event) => (event.planningTick ?? 0) === 0)
+      .reduce((maximum, event) => Math.max(maximum, (event.orderInTick ?? event.orderInMonth) + 1), 0);
+    appendCommittedEvents(state, [regionalSource]);
+    state.lastStep = [...(state.lastStep ?? []), regionalSource];
+  }
   ensureAgentMemoryStore(state);
   normalizeStoredTechniqueLanguage(state);
   for (const drop of state.world.drops) {
@@ -446,19 +493,86 @@ export function adoptSimulationState(
       const birthFact = state.world.past.find((candidate) => candidate.kind === 'environment'
         && candidate.change === 'body'
         && candidate.diff.bornPersonId === person.id);
-      const sourceEventId = birthFact?.id ?? FOUNDER_COHORT_EVENT_ID;
+      const arrivalFact = person.origin?.kind === 'regional-arrival'
+        ? state.world.past.find((candidate): candidate is PopulationFact => candidate.kind === 'population'
+          && candidate.change === 'regional-arrival'
+          && candidate.personIds.includes(person.id))
+        : undefined;
+      const foundingFact = state.world.past.find((candidate) => candidate.kind === 'environment'
+        && candidate.change === 'founding'
+        && Array.isArray(candidate.diff.participantIds)
+        && candidate.diff.participantIds.includes(person.id));
+      const regionalOriginSourceId = person.origin?.kind === 'regional-arrival'
+        ? person.origin.sourceEventIds.at(-1)
+        : undefined;
+      if (person.origin?.kind === 'regional-arrival' && !arrivalFact && !regionalOriginSourceId) {
+        throw new Error(`区域人物 ${person.id} 缺少可回放的抵达来源，不能恢复 traits`);
+      }
+      const sourceEventId = person.origin?.kind === 'regional-arrival'
+        ? arrivalFact?.id ?? regionalOriginSourceId!
+        : birthFact?.id ?? foundingFact?.id ?? FOUNDER_COHORT_EVENT_ID;
       const mother = person.geneticParents
         .map((parentId) => state.people.find((candidate) => candidate.id === parentId))
         .find((parent): parent is PersonState => parent?.sex === 'female');
       const father = person.geneticParents
         .map((parentId) => state.people.find((candidate) => candidate.id === parentId))
         .find((parent): parent is PersonState => parent?.sex === 'male');
-      person.traits = person.generation === 0 || !mother
-        ? founderTraitsFor(person.id, sourceEventId)
-        : inheritPersonTraits(state.seed, person.id, mother, father).traits.map((trait) => ({ ...trait, sourceEventIds: [sourceEventId] }));
+      const regionalJourney = person.origin?.kind === 'regional-arrival'
+        ? state.regionalPopulation?.journeys.find((journey) => (
+          journey.id === person.origin?.journeyId || journey.traveler.personId === person.id
+        ))
+        : undefined;
+      const arrivalProfileId = typeof arrivalFact?.diff.profileId === 'string'
+        ? arrivalFact.diff.profileId
+        : undefined;
+      const regionalProfileId = regionalJourney?.profileId ?? arrivalProfileId;
+      const regionalSourceIds = [...new Set([
+        ...(person.origin?.sourceEventIds ?? []),
+        ...(arrivalFact ? [arrivalFact.id] : []),
+      ])].filter((eventId) => eventId !== FOUNDER_COHORT_EVENT_ID);
+      if (person.origin?.kind === 'regional-arrival') {
+        const restoredTraits = regionalJourney?.traveler.traits ?? (regionalProfileId
+          ? [
+              ...founderTraitsFor(regionalProfileId, sourceEventId),
+              ...spontaneousPersonTraits(
+                state.seed + state.civilization.number * 997,
+                person.id,
+                person.sex,
+              ).traits,
+            ]
+          : []);
+        person.traits = normalizePersonTraits(restoredTraits).map((trait) => ({
+          ...structuredClone(trait),
+          sourceEventIds: [...new Set([
+            ...trait.sourceEventIds.filter((eventId) => eventId !== FOUNDER_COHORT_EVENT_ID),
+            ...regionalSourceIds,
+          ])],
+        }));
+      } else {
+        person.traits = person.generation === 0 || !mother
+          ? founderTraitsFor(person.id, sourceEventId)
+          : inheritPersonTraits(state.seed, person.id, mother, father).traits.map((trait) => ({ ...trait, sourceEventIds: [sourceEventId] }));
+      }
       person.lifespanMonths = applyTraitLifespanModifier(person.lifespanMonths, person.traits);
       person.baselineCapacities = applyTraitCapacityModifiers(person.baselineCapacities, person.traits);
-      grantProphetKnowledge(person, person.bornAtMonth, sourceEventId);
+      const learnedAtMonth = Math.max(
+        person.bornAtMonth,
+        person.origin?.enteredAtMonth ?? birthFact?.atMonth ?? 0,
+      );
+      grantProphetKnowledge(
+        person,
+        learnedAtMonth,
+        sourceEventId,
+      );
+      if (person.origin?.kind === 'regional-arrival') {
+        for (const fact of person.knowledge.filter((candidate) => (
+          candidate.sourceEventIds.includes(sourceEventId)
+        ))) {
+          fact.learnedAtMonth = Math.max(fact.learnedAtMonth, learnedAtMonth);
+          fact.sourceEventIds = [...new Set(fact.sourceEventIds
+            .filter((eventId) => eventId !== FOUNDER_COHORT_EVENT_ID))];
+        }
+      }
     } else person.traits = normalizePersonTraits(person.traits);
     const socialLearning = cloneValidatedSocialLearningState(
       person,

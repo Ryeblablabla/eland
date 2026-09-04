@@ -58,7 +58,7 @@ function coalesceMissingAffordance(
       && agendaTopic(`${item.aim}；${item.approaches.map((approach) => approach.summary).join('；')}`) === proposalTopic
       && item.approaches.some((approach) => approach.disposition === 'missing-affordance')
   ));
-  const approach = existing?.approaches.findLast((candidate) => (
+  const approach = [...(existing?.approaches ?? [])].reverse().find((candidate) => (
     candidate.disposition === 'missing-affordance'
   ));
   return existing && approach ? {
@@ -174,10 +174,14 @@ function probeEntitySourceFactIds(context: DecisionContext, probe: CharacterAgen
 
 function stablePersonGroundingSourceIds(context: DecisionContext): string[] {
   const foundingOrOwnFact = context.state.world.past.find((event) => (
-    (event.kind === 'environment' && event.change === 'founding')
+    (event.kind === 'environment'
+      && event.change === 'founding'
+      && Array.isArray(event.diff.participantIds)
+      && event.diff.participantIds.includes(context.person.id))
       || ('who' in event && event.who === context.person.id)
   ));
   return uniqueIds([
+    ...(context.person.origin?.sourceEventIds ?? []),
     ...(context.person.traits ?? []).flatMap((trait) => trait.sourceEventIds),
     ...context.person.memories.slice(-4).flatMap((memory) => memory.sourceEventIds),
     ...context.person.knowledge.slice(-4).flatMap((fact) => fact.sourceEventIds),
@@ -910,8 +914,8 @@ export function reconcileCharacterAgendasForMonth(
       // so real success reopens the concern instead of leaving it incubating.
       const person = state.people.find((candidate) => candidate.id === event.who);
       if (!person || !intentIsTerminal(intent) || intent.actionEventIds.at(-1) !== event.id) continue;
-      const outcome = terminalIntentAgendaOutcome(intent);
-      if (outcome !== 'supported') continue;
+      const terminalOutcome = terminalIntentAgendaOutcome(intent);
+      if (terminalOutcome !== 'supported') continue;
       const agenda = characterAgendaStateOf(person, atMonth);
       const matched = agenda.items
         .filter((item) => item.status !== 'fulfilled' && item.status !== 'abandoned')
@@ -922,6 +926,12 @@ export function reconcileCharacterAgendasForMonth(
           .map((approach) => ({ item, approach })))
         .find(({ approach }) => approachSummaryMatchesIntent(approach.summary, intent.summary));
       if (!matched) continue;
+      // A successful attend action proves that attention happened, not that
+      // the larger concern or its causal story was supported. Even when an
+      // older/unbound intent is retro-matched, park it after this one sample.
+      const outcome = matched.approach.probe?.kind === 'observe' || event.action?.kind === 'attend'
+        ? 'parked'
+        : terminalOutcome;
       const evidence = intent.goalOutcome?.sourceEventIds?.length
         ? intent.goalOutcome.sourceEventIds
         : [event.id];
@@ -970,7 +980,7 @@ export function reconcileCharacterAgendasForMonth(
     const outcome = approach.probe
       ? outcomeForFact(event, approach.probe)
       : terminalWithoutProbe
-        ? terminalIntentAgendaOutcome(intent)
+        ? event.action.kind === 'attend' ? 'parked' : terminalIntentAgendaOutcome(intent)
         : undefined;
     if (!outcome) continue;
     const reconciled = reconcileCharacterAgendaApproach(

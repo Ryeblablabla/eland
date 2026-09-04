@@ -40,7 +40,6 @@ import {
   substantiveRelationshipEvidenceIds,
 } from '../domain/relationship-evidence';
 import { buildGroundedConversationOptions } from './conversation-options';
-import { personalityScore } from '../domain/personality';
 import {
   liveSocialEvidenceForPersonSource,
 } from '../domain/event-index';
@@ -64,8 +63,6 @@ import {
 import { relationTo } from '../domain/relation';
 import { defineActionOptionSemantics } from '../domain/action-option-semantics';
 import {
-  socialCooperationBeliefFor,
-  socialDimensionExpectation,
   socialLearningStateOf,
   recurringProjectDutySubjectKey,
   recurringProjectDutySubjectsEqual,
@@ -565,12 +562,13 @@ export function buildSocialOptions(
     const proposer = personById(state, incomingCompanion.fact.who);
     if (proposer) {
       const responseBasis = buildRelationshipCausalBasis(state, person, proposer, 'companion', atMonth);
-      if (hasCultivatedCompanionRelationship(state, person, proposer, responseBasis)) {
-        options.push({
-          ...responseOption(state, person, incomingCompanion.content.id, proposer, true, 'companion'),
-          relationshipBasis: responseBasis,
-        });
-      }
+      // Receiving a proposal is already a concrete social fact.  Relationship
+      // scores inform the model's choice; they must not erase either consent
+      // branch before the person gets to decide.
+      options.push({
+        ...responseOption(state, person, incomingCompanion.content.id, proposer, true, 'companion'),
+        relationshipBasis: responseBasis,
+      });
       options.push({
         ...responseOption(state, person, incomingCompanion.content.id, proposer, false, 'companion'),
         relationshipBasis: responseBasis,
@@ -770,126 +768,158 @@ export function buildSocialOptions(
       return Boolean(member && positionsCanShareLanguage(member.position, person.position));
     });
     const activeMembers = activeMemberIds(state, collective)
-      .flatMap((id) => personById(state, id) ?? []);
+      .flatMap((id) => personById(state, id) ?? [])
+      .sort((left, right) => left.id.localeCompare(right.id));
+    const canConveneGovernance = allMembersHere
+      && activeMembers.length >= 2
+      && activeMembers.some((member) => member.id === person.id);
     const requiredMemberApprovals = activeMembers.map((member) => member.id).filter((id) => id !== person.id);
-    const governancePractice = supportedMemberPractices(person, memberIds)[0];
-    const initiativeMember = [...activeMembers].sort((a, b) =>
-      (b.motiveSensitivity.status + personalityScore(b, 'extraversion') * 0.35 + b.baselineCapacities.cognition)
-        - (a.motiveSensitivity.status + personalityScore(a, 'extraversion') * 0.35 + a.baselineCapacities.cognition)
-      || a.id.localeCompare(b.id))[0];
+    const collectiveGovernancePractices = activeMembers
+      .flatMap((member) => supportedMemberPractices(member, memberIds));
+    const governancePracticeSourceFactIds = [...new Set([
+      ...collective.sourceEventIds,
+      ...collectiveGovernancePractices.flatMap((practice) => practice.sourceFactIds),
+    ])];
+    const hasGovernancePractice = collectiveGovernancePractices.length > 0
+      || collective.decisionRules.some((rule) => rule.status === 'active');
+    const groupMaterials = new Map<number, number>();
+    for (const member of activeMembers) for (const stack of member.inventory) {
+      if (stack.quantity > 0) {
+        groupMaterials.set(stack.materialId, (groupMaterials.get(stack.materialId) ?? 0) + stack.quantity);
+      }
+    }
+    const materialDemandProjects = (materialId: number) => state.projects.filter((project) => (
+      project.status === 'active'
+        && project.missingMaterialIds.includes(materialId)
+        && project.beneficiaryIds.some((personId) => memberIds.has(personId))
+    ));
+    const materialCoordinationSourceFactIds = (materialId: number): string[] => [...new Set([
+      ...activeMembers.flatMap((member) => member.inventory
+        .filter((stack) => stack.materialId === materialId && stack.quantity > 0)
+        .flatMap((stack) => stack.sourceEventIds)),
+      ...materialDemandProjects(materialId).flatMap((project) => currentProjectDutySources(project)),
+    ])];
+    const materialNeedsCoordination = (materialId: number): boolean => {
+      const quantities = activeMembers.map((member) => inventoryQuantity(member, materialId));
+      const unequalAccess = Math.max(...quantities) >= 2 && Math.min(...quantities) === 0;
+      const immediateNeed = materialHas(materialId, 'edible')
+        && activeMembers.some((member) => member.body.nutrition < 68);
+      const projectNeed = materialDemandProjects(materialId).length > 0;
+      return (groupMaterials.get(materialId) ?? 0) >= 2
+        && unequalAccess
+        && (immediateNeed || projectNeed);
+    };
     const pendingDecisionRule = agreementsForPerson(state, person.id).some((agreement) => agreement.status === 'proposed'
       && agreement.proposal.kind === 'decision-rule'
       && agreement.proposal.collectiveId === collective.id);
-    const recurringDutyOpportunity = supportedRecurringDutyPractices(person, memberIds)
+    const recurringDutyOpportunities = supportedRecurringDutyPractices(person, memberIds)
       .flatMap((practice) => {
         const project = currentProjectForRecurringDuty(state, practice);
         return project ? [{ practice, project }] : [];
-      })[0];
-    if (allMembersHere
-      && !pendingDecisionRule
-      && recurringDutyOpportunity
-      && !collective.decisionRules.some((rule) => rule.status === 'active'
-        && rule.scope === 'assign-recurring-duty'
-        && recurringProjectDutySubjectsEqual(rule.projectDuty, recurringDutyOpportunity.practice.projectDuty))) {
-      const { practice, project } = recurringDutyOpportunity;
+      })
+      .filter(({ practice, project }, index, candidates) => candidates.findIndex((candidate) => (
+        candidate.project.id === project.id
+          && recurringProjectDutySubjectsEqual(candidate.practice.projectDuty, practice.projectDuty)
+      )) === index);
+    for (const { practice, project } of recurringDutyOpportunities) {
       const dutyKey = recurringProjectDutySubjectKey(practice.projectDuty);
-      const representationId = `offer-recurring-duty-rule:${atMonth}:${collective.id}:${dutyKey}:${project.id}`;
-      options.push({
-        id: representationId,
-        summary: `提议以全体同意为反复承担${project.summary}职责建立限期授权规则`,
-        reason: '本人在不同月份亲历同一成员两次完成相同项目职责，且现在已有第三个同类项目需要继续承担；规则只约定如何限期授权',
-        goal: { kind: 'representation-made', representationId },
-        nextAction: {
-          kind: 'talk',
-          speakerMeaning: {
-            id: representationId,
-            kind: 'offer',
-            summary: `今后为${practice.projectDuty.desiredFunction}项目限期指定承担者，必须每位成员都明确同意`,
-            proposal: {
-              kind: 'decision-rule',
-              proposerId: person.id,
-              partnerId: requiredMemberApprovals[0]!,
-              collectiveId: collective.id,
-              requiredApproverIds: requiredMemberApprovals,
-              method: 'unanimous',
-              scope: 'assign-recurring-duty',
-              projectDuty: structuredClone(practice.projectDuty),
-              mandateDurationMonths: 12,
-              expiresAtMonth: atMonth + 6,
-            },
-          },
-        },
-        target: { kind: 'person', personId: practice.targetPersonId },
-        estimatedDuration: 'one-month',
-        estimatedMonths: 1,
-        risks: ['任何一名成员拒绝都会使规则提议终止'],
-        domain: 'social',
-        sourceFactIds: [...new Set([
-          ...collective.sourceEventIds,
-          ...practice.sourceFactIds,
-          ...currentProjectDutySources(project),
-        ])],
-        semantics: commitmentActionSemantics('adult', ['commitment', 'belonging'], {
-          cooperationKind: 'governance',
-          phase: 'proposal',
-          counterpartIds: requiredMemberApprovals,
-          referenceId: representationId,
-          projectId: project.id,
-          projectKind: dutyKey,
-        }),
-      });
-    }
-    if (allMembersHere
-      && initiativeMember?.id === person.id
-      && !collective.decisionRules.some((rule) => rule.status === 'active'
-        && rule.scope === 'coordinate-material')
-      && !pendingDecisionRule
-      && governancePractice) {
-      const groupMaterials = new Map<number, number>();
-      for (const member of activeMembers) for (const stack of member.inventory) {
-        if (stack.quantity > 0) groupMaterials.set(stack.materialId, (groupMaterials.get(stack.materialId) ?? 0) + stack.quantity);
-      }
-      const coordinationCandidate = [...groupMaterials]
-        .filter(([materialId, total]) => {
-          const quantities = activeMembers.map((member) => inventoryQuantity(member, materialId));
-          const unequalAccess = Math.max(...quantities) >= 2 && Math.min(...quantities) === 0;
-          const immediateNeed = materialHas(materialId, 'edible')
-            && activeMembers.some((member) => member.body.nutrition < 68);
-          const projectNeed = state.projects.some((project) => project.status === 'active'
-            && project.missingMaterialIds.includes(materialId)
-            && project.beneficiaryIds.some((personId) => memberIds.has(personId)));
-          return total >= 2 && unequalAccess && (immediateNeed || projectNeed);
-        })
-        .sort((a, b) => b[1] - a[1] || a[0] - b[0])[0];
-      if (coordinationCandidate) {
-        const [materialId] = coordinationCandidate;
-        const representationId = `offer-decision-rule:${atMonth}:${collective.id}:${person.id}:${materialId}`;
+      if (!canConveneGovernance
+        || pendingDecisionRule
+        || collective.decisionRules.some((rule) => rule.status === 'active'
+          && rule.scope === 'assign-recurring-duty'
+          && recurringProjectDutySubjectsEqual(rule.projectDuty, practice.projectDuty))) continue;
+      for (const method of ['majority-vote', 'unanimous'] as const) {
+        const methodLabel = method === 'majority-vote' ? '多数表决' : '全体同意';
+        const representationId = `offer-recurring-duty-rule:${atMonth}:${collective.id}:${person.id}:${dutyKey}:${project.id}:${method}`;
         options.push({
           id: representationId,
-          summary: `提议以全体同意选择${materialDefinition(materialId).name}的临时协调者`,
-          reason: '共同体成员对同一种必需物的持有明显不均，且已经出现身体或项目需求；需要先共同接受如何选择临时协调者',
+          summary: `提议以${methodLabel}为反复承担${project.summary}职责建立限期授权规则`,
+          reason: '本人在不同月份亲历同一成员两次完成相同项目职责，且现在已有第三个同类项目需要继续承担；表决方式本身也由成员选择',
           goal: { kind: 'representation-made', representationId },
           nextAction: {
             kind: 'talk',
-            speakerMeaning: { id: representationId, kind: 'offer', summary: `以后由谁临时协调${materialDefinition(materialId).name}，必须每位成员都明确同意`, proposal: {
-              kind: 'decision-rule', proposerId: person.id, partnerId: requiredMemberApprovals[0]!,
-              collectiveId: collective.id, requiredApproverIds: requiredMemberApprovals,
-              method: 'unanimous', scope: 'coordinate-material', materialId,
-              mandateDurationMonths: 12, expiresAtMonth: atMonth + 6,
-            } },
+            speakerMeaning: {
+              id: representationId,
+              kind: 'offer',
+              summary: `今后为${practice.projectDuty.desiredFunction}项目限期指定承担者，采用${methodLabel}`,
+              proposal: {
+                kind: 'decision-rule',
+                proposerId: person.id,
+                partnerId: requiredMemberApprovals[0]!,
+                collectiveId: collective.id,
+                requiredApproverIds: requiredMemberApprovals,
+                method,
+                scope: 'assign-recurring-duty',
+                projectDuty: structuredClone(practice.projectDuty),
+                mandateDurationMonths: 12,
+                expiresAtMonth: atMonth + 6,
+              },
+            },
           },
-          estimatedDuration: 'one-month', estimatedMonths: 1,
-          risks: ['任何一名成员拒绝都会使规则提议终止'], domain: 'social', sourceFactIds: [...new Set([
+          target: { kind: 'person', personId: practice.targetPersonId },
+          estimatedDuration: 'one-month',
+          estimatedMonths: 1,
+          risks: [method === 'majority-vote' ? '支持票不足半数时提议失败' : '任何一名成员反对都会使提议失败'],
+          domain: 'social',
+          sourceFactIds: [...new Set([
             ...collective.sourceEventIds,
-            ...governancePractice.sourceFactIds,
+            ...practice.sourceFactIds,
+            ...currentProjectDutySources(project),
           ])],
+          semantics: commitmentActionSemantics('adult', ['commitment', 'belonging'], {
+            cooperationKind: 'governance',
+            phase: 'proposal',
+            counterpartIds: requiredMemberApprovals,
+            referenceId: representationId,
+            projectId: project.id,
+            projectKind: dutyKey,
+          }),
         });
+      }
+    }
+    if (canConveneGovernance
+      && !pendingDecisionRule
+      && hasGovernancePractice) {
+      const coordinationCandidates = [...groupMaterials]
+        .filter(([materialId]) => {
+          const alreadyGoverned = collective.decisionRules.some((rule) => rule.status === 'active'
+            && rule.scope === 'coordinate-material'
+            && rule.materialId === materialId);
+          return !alreadyGoverned && materialNeedsCoordination(materialId);
+        })
+        .sort((left, right) => left[0] - right[0]);
+      for (const [materialId] of coordinationCandidates) {
+        for (const method of ['majority-vote', 'unanimous'] as const) {
+          const methodLabel = method === 'majority-vote' ? '多数表决' : '全体同意';
+          const representationId = `offer-decision-rule:${atMonth}:${collective.id}:${person.id}:${materialId}:${method}`;
+          options.push({
+            id: representationId,
+            summary: `提议以${methodLabel}选择${materialDefinition(materialId).name}的临时协调者`,
+            reason: '共同体成员对同一种必需物的持有明显不均，且已经出现身体或项目需求；需要先共同选择如何产生临时协调者',
+            goal: { kind: 'representation-made', representationId },
+            nextAction: {
+              kind: 'talk',
+              speakerMeaning: { id: representationId, kind: 'offer', summary: `以后由谁临时协调${materialDefinition(materialId).name}，采用${methodLabel}`, proposal: {
+                kind: 'decision-rule', proposerId: person.id, partnerId: requiredMemberApprovals[0]!,
+                collectiveId: collective.id, requiredApproverIds: requiredMemberApprovals,
+                method, scope: 'coordinate-material', materialId,
+                mandateDurationMonths: 12, expiresAtMonth: atMonth + 6,
+              } },
+            },
+            estimatedDuration: 'one-month', estimatedMonths: 1,
+            risks: [method === 'majority-vote' ? '支持票不足半数时提议失败' : '任何一名成员反对都会使提议失败'],
+            domain: 'social', sourceFactIds: [...new Set([
+              ...governancePracticeSourceFactIds,
+              ...materialCoordinationSourceFactIds(materialId),
+            ])],
+          });
+        }
       }
     }
     const pendingMandate = agreementsForPerson(state, person.id).some((agreement) => agreement.status === 'proposed'
       && agreement.proposal.kind === 'mandate'
       && agreement.proposal.collectiveId === collective.id);
-    const dutyMandateOpportunity = collective.decisionRules
+    const dutyMandateOpportunities = collective.decisionRules
       .filter((candidate): candidate is RecurringDutyDecisionRule => (
         candidate.status === 'active' && candidate.scope === 'assign-recurring-duty'
       ))
@@ -907,106 +937,110 @@ export function buildSocialOptions(
           return project && !activeMandate && renewalReady
             ? [{ rule: dutyRule, practice, project }]
             : [];
-        }))[0];
-    if (allMembersHere && !pendingMandate && dutyMandateOpportunity) {
-      const { rule: dutyRule, practice, project } = dutyMandateOpportunity;
-      const holder = personById(state, practice.targetPersonId)!;
-      const dutyKey = recurringProjectDutySubjectKey(dutyRule.projectDuty);
-      const representationId = `offer-recurring-duty-mandate:${atMonth}:${collective.id}:${dutyRule.id}:${holder.id}:${project.id}`;
-      options.push({
-        id: representationId,
-        summary: `提议由${holder.name}限期承担${project.summary}中的既有职责`,
-        reason: '成员已经全体接受职责授权规则；本人对候选人有两个不同月份、不同项目的真实履约证据，且候选人已在当前同类项目中',
-        goal: { kind: 'representation-made', representationId },
-        nextAction: {
-          kind: 'talk',
-          speakerMeaning: {
-            id: representationId,
-            kind: 'offer',
-            summary: `我提议由${holder.name}在未来${dutyRule.mandateDurationMonths}个月承担当前${project.summary}的同类职责`,
-            proposal: {
-              kind: 'mandate',
-              proposerId: person.id,
-              partnerId: requiredMemberApprovals[0]!,
-              collectiveId: collective.id,
-              decisionRuleId: dutyRule.id,
-              holderId: holder.id,
-              projectId: project.id,
-              requiredApproverIds: requiredMemberApprovals,
-              expiresAtMonth: atMonth + 6,
-            },
-          },
-        },
-        target: { kind: 'person', personId: holder.id },
-        estimatedDuration: 'one-month',
-        estimatedMonths: 1,
-        risks: ['授权只绑定已经存在的合法项目；没有真实进度与完成就不算履行'],
-        domain: 'social',
-        sourceFactIds: [...new Set([
-          ...dutyRule.sourceEventIds,
-          ...practice.sourceFactIds,
-          ...currentProjectDutySources(project),
-        ])],
-        semantics: commitmentActionSemantics('adult', ['commitment', 'belonging'], {
-          cooperationKind: 'governance',
-          phase: 'proposal',
-          counterpartIds: requiredMemberApprovals,
-          referenceId: representationId,
-          projectId: project.id,
-          projectKind: dutyKey,
-        }),
-      });
-    }
-    const rule = collective.decisionRules.find((candidate): candidate is MaterialDecisionRule => (
-      candidate.status === 'active' && candidate.scope === 'coordinate-material'
-    ));
-    const activeMandate = collective.mandates.find((candidate) => candidate.status === 'active'
-      && candidate.decisionRuleId === rule?.id);
-    const lastMandate = [...collective.mandates]
-      .filter((candidate) => candidate.decisionRuleId === rule?.id)
-      .sort((a, b) => (b.endedAtMonth ?? b.validUntilMonth) - (a.endedAtMonth ?? a.validUntilMonth))[0];
-    const renewalReady = !lastMandate
-      || atMonth - (lastMandate.endedAtMonth ?? lastMandate.validUntilMonth) >= 24;
-    if (allMembersHere
-      && initiativeMember?.id === person.id
-      && rule
-      && !activeMandate
-      && !pendingMandate
-      && renewalReady) {
-      const holderPreference = (candidate: PersonState) => (
-        personalityScore(candidate, 'agreeableness')
-        + personalityScore(candidate, 'conscientiousness')
-        + candidate.baselineCapacities.communication
-        + (socialDimensionExpectation(
-          socialCooperationBeliefFor(person, candidate.id, 'mandate-resource-coordination'),
-          'reliability', atMonth,
-        ) - 0.5) * 30
-      );
-      const holder = [...activeMembers].sort((a, b) => inventoryQuantity(b, rule.materialId) - inventoryQuantity(a, rule.materialId)
-        || holderPreference(b) - holderPreference(a)
-        || a.id.localeCompare(b.id))[0];
-      if (holder) {
-        const holderReliability = socialCooperationBeliefFor(person, holder.id, 'mandate-resource-coordination');
-        const representationId = `offer-mandate:${atMonth}:${collective.id}:${person.id}:${holder.id}:${rule.id}`;
+        }))
+      .filter(({ rule, practice, project }, index, candidates) => candidates.findIndex((candidate) => (
+        candidate.rule.id === rule.id
+          && candidate.practice.targetPersonId === practice.targetPersonId
+          && candidate.project.id === project.id
+      )) === index);
+    if (canConveneGovernance && !pendingMandate) {
+      for (const {
+        rule: dutyRule,
+        practice,
+        project,
+      } of dutyMandateOpportunities) {
+        const holder = personById(state, practice.targetPersonId);
+        if (!holder || !memberIds.has(holder.id)) continue;
+        const dutyKey = recurringProjectDutySubjectKey(dutyRule.projectDuty);
+        const representationId = `offer-recurring-duty-mandate:${atMonth}:${collective.id}:${person.id}:${dutyRule.id}:${holder.id}:${project.id}`;
         options.push({
           id: representationId,
-          summary: `提议由${holder.name}限期协调${materialDefinition(rule.materialId).name}`,
-          reason: '成员已经共同接受选择规则，现在可以分别判断由谁承担有限职责',
+          summary: `提议由${holder.name}限期承担${project.summary}中的既有职责`,
+          reason: '成员已经全体接受职责授权规则；本人对候选人有两个不同月份、不同项目的真实履约证据，且候选人已在当前同类项目中',
           goal: { kind: 'representation-made', representationId },
           nextAction: {
             kind: 'talk',
-            speakerMeaning: { id: representationId, kind: 'offer', summary: `我提议由${holder.name}在未来${rule.mandateDurationMonths}个月协调${materialDefinition(rule.materialId).name}`, proposal: {
-              kind: 'mandate', proposerId: person.id, partnerId: requiredMemberApprovals[0]!,
-              collectiveId: collective.id, decisionRuleId: rule.id, holderId: holder.id,
-              requiredApproverIds: requiredMemberApprovals, expiresAtMonth: atMonth + 6,
-            } },
+            speakerMeaning: {
+              id: representationId,
+              kind: 'offer',
+              summary: `我提议由${holder.name}在未来${dutyRule.mandateDurationMonths}个月承担当前${project.summary}的同类职责`,
+              proposal: {
+                kind: 'mandate',
+                proposerId: person.id,
+                partnerId: requiredMemberApprovals[0]!,
+                collectiveId: collective.id,
+                decisionRuleId: dutyRule.id,
+                holderId: holder.id,
+                projectId: project.id,
+                requiredApproverIds: requiredMemberApprovals,
+                expiresAtMonth: atMonth + 6,
+              },
+            },
           },
-          target: { kind: 'person', personId: holder.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
-          risks: ['授权有期限，且协调者不能强取任何成员的私人背包'], domain: 'social', sourceFactIds: [...new Set([
-            ...rule.sourceEventIds,
-            ...(holderReliability?.sourceEventIds ?? []),
+          target: { kind: 'person', personId: holder.id },
+          estimatedDuration: 'one-month',
+          estimatedMonths: 1,
+          risks: ['授权只绑定已经存在的合法项目；没有真实进度与完成就不算履行'],
+          domain: 'social',
+          sourceFactIds: [...new Set([
+            ...dutyRule.sourceEventIds,
+            ...practice.sourceFactIds,
+            ...currentProjectDutySources(project),
           ])],
+          semantics: commitmentActionSemantics('adult', ['commitment', 'belonging'], {
+            cooperationKind: 'governance',
+            phase: 'proposal',
+            counterpartIds: requiredMemberApprovals,
+            referenceId: representationId,
+            projectId: project.id,
+            projectKind: dutyKey,
+          }),
         });
+      }
+    }
+    const materialRules = collective.decisionRules.filter((candidate): candidate is MaterialDecisionRule => (
+      candidate.status === 'active'
+        && candidate.scope === 'coordinate-material'
+        && materialNeedsCoordination(candidate.materialId)
+    ));
+    if (canConveneGovernance && !pendingMandate) {
+      for (const rule of materialRules) {
+        const activeMandate = collective.mandates.some((candidate) => candidate.status === 'active'
+          && candidate.decisionRuleId === rule.id);
+        const lastMandate = [...collective.mandates]
+          .filter((candidate) => candidate.decisionRuleId === rule.id)
+          .sort((a, b) => (b.endedAtMonth ?? b.validUntilMonth)
+            - (a.endedAtMonth ?? a.validUntilMonth))[0];
+        const renewalReady = !lastMandate
+          || atMonth - (lastMandate.endedAtMonth ?? lastMandate.validUntilMonth) >= 24;
+        if (activeMandate || !renewalReady) continue;
+        for (const holder of activeMembers) {
+          const holderMembership = collective.memberships.find((membership) => (
+            membership.personId === holder.id && membership.status === 'active'
+          ));
+          if (!holderMembership) continue;
+          const representationId = `offer-mandate:${atMonth}:${collective.id}:${person.id}:${holder.id}:${rule.id}`;
+          options.push({
+            id: representationId,
+            summary: `提议由${holder.name}限期协调${materialDefinition(rule.materialId).name}`,
+            reason: '成员已经共同接受选择规则，现在可以分别判断由谁承担有限职责',
+            goal: { kind: 'representation-made', representationId },
+            nextAction: {
+              kind: 'talk',
+              speakerMeaning: { id: representationId, kind: 'offer', summary: `我提议由${holder.name}在未来${rule.mandateDurationMonths}个月协调${materialDefinition(rule.materialId).name}`, proposal: {
+                kind: 'mandate', proposerId: person.id, partnerId: requiredMemberApprovals[0]!,
+                collectiveId: collective.id, decisionRuleId: rule.id, holderId: holder.id,
+                requiredApproverIds: requiredMemberApprovals, expiresAtMonth: atMonth + 6,
+              } },
+            },
+            target: { kind: 'person', personId: holder.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
+            risks: ['授权有期限，且协调者不能强取任何成员的私人背包'], domain: 'social', sourceFactIds: [...new Set([
+              ...rule.sourceEventIds,
+              ...holderMembership.sourceEventIds,
+              ...materialCoordinationSourceFactIds(rule.materialId),
+            ])],
+          });
+        }
       }
     }
     const candidates = allMembersHere ? conversationalPeople.filter((other) => {
@@ -1200,7 +1234,6 @@ export function buildSocialOptions(
   }
 
   for (const other of [...conversationalPeople].sort((left, right) => left.id.localeCompare(right.id))) {
-    const relation = relationTo(person, other.id);
     const relationshipSourceFactIds = substantiveRelationshipEvidenceIds(state, person, other);
     const companionBasis = buildRelationshipCausalBasis(state, person, other, 'companion', atMonth);
     const need: 'water' | 'food' | null = person.body.hydration < 45 ? 'water' : person.body.nutrition < 45 ? 'food' : null;
@@ -1215,14 +1248,12 @@ export function buildSocialOptions(
         target: { kind: 'person', personId: other.id }, estimatedDuration: 'one-month', estimatedMonths: 1, risks: [], domain: 'social', sourceFactIds: [],
       });
     }
-    const locallyApproachable = Math.max(0, relation?.trust ?? 0) + Math.max(0, relation?.bond ?? 0)
-      >= Math.max(0, relation?.fear ?? 0);
-    if (locallyApproachable
-      // Mere co-location does not justify installing a formal companionship
-      // request/agreement. People can first talk through the optional grounded
-      // conversation path; this stronger proposal needs one replayable shared
-      // relationship event chosen from the requester's own evidence.
-      && relationshipSourceFactIds.length > 0
+    // Mere co-location does not justify installing a formal companionship
+    // request/agreement. People can first talk through the optional grounded
+    // conversation path; this stronger proposal needs one replayable shared
+    // relationship event chosen from the requester's own evidence. Trust,
+    // bond and fear remain visible context for the model, not an option gate.
+    if (relationshipSourceFactIds.length > 0
       && !hasCultivatedCompanionRelationship(state, person, other, companionBasis)
       && !companyAssistInFlightBetween(state, person.id, other.id)
       && canRequestCompanyWithCurrentBasis(state, person.id, other.id, relationshipSourceFactIds, atMonth)
@@ -1256,7 +1287,7 @@ export function buildSocialOptions(
       options.push({
         id: representationId,
         summary: `邀请${other.name}结伴行动`,
-        reason: '彼此的信任与羁绊已达到结伴门槛，结伴可能降低长期风险',
+        reason: '提出只开启一次可以被拒绝的讨论；是否值得结伴由本人依据关系经历与当前打算判断',
         goal: { kind: 'representation-made', representationId },
         nextAction: { kind: 'talk', speakerMeaning: { id: representationId, kind: 'offer', summary: '希望以这里为稳定生活地点，各自行动但持续共同生活', proposal: { kind: 'companion', proposerId: person.id, partnerId: other.id, expiresAtMonth: atMonth + 6, basis: companionBasis, sharedLivingAnchor: { version: 'shared-living-anchor-v1', cellId: person.position.cellId, z: person.position.z, radius: SHARED_LIVING_RADIUS } } } },
         target: { kind: 'person', personId: other.id }, estimatedDuration: 'one-month', estimatedMonths: 1, risks: [], domain: 'social', sourceFactIds: companionBasis.sourceFactIds,
@@ -1279,7 +1310,6 @@ export function buildSocialOptions(
     if (!personCollectives.some((collective) => collective.status === 'active')
       && !activeCollectivesFor(state, other.id).some((collective) => collective.status === 'active')
       && collectivePractice
-      && (relation?.trust ?? 0) >= 6
       && !hasOpenCollectiveOfferBetween(state, person.id, other.id)
       && !hasOpenCollectiveOfferBetween(state, other.id, person.id)) {
       const representationId = `offer-collective:${atMonth}:${person.id}:${other.id}`;

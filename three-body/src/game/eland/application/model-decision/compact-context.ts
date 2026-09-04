@@ -409,6 +409,7 @@ export function buildCompactDecisionRequestContext(
         ...(exactUtterance ? { exactUtterance } : {}),
       })),
       recentMentalActs: context.person.recentMentalActs,
+      relationshipEpisodes: context.person.relationshipEpisodes,
       kinship: {
         parents: context.person.kinship.parents.map(({ name, sex, relation }) => ({ name, sex, relation })),
         children: context.person.kinship.children.map(({ name, sex, relation }) => ({ name, sex, relation })),
@@ -451,8 +452,16 @@ export function buildCompactDecisionRequestContext(
           summary, disposition, ...(latestOutcome ? { latestOutcome } : {}),
         })),
       })),
-      suspendedIntents: context.suspendedIntents.slice(0, 1).map(({ summary, progress, nextActionKind }) => ({
-        summary, progress, nextActionKind,
+      suspendedIntents: context.suspendedIntents.map((intent) => ({
+        handle: handles.suspendedIntents.find((candidate) => candidate.intentId === intent.id)?.handle,
+        summary: intent.summary,
+        progress: intent.progress,
+        nextActionKind: intent.nextActionKind,
+        createdAtMonth: intent.createdAtMonth,
+        lastProgressAtMonth: intent.lastProgressAtMonth,
+        ...(intent.waitingFor ? { waitingFor: intent.waitingFor } : {}),
+        ...(intent.plan ? { plan: intent.plan } : {}),
+        ...(intent.recentOutcomes ? { recentOutcomes: intent.recentOutcomes } : {}),
       })),
       agreements: context.agreements.slice(0, 3).map((agreement) => ({
         kind: agreement.kind,
@@ -460,6 +469,10 @@ export function buildCompactDecisionRequestContext(
         ...(agreement.dueAtMonth !== undefined ? { dueAtMonth: agreement.dueAtMonth } : {}),
         requiresOwnResponse: agreement.requiredResponderIds.includes(context.person.id),
         acceptedBySelf: agreement.acceptedByPersonIds.includes(context.person.id),
+        rejectedBySelf: agreement.rejectedByPersonIds.includes(context.person.id),
+        electorateCount: agreement.partyIds.length,
+        supportCount: agreement.acceptedByPersonIds.length,
+        oppositionCount: agreement.rejectedByPersonIds.length,
         fulfilledBySelf: agreement.fulfilledByPersonIds.includes(context.person.id),
       })),
       collectives: context.collectives.slice(0, 1).map(({ purposeSummary, status, activeMemberIds, decisionRules, mandates }) => ({

@@ -12,7 +12,7 @@ import {
 } from '../domain/relationship-evidence';
 import { openReproductionOfferFor } from '../domain/social-facts';
 import { personById } from '../domain/state-index';
-import { hasTrait, reproductiveUpperAgeMonths } from '../domain/trait';
+import { reproductiveUpperAgeMonths } from '../domain/trait';
 import { defineActionOptionSemantics } from '../domain/action-option-semantics';
 import { perceivedKinshipRisk } from './reproductive-risk';
 
@@ -30,14 +30,18 @@ function reproductivePairEligible(first: PersonState, second: PersonState, atMon
   ) >= 55;
 }
 
-function succubusPairEligible(actor: PersonState, partner: PersonState, atMonth: number): boolean {
-  if (!isAlive(actor) || !isAlive(partner)
-    || actor.id === partner.id
-    || actor.sex !== 'female'
-    || partner.sex !== 'male'
-    || !hasTrait(actor, 'succubus')) return false;
-  if (ageMonths(actor, atMonth) < 16 * 12 || ageMonths(partner, atMonth) < 16 * 12) return false;
-  return !actor.conditions.some((condition) => condition.kind === 'pregnancy');
+/**
+ * A formal proposal needs two living adults with a biologically possible
+ * pairing. Temporary reserves, pregnancy, and recovery belong to execution:
+ * people may still discuss the future while their bodies are not ready now.
+ */
+function reproductiveProposalPairEligible(first: PersonState, second: PersonState, atMonth: number): boolean {
+  if (!isAlive(first) || !isAlive(second) || first.id === second.id || first.sex === second.sex) return false;
+  const female = first.sex === 'female' ? first : second;
+  const male = first.sex === 'male' ? first : second;
+  return ageMonths(female, atMonth) >= 16 * 12
+    && ageMonths(female, atMonth) <= reproductiveUpperAgeMonths(female)
+    && ageMonths(male, atMonth) >= 16 * 12;
 }
 
 export function buildReproductionOptions(
@@ -130,10 +134,15 @@ export function buildReproductionOptions(
         ...responseBasis.sourceFactIds,
         ...perceivedRisk.sourceFactIds,
       ])];
-      if (reproductivePairEligible(person, proposer, atMonth)) options.push({
+      const bodiesReadyNow = reproductivePairEligible(person, proposer, atMonth);
+      options.push({
         id: `accept-reproduce:${incomingOffer.content.id}`,
         summary: `接受${proposer.name}的共同生殖提议`,
-        reason: learnedRisk ? '过去的后代体弱或疾病记忆会进入本人的同意判断' : '本人将依据关系、人格和当前责任自行判断是否接受',
+        reason: learnedRisk
+          ? '过去的后代体弱或疾病记忆会进入本人的同意判断'
+          : bodiesReadyNow
+            ? '本人将依据有来源经历、人格和当前责任自行判断是否接受'
+            : '同意只形成可撤回的共同尝试窗口；当前身体不适合执行，但不替本人决定是否谈论未来',
         goal: { kind: 'representation-made', representationId },
         nextAction: together ? acceptAction : { kind: 'move', toCellId: proposer.position.cellId, toZ: proposer.position.z },
         ...(!together ? { completionAction: acceptAction } : {}),
@@ -183,38 +192,9 @@ export function buildReproductionOptions(
     }
   }
 
-  const succubusTrait = person.traits?.find((trait) => trait.id === 'succubus');
-  if (succubusTrait) {
-    const unilateralCandidates = visiblePeople
-      .filter((other) => succubusPairEligible(person, other, atMonth))
-      .filter((other) => !reproductionAttemptedBetweenInMonth(state, person.id, other.id, atMonth))
-      .sort((left, right) => left.id.localeCompare(right.id));
-    for (const reproductivePartner of unilateralCandidates) {
-      const together = sameLocation(reproductivePartner, person);
-      const reproduceAction = {
-        kind: 'act' as const,
-        operation: 'reproduce' as const,
-        targets: [{ kind: 'person' as const, personId: reproductivePartner.id }],
-      };
-      options.push({
-        id: `reproduce:succubus:${person.id}:${reproductivePartner.id}`,
-        summary: `以魅魔特质与${reproductivePartner.name}进行单方生殖尝试`,
-        reason: '魅魔特质让本人能够以单方同意越过关系、协议、家庭准备度与身体储备门槛',
-        goal: { kind: 'condition', personId: person.id, condition: 'pregnancy', present: true },
-        nextAction: together
-          ? reproduceAction
-          : { kind: 'move', toCellId: reproductivePartner.position.cellId, toZ: reproductivePartner.position.z },
-        ...(!together ? { completionAction: reproduceAction } : {}),
-        target: { kind: 'person', personId: reproductivePartner.id },
-        estimatedDuration: together ? 'one-month' : 'several-months',
-        sourceFactIds: [...succubusTrait.sourceEventIds],
-      });
-    }
-  }
-
   const reproductiveCandidates = visiblePeople.filter((other) => {
     if (activeReproductionAgreement) return false;
-    return reproductivePairEligible(person, other, atMonth);
+    return reproductiveProposalPairEligible(person, other, atMonth);
   }).map((other) => ({
     other,
     basis: buildRelationshipCausalBasis(state, person, other, 'reproduce', atMonth),
@@ -230,9 +210,9 @@ export function buildReproductionOptions(
         summary: `向${reproductivePartner.name}提出共同生殖`,
         reason: perceivedRisk.cost > 0
           ? '本人记得这段亲缘可能增加后代风险，是否提议仍由本人权衡'
-          : together
-            ? '彼此已有可追溯的共同经历，且身体条件允许本人考虑生殖'
-            : '彼此已有可追溯的共同经历，对方可见且身体条件允许本人考虑生殖',
+          : basis.relationshipKeys.length > 0
+            ? '本人可依据彼此有来源的共同经历自行决定是否提出，对方仍可拒绝'
+            : '提出只开启双方讨论，不预设亲密关系、接受或实际生殖结果',
         goal: { kind: 'representation-made', representationId },
         nextAction: together ? {
           kind: 'talk',

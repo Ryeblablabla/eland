@@ -90,14 +90,28 @@ export interface DecisionRequestContext {
     currentChoice: string;
     currentAction: string;
     position: { cellId: number; z: number };
-    inventory: Array<{ stackId: string; name: string; properties: string[]; perception: PerceivedMaterialProfile; quantity: number }>;
-    knowledge: Array<{ id: string; summary: string; confidence: number }>;
+    inventory: Array<{
+      stackId: string; materialId: number; name: string; properties: string[];
+      perception: PerceivedMaterialProfile; quantity: number;
+    }>;
+    knowledge: Array<{ id: string; kind: string; summary: string; confidence: number }>;
     knownPlaces: Array<{ name: string; position: { x: number; y: number; z: number }; lastConfirmedAtMonth: number }>;
     /** The person's only model-visible memory document. */
     mindMarkdown: string;
     memories: RecalledMemory[];
     /** Persisted subjective turns, not claims that their assumptions were true. */
     recentMentalActs: Array<MentalAct & { atMonth: number }>;
+    /** Directed model-authored meanings grounded in remembered world facts. */
+    relationshipEpisodes: Array<{
+      otherPersonId: string;
+      otherPersonName: string;
+      experiencedAtMonth: number;
+      meanings: string[];
+      interpretation: string;
+      unresolvedExpectation?: string;
+      desiredResponse?: string;
+      sourceCount: number;
+    }>;
     characterAgenda: CharacterAgendaSummary[];
     kinship: {
       parents: Array<{ id: string; name: string; sex: DecisionContext['person']['sex']; relation: 'mother' | 'father' }>;
@@ -121,6 +135,16 @@ export interface DecisionRequestContext {
   recentDialogue?: RecentDialogueContextLine[];
   activeIntent?: {
     id: string; summary: string; domain: 'strategic' | 'social'; progress: number; nextActionKind: string;
+    plan?: {
+      steps: string[];
+      disposition: string;
+    };
+    recentOutcomes?: Array<{
+      execution: string;
+      goalProgress: string;
+      evidence: string;
+      atMonth: number;
+    }>;
     stateGoalUntilMonth?: number;
     lifecycle?: {
       completion: 'on-achievement' | 'maintain-state';
@@ -145,10 +169,21 @@ export interface DecisionRequestContext {
         }
       | { status: 'unresolved'; question: 'inspect-local-properties-and-test-candidates'; reservationCount: number };
   };
-  suspendedIntents: Array<{ id: string; summary: string; progress: number; nextActionKind: string }>;
+  suspendedIntents: Array<{
+    id: string;
+    summary: string;
+    progress: number;
+    nextActionKind: string;
+    createdAtMonth: number;
+    lastProgressAtMonth: number;
+    waitingFor?: 'world-change';
+    plan?: { steps: string[]; disposition: string };
+    recentOutcomes?: Array<{ execution: string; goalProgress: string; evidence: string; atMonth: number }>;
+  }>;
   agreements: Array<{
     id: string; kind: string; status: string; partyIds: string[]; dueAtMonth?: number;
     requiredResponderIds: string[]; acceptedByPersonIds: string[]; fulfilledByPersonIds: string[];
+    rejectedByPersonIds: string[];
   }>;
   collectives: Array<{
     id: string; purposeSummary: string; status: string; activeMemberIds: string[]; joinedAtMonth: number;
@@ -466,13 +501,14 @@ export function buildDecisionRequestContext(
         const perception = perceiveMaterial(stack.materialId, 'held');
         return {
           stackId: stack.id,
+          materialId: stack.materialId,
           name: material.name,
           properties: perceivedProperties(perception),
           perception,
           quantity: stack.quantity,
         };
       }),
-      knowledge: projectedKnowledge.map(({ id, summary, confidence }) => ({ id, summary, confidence })),
+      knowledge: projectedKnowledge.map(({ id, kind, summary, confidence }) => ({ id, kind, summary, confidence })),
       knownPlaces: [...person.knownPlaces]
         .sort((a, b) => b.lastConfirmedAtMonth - a.lastConfirmedAtMonth || a.id.localeCompare(b.id))
         .slice(0, 8)
@@ -480,6 +516,26 @@ export function buildDecisionRequestContext(
       mindMarkdown: context.mind?.markdown ?? person.mindMarkdown ?? '',
       memories: recalledMemories,
       recentMentalActs,
+      relationshipEpisodes: [...(person.relationshipEpisodes ?? [])]
+        .filter((episode) => counterpartIds.length === 0 || counterpartIds.includes(episode.otherPersonId))
+        .sort((left, right) => right.experiencedAtMonth - left.experiencedAtMonth
+          || right.id.localeCompare(left.id))
+        .slice(0, 8)
+        .map((episode) => ({
+          otherPersonId: episode.otherPersonId,
+          otherPersonName: state.people.find((candidate) => candidate.id === episode.otherPersonId)?.name
+            ?? '记忆中的对方',
+          experiencedAtMonth: episode.experiencedAtMonth,
+          meanings: [...episode.appraisal.meanings],
+          interpretation: episode.appraisal.interpretation,
+          ...(episode.appraisal.unresolvedExpectation
+            ? { unresolvedExpectation: episode.appraisal.unresolvedExpectation }
+            : {}),
+          ...(episode.appraisal.desiredResponse
+            ? { desiredResponse: episode.appraisal.desiredResponse }
+            : {}),
+          sourceCount: episode.sourceFactIds.length,
+        })),
       characterAgenda: characterAgendaSummary(person.characterAgenda?.items),
       kinship: immediateKinship(state, person),
     },
@@ -503,6 +559,18 @@ export function buildDecisionRequestContext(
       domain: context.activeIntent.domain,
       progress: context.activeIntent.progress,
       nextActionKind: context.activeIntent.nextAction.kind,
+      ...(context.activeIntent.plan ? { plan: {
+        steps: [...context.activeIntent.plan.steps],
+        disposition: context.activeIntent.plan.disposition,
+      } } : {}),
+      ...(context.activeIntent.outcomeReceipts?.length ? {
+        recentOutcomes: context.activeIntent.outcomeReceipts.slice(-4).map((receipt) => ({
+          execution: receipt.execution,
+          goalProgress: receipt.goalProgress,
+          evidence: receipt.evidence,
+          atMonth: receipt.atMonth,
+        })),
+      } : {}),
       ...(context.activeIntent.stateGoalUntilMonth !== undefined ? { stateGoalUntilMonth: context.activeIntent.stateGoalUntilMonth } : {}),
       ...(context.activeIntent.lifecycle ? { lifecycle: {
         completion: context.activeIntent.lifecycle.completion,
@@ -539,12 +607,31 @@ export function buildDecisionRequestContext(
     } } : {}),
     suspendedIntents: state.intents
       .filter((intent) => intent.ownerId === person.id && intent.status === 'suspended' && !intent.suspendedByIntentId)
-      .map((intent) => ({ id: intent.id, summary: intent.summary, progress: intent.progress, nextActionKind: intent.nextAction.kind })),
+      .map((intent) => ({
+        id: intent.id,
+        summary: intent.summary,
+        progress: intent.progress,
+        nextActionKind: intent.nextAction.kind,
+        createdAtMonth: intent.createdAtMonth,
+        lastProgressAtMonth: intent.lastProgressAtMonth,
+        ...(intent.waitingFor ? { waitingFor: intent.waitingFor } : {}),
+        ...(intent.plan ? {
+          plan: { steps: [...intent.plan.steps], disposition: intent.plan.disposition },
+        } : {}),
+        ...(intent.outcomeReceipts?.length ? {
+          recentOutcomes: intent.outcomeReceipts.slice(-3).map((receipt) => ({
+            execution: receipt.execution,
+            goalProgress: receipt.goalProgress,
+            evidence: receipt.evidence,
+            atMonth: receipt.atMonth,
+          })),
+        } : {}),
+      })),
     agreements: state.agreements
       .filter((agreement) => agreement.partyIds.includes(person.id) && (agreement.status === 'proposed' || agreement.status === 'active' || (agreement.resolvedAtMonth ?? -99) >= state.clock.elapsedMonths - 6))
       .sort((a, b) => (b.acceptedAtMonth ?? b.proposedAtMonth) - (a.acceptedAtMonth ?? a.proposedAtMonth))
       .slice(0, 6)
-      .map((agreement) => ({ id: agreement.id, kind: agreement.proposal.kind, status: agreement.status, partyIds: agreement.partyIds, ...(agreement.dueAtMonth !== undefined ? { dueAtMonth: agreement.dueAtMonth } : {}), requiredResponderIds: agreement.requiredResponderIds, acceptedByPersonIds: agreement.acceptedByPersonIds, fulfilledByPersonIds: agreement.fulfilledByPersonIds })),
+      .map((agreement) => ({ id: agreement.id, kind: agreement.proposal.kind, status: agreement.status, partyIds: agreement.partyIds, ...(agreement.dueAtMonth !== undefined ? { dueAtMonth: agreement.dueAtMonth } : {}), requiredResponderIds: agreement.requiredResponderIds, acceptedByPersonIds: agreement.acceptedByPersonIds, rejectedByPersonIds: agreement.rejectedByPersonIds, fulfilledByPersonIds: agreement.fulfilledByPersonIds })),
     collectives: state.collectives.flatMap((collective) => {
       const own = collective.memberships.find((membership) => membership.personId === person.id && membership.status === 'active');
       return own ? [{

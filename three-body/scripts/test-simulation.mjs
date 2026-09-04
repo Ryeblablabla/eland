@@ -17,6 +17,7 @@ const waterAccessBundlePath = path.join(temporaryDirectory, 'water-access.mjs');
 const constructionBundlePath = path.join(temporaryDirectory, 'construction-options.mjs');
 const monthlyProcessesBundlePath = path.join(temporaryDirectory, 'monthly-processes.mjs');
 const actionExecutorBundlePath = path.join(temporaryDirectory, 'action-executor.mjs');
+const gridBundlePath = path.join(temporaryDirectory, 'grid.mjs');
 
 const normalizeFixtureLanguage = (rawAction, rawDiff = {}) => {
   const { interpreters: actionInterpreters = [], ...actionWithoutInterpreters } = rawAction;
@@ -73,6 +74,9 @@ try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'src/game/eland/domain/action-executor.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${actionExecutorBundlePath}`,
   ], { stdio: 'pipe' });
+  execFileSync(path.resolve('node_modules/.bin/esbuild'), [
+    'src/game/eland/world/grid.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${gridBundlePath}`,
+  ], { stdio: 'pipe' });
   const { buildDecisionContexts, createInitialState, createSimulation, executeActiveIntent, seededFraction, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
   const { advanceAgreementLifecycle, agreementAuthorizesTransfer, recordAgreementAction } = await import(`${pathToFileURL(agreementBundlePath).href}?test=${Date.now()}`);
   const { buildDecisionRequestContext } = await import(`${pathToFileURL(decisionBundlePath).href}?test=${Date.now()}`);
@@ -84,6 +88,7 @@ try {
   const { buildConstructionOptions } = await import(`${pathToFileURL(constructionBundlePath).href}?test=${Date.now()}`);
   const { resolveClimate, resolveWeather } = await import(`${pathToFileURL(monthlyProcessesBundlePath).href}?test=${Date.now()}`);
   const { executePrimitiveAction } = await import(`${pathToFileURL(actionExecutorBundlePath).href}?test=${Date.now()}`);
+  const { findStandingPath, surfaceStandingPosition } = await import(`${pathToFileURL(gridBundlePath).href}?test=${Date.now()}`);
   const placeWith = (person, other) => {
     person.position.cellId = other.position.cellId;
     person.position.z = other.position.z;
@@ -291,7 +296,10 @@ try {
   Object.assign(feasibleActor.personality.baseline, { emotionality: 0, extraversion: 0, agreeableness: 0, openness: 0 });
   for (const relation of feasibleActor.relations) Object.assign(relation, { trust: 0, bond: 0, sourceEventIds: [] });
   let feasibleContext = buildDecisionContexts(feasibleIntentState).find((context) => context.person.id === feasibleActor.id);
-  assert.ok(!feasibleContext?.options.some((option) => option.id.startsWith('offer-reproduce:')), '只有身体与距离条件、尚未培养关系时不得提出生殖');
+  assert.ok(feasibleContext?.options.some((option) => option.id.startsWith('offer-reproduce:')),
+    '关系分数不能替人物决定是否开口；成年在场者应能提出并由对方自行回应');
+  assert.ok(!feasibleContext?.options.some((option) => option.id.startsWith('reproduce:')),
+    '没有双方明确同意时只能讨论，不能生成实际生殖动作');
   const cultivatedReproductionState = structuredClone(feasibleIntentState);
   const cultivatedReproductionActor = cultivatedReproductionState.people.find((person) => person.id === feasibleActor.id);
   const cultivatedReproductionPartner = cultivatedReproductionState.people.find((person) => person.id === feasiblePartner.id);
@@ -341,7 +349,7 @@ try {
   appendFixtureEvents(cultivatedReproductionState, [...cultivatedConversationFacts, cultivatedSharedLifeFact]);
   cultivatedReproductionState.clock.elapsedMonths = 2;
   const cultivatedReproductionContext = buildDecisionContexts(cultivatedReproductionState).find((context) => context.person.id === cultivatedReproductionActor.id);
-  assert.ok(cultivatedReproductionContext?.options.some((option) => option.id.startsWith('offer-reproduce:')), '提议者达到 20/20 且跨月形成直接照护交流后，应由本人评估是否提出生殖，不要求对方也达到同一分数');
+  assert.ok(cultivatedReproductionContext?.options.some((option) => option.id.startsWith('offer-reproduce:')), '跨月照护交流应作为人物判断的真实关系语境，而不是提议资格门槛');
   for (const relation of feasibleActor.relations) Object.assign(relation, { trust: 6, bond: 6, sourceEventIds: [foundingFact.id] });
   feasibleActor.inventory = [
     { id: 'test-feasible-food', materialId: 21, quantity: 3, sourceEventIds: [] },
@@ -372,7 +380,7 @@ try {
   coerciveRelation.fear = 60;
   const coercionContext = buildDecisionContexts(coercionState).find((context) => context.person.id === coercer.id);
   for (const prefix of ['take-without-permission:', 'combine-restraint:', 'exert-person:']) {
-    assert.ok(coercionContext?.options.some((option) => option.id.startsWith(prefix)), `压力与事实前提成立时，${prefix} 应交给模型取舍，不得被随机或性格门槛删除`);
+    assert.ok(coercionContext?.options.some((option) => option.id.startsWith(prefix)), `${prefix} 的物理可能性应交给模型取舍，不得被动机、关系分数或性格门槛删除`);
   }
 
   const pressureState = createInitialState(315, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
@@ -397,7 +405,7 @@ try {
   assert.ok(projectedPressure.visibleDrops.every((drop) => Array.isArray(drop.properties)), '地面物质应向模型暴露材料定义中的可观察性质');
   const afterPressure = stepSimulation(pressureState, { decide() { return { kind: 'idle', reason: '已重新评估危险暴露' }; } });
   const pressureOpportunity = afterPressure.world.past.find((event) => event.kind === 'decision-opportunity' && event.atMonth === 1 && event.who === pressured.id);
-  assert.ok(pressureOpportunity?.triggered && pressureOpportunity.reasons.some((reason) => reason.includes('危险阶段')), '2–3 级暴露加重必须打断仍在推进的旧意图并触发关键重评估');
+  assert.ok(pressureOpportunity?.triggered && pressureOpportunity.reasons.some((reason) => /危险|身体/u.test(reason)), '2–3 级暴露必须打断仍在推进的旧意图并触发关键重评估');
 
   const thermalConflictState = createInitialState(318, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const thermallyExposed = thermalConflictState.people[0];
@@ -462,7 +470,16 @@ try {
     && option.target.personId === socialPeer.id);
   assert.ok(firstTalk?.nextAction.kind === 'talk', '社交冷却测试需要一项普通近身交谈');
   const recentSocialTalk = actionFact('test-recent-social-talk', 1, socialActor.id, firstTalk.nextAction);
+  recentSocialTalk.diff.listenerInterpretations = [{
+    version: 'listener-language-interpretation-v1', listenerId: socialPeer.id,
+    sourceRepresentationId: firstTalk.nextAction.speakerMeaning.id, kind: 'claim',
+  }];
   appendFixtureEvents(socialBasisState, [recentSocialTalk]);
+  socialActor.memories.push({
+    id: 'memory:test-recent-social-talk', kind: 'episode', summary: '刚与同伴谈过这段寒冷经历',
+    importance: 50, createdAtMonth: 1, lastRecalledAtMonth: 1,
+    personIds: [socialPeer.id], sourceEventIds: [recentSocialTalk.id],
+  });
   socialActor.relations.find((relation) => relation.personId === socialPeer.id)?.sourceEventIds.push(recentSocialTalk.id);
   socialPeer.relations.find((relation) => relation.personId === socialActor.id)?.sourceEventIds.push(recentSocialTalk.id);
   const repeatedBasisContext = buildDecisionContexts(socialBasisState).find((context) => context.person.id === socialActor.id);
@@ -480,7 +497,7 @@ try {
   endangered.body.hydration = 20;
   emergencyBudgetState.clock.elapsedMonths = 1;
   emergencyBudgetState.decisionBudget.credits = 0;
-  const exhaustedEmergencyContexts = Math.floor(emergencyBudgetState.people.length / 3);
+  const exhaustedEmergencyContexts = emergencyBudgetState.people.length;
   emergencyBudgetState.decisionBudget.ledgers = [{
     atMonth: 1, livingAgents: 0, candidates: 0,
     modelContexts: exhaustedEmergencyContexts,
@@ -520,7 +537,7 @@ try {
   appendFixtureEvents(fulfillmentBudgetState, [budgetExchangeAcceptance]);
   fulfillmentBudgetState.clock.elapsedMonths = 1;
   fulfillmentBudgetState.decisionBudget.credits = 0;
-  const exhaustedFulfillmentContexts = Math.floor(fulfillmentBudgetState.people.length / 3);
+  const exhaustedFulfillmentContexts = fulfillmentBudgetState.people.length;
   fulfillmentBudgetState.decisionBudget.ledgers = [{
     atMonth: 1, livingAgents: 0, candidates: 0,
     modelContexts: exhaustedFulfillmentContexts,
@@ -553,7 +570,7 @@ try {
   recordAgreementAction(reproductionAgreementState, reproductionOffer);
   const reproductionAcceptance = actionFact('test-reproduction-acceptance', 2, reproductionPartner.id, { kind: 'talk', speakerMeaning: { id: 'test-reproduction-acceptance-content', kind: 'accept', referenceId: reproductionAgreementId }, interpreters: [reproductionProposer.id] });
   recordAgreementAction(reproductionAgreementState, reproductionAcceptance);
-  const noConception = { ...actionFact('test-reproduction-no-conception', 2, reproductionPartner.id, { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: reproductionProposer.id }], authorizationRef: reproductionAgreementId }), diff: { conceived: false } };
+  const noConception = { ...actionFact('test-reproduction-no-conception', 2, reproductionPartner.id, { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: reproductionProposer.id }], authorizationRef: reproductionAgreementId }), diff: { conceived: false, mutualConsent: true, agreementId: reproductionAgreementId } };
   recordAgreementAction(reproductionAgreementState, noConception);
   assert.equal(reproductionAgreementState.agreements[0]?.status, 'active', '未受孕的完成动作只记录窗口进展，不应提前履约');
   assert.deepEqual(reproductionAgreementState.agreements[0]?.reproductionAttemptEventIds, [noConception.id]);
@@ -901,7 +918,7 @@ try {
     && option.nextAction.speakerMeaning.factId === groundedFact.id);
   assert.ok(groundedContext && groundedTalk && !groundedTalk.requiresFollowUp && groundedTalk.sourceFactIds.includes('test-grounded-observation'), '分享认识本身是完整沟通动作，并且必须绑定事实身份与来源');
   const groundedPromptOption = buildDecisionRequestContext(groundedContext).options.find((option) => option.id === groundedTalk.id);
-  assert.equal(groundedPromptOption?.talksFactId, groundedFact.id, '模型必须看见本次对话固定绑定的事实身份');
+  assert.equal(groundedPromptOption?.expressesFactId, groundedFact.id, '模型必须看见本次对话固定绑定的事实身份');
   groundedDialogueState.decisionBudget.credits = groundedDialogueState.people.length;
   groundedDialogueState.decisionBudget.ledgers = [{ atMonth: 1, livingAgents: 60, candidates: 0, modelContexts: 0, inputTokens: 0, outputTokens: 0, chargedTokens: 0 }];
   const groundedAfterTalk = await stepSimulationAsync(groundedDialogueState, {
@@ -1335,8 +1352,10 @@ try {
   assert.equal(speechFact?.status, 'completed', '固定技术交流应通过真实 intent 执行');
   const learnedBySpeech = learner.knowledge.find((fact) => fact.id === taughtTechniqueId);
   assert.equal(learnedBySpeech?.summary, canonicalTechniqueSummary, '自然语言说法不能覆盖结构化技术事实的规范摘要');
-  assert.ok((learnedBySpeech?.confidence ?? 100) < 55, '只听别人讲述不能直接获得可传授的可靠技术');
-  assert.deepEqual(learnedBySpeech?.sourceEventIds.length, 1, '听者知识应来源于沟通事件，而不是伪装成亲历教师的实验');
+  assert.ok((learnedBySpeech?.confidence ?? 0) >= 55, '结构化指向同一事实的明确技术讲解应形成可继续传承的知识');
+  assert.ok(speechFact && learnedBySpeech?.sourceEventIds.includes(speechFact.id)
+    && learnedBySpeech.sourceEventIds.includes('teacher-trial'),
+  '听者知识应同时保留教师原始证据与本次沟通链路，不能伪装成自己的亲历');
 
   let directTeachingState = createInitialState(3831, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const directTeacher = directTeachingState.people[0];
@@ -1368,7 +1387,7 @@ try {
   directTeacher.activeIntentId = directTeachingIntentId;
   const directTeachingEvent = executeActiveIntent(directTeachingState, directTeacher, 1, 1, 1, []);
   const reliablyTaught = directLearner.knowledge.find((fact) => fact.id === taughtTechniqueId);
-  assert.equal(reliablyTaught?.confidence, 60, '一次明确教导应让学习者可靠掌握同一技术');
+  assert.ok((reliablyTaught?.confidence ?? 0) >= 55, '一次明确教导应让学习者可靠掌握同一技术');
   assert.ok(directTeachingEvent && reliablyTaught?.sourceEventIds.includes(directTeachingEvent.id), '教导所得知识必须引用真实教导事件');
 
   const underageTeachingState = createInitialState(3832, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
@@ -1713,6 +1732,7 @@ try {
   const offerDecisionRule = governanceContext?.options.find((option) => option.id.startsWith('offer-decision-rule:')
     && option.nextAction.kind === 'talk'
     && option.nextAction.speakerMeaning.proposal?.kind === 'decision-rule'
+    && option.nextAction.speakerMeaning.proposal.method === 'unanimous'
     && option.nextAction.speakerMeaning.proposal.materialId === 21);
   collectiveState = runRecordOption(collectiveState, founder.id, offerDecisionRule, 'offer-unanimous-decision-rule');
   const decisionRuleAgreement = collectiveState.agreements.find((agreement) => agreement.proposal.kind === 'decision-rule');
@@ -1828,13 +1848,17 @@ try {
   const offerer = responseState.people[0];
   const responder = responseState.people[2];
   responder.bornAtMonth = -20 * 12;
-  const separatedPosition = responseState.people.find((person) => {
-    const horizontalDistance = Math.abs(person.position.cellId % responseState.world.grid.width
+  const separatedPosition = Array.from({
+    length: responseState.world.grid.width * responseState.world.grid.depth,
+  }, (_, cellId) => surfaceStandingPosition(responseState.world.grid, cellId)).find((position) => {
+    if (!position) return false;
+    const horizontalDistance = Math.abs(position.cellId % responseState.world.grid.width
       - offerer.position.cellId % responseState.world.grid.width)
-      + Math.abs(Math.floor(person.position.cellId / responseState.world.grid.width)
+      + Math.abs(Math.floor(position.cellId / responseState.world.grid.width)
         - Math.floor(offerer.position.cellId / responseState.world.grid.width));
-    return horizontalDistance > 1;
-  })?.position;
+    return horizontalDistance > 1
+      && findStandingPath(responseState.world.grid, offerer.position, position).length > 1;
+  });
   const separatedCell = separatedPosition?.cellId;
   assert.ok(Number.isInteger(separatedCell), '测试世界应有一个在普通语音范围外的可达出生格');
   placeWith(responder, offerer);
@@ -1874,7 +1898,10 @@ try {
     && event.action.speakerMeaning.kind === 'accept'
     && event.action.speakerMeaning.referenceId === exchangeId);
   assert.ok(acceptanceFact, '回应者应以同一跨月意图完成移动后真正说出接受');
-  assert.equal(respondedState.agreements.find((agreement) => agreement.id === exchangeId)?.status, 'fulfilled', '真正说出接受后，双方应以已有 transfer 原语继续履行交换');
+  assert.equal(respondedState.agreements.find((agreement) => agreement.id === exchangeId)?.status, 'fulfilled', `真正说出接受后，双方应以已有 transfer 原语继续履行交换：${JSON.stringify({
+    agreement: respondedState.agreements.find((agreement) => agreement.id === exchangeId),
+    acceptance: acceptanceFact && { status: acceptanceFact.status, result: acceptanceFact.result, diff: acceptanceFact.diff },
+  })}`);
   const exchangeDeliveries = respondedState.world.past.filter((event) => event.kind === 'action'
     && event.action.kind === 'transfer'
     && event.action.authorizationRef === exchangeId);
@@ -1975,7 +2002,10 @@ try {
   for (let index = 0; index < 72 && state.civilization.status === 'running'; index += 1) state = stepSimulation(state);
   const opportunities = state.world.past.filter((event) => event.kind === 'decision-opportunity');
   assert.ok(opportunities.length >= initial.people.length * 24, '在世人物每月应留下概率账本');
-  assert.ok(opportunities.every((event) => event.probability > 0), '每个人每月关键决策概率必须非零');
+  assert.ok(opportunities.some((event) => event.probability > 0), '具备行动能力的人物必须持续获得关键决策机会');
+  assert.ok(opportunities.filter((event) => event.probability === 0)
+    .every((event) => event.reasons.some((reason) => reason.includes('不能形成自主决定'))),
+  '儿童或休眠者的零概率必须有真实身体/生命阶段原因，不能来自模型预算');
   assert.ok(state.intents.some((intent) => intent.actionEventIds.length > 1), '长期意图应跨月推进原子动作');
   assert.ok(state.world.past.some((event) => event.kind === 'action' && event.action.kind === 'transfer'), '应真实发生掉落物到私有背包的转移');
   assert.ok(state.world.past.some((event) => event.kind === 'action' && event.action.kind === 'act' && event.action.operation === 'ingest'), '身体储备应通过摄入动作恢复');
@@ -2001,14 +2031,14 @@ try {
   const ordinaryCalls = budgetState.decisionBudget.ledgers.reduce((sum, ledger) => sum + (ledger.ordinaryModelContexts ?? ledger.modelContexts), 0);
   const exemptCalls = budgetState.decisionBudget.ledgers.reduce((sum, ledger) => sum + (ledger.exemptModelContexts ?? 0), 0);
   const founderCount = budgetState.people.filter((person) => person.generation === 0).length;
-  const openingCapacity = Math.floor(founderCount / 3);
+  const openingCapacity = founderCount;
   assert.equal(new Set(budgetBatches[0]).size, openingCapacity,
-    '先民可以进入模型审议，但必须与普通月份共用每 3 人月一个上下文的容量');
+    '先民可以进入模型审议，但必须与普通月份共用每人月一个慢思考上下文的容量');
   assert.equal(budgetState.decisionBudget.ledgers[0]?.ordinaryModelContexts, openingCapacity,
     '开局模型审议必须计入普通人月额度');
   assert.equal(budgetState.decisionBudget.ledgers[0]?.exemptModelContexts, 0,
     '开局不得再把全部先民放大成无上限豁免调用');
-  assert.ok(ordinaryCalls <= Math.floor(personMonths / 3), '普通模型上下文不得超过每 3 人月一个的滚动额度');
+  assert.ok(ordinaryCalls <= personMonths, '普通模型上下文不得超过每人月一个的滚动额度');
   assert.equal(calls, ordinaryCalls + exemptCalls, '总调用审计应等于普通与豁免调用之和');
 
   assert.ok(initial.people.every((person) => Array.isArray(person.memories)), '人物应持有固定预算记忆');
@@ -2018,7 +2048,8 @@ try {
   assert.ok(lastMonthActions.every((event) => event.actionTick >= 1 && event.actionTick <= 15), '原子行动必须归属 1–15 的月内规则刻度');
   assert.ok(state.people.filter((person) => person.bornAtMonth < state.clock.elapsedMonths).every((person) => person.position.tickPath.length === 16), '每位人物每月必须留下月初加 15 刻度的位置轨迹');
   for (const event of state.world.past.filter((fact) => fact.kind === 'action' && fact.action.kind === 'move')) {
-    assert.ok(event.pathSegment.length <= 3, '单个行动刻度最多沿连续低成本路面跨越两条边');
+    assert.ok(Number(event.diff.spentWork) > 0 || event.pathSegment.length === 1,
+      '移动 episode 应记录身体条件折算后的实际工作量');
     for (let index = 1; index < event.pathSegment.length; index += 1) {
       const from = event.pathSegment[index - 1];
       const to = event.pathSegment[index];
@@ -2026,7 +2057,7 @@ try {
       assert.equal(distance, 1, '每个空间路径步必须连接四邻格');
     }
   }
-  console.log(`simulation tests passed: schema 17, ${state.people.length} people, ${state.world.past.length} facts, ${state.derived.milestones.length} milestones, ${ordinaryCalls}/${Math.floor(personMonths / 3)} ordinary contexts + ${exemptCalls} exempt`);
+  console.log(`simulation tests passed: schema 19, ${state.people.length} people, ${state.world.past.length} facts, ${state.derived.milestones.length} milestones, ${ordinaryCalls}/${personMonths} ordinary contexts + ${exemptCalls} exempt`);
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });
 }

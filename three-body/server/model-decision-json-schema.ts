@@ -123,6 +123,58 @@ function experimentSchema(protocol: MentalActSchemaProtocol): JsonSchema | undef
   return variants.length ? { oneOf: variants } : undefined;
 }
 
+function worldTargetHandles(protocol: MentalActSchemaProtocol): string[] {
+  const actionSpace = record(protocol.requestContext.actionSpace);
+  const visible = record(protocol.requestContext.visible);
+  return [...new Set([
+    'self',
+    ...describedRefs(actionSpace.heldObjects),
+    ...describedRefs(visible.nearbyObjects),
+    ...describedRefs(visible.surfaces),
+  ])];
+}
+
+function worldActionSchema(protocol: MentalActSchemaProtocol): JsonSchema {
+  const targets = worldTargetHandles(protocol);
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['description', 'targetHandles'],
+    properties: {
+      description: stringSchema(240, '人物此刻准备实施的具体动作；不写结果'),
+      targetHandles: {
+        type: 'array',
+        minItems: 1,
+        maxItems: Math.min(8, targets.length),
+        uniqueItems: true,
+        items: handleSchema(targets, '动作明确作用的当前对象'),
+      },
+      expectedResult: stringSchema(180, '人物主观希望或猜测的结果，不是世界事实'),
+    },
+  };
+}
+
+function planFeedbackSchema(protocol: MentalActSchemaProtocol): JsonSchema | undefined {
+  const memoryHandles = protocol.handles.memories.map((item) => item.handle);
+  if (!memoryHandles.length) return undefined;
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['sourceMemoryHandles', 'correction', 'adjustment'],
+    properties: {
+      sourceMemoryHandles: {
+        type: 'array',
+        minItems: 1,
+        maxItems: Math.min(3, memoryHandles.length),
+        uniqueItems: true,
+        items: handleSchema(memoryHandles, '本次修正依据的亲历失败'),
+      },
+      correction: stringSchema(240, '被事实纠正的前提或缺失条件'),
+      adjustment: stringSchema(240, '本次具体怎样改变做法'),
+    },
+  };
+}
+
 function concernSchema(protocol: MentalActSchemaProtocol): JsonSchema {
   const agendaHandles = protocol.handles.agendas.map((item) => item.handle);
   return {
@@ -137,6 +189,48 @@ function concernSchema(protocol: MentalActSchemaProtocol): JsonSchema {
       importance: { type: 'integer', minimum: 0, maximum: 100 },
       horizonMonths: { type: 'integer', minimum: 6, maximum: 240 },
       reason: stringSchema(180, '暂停或放弃这一关切的第一人称理由'),
+    },
+  };
+}
+
+const RELATIONSHIP_APPRAISAL_MEANINGS = [
+  'gratitude', 'care', 'affection', 'attraction', 'respect', 'solidarity', 'obligation',
+  'hurt', 'anger', 'fear', 'suspicion', 'jealousy', 'rivalry', 'grief', 'ambivalence', 'uncertainty',
+] as const;
+
+function relationshipAppraisalSchema(protocol: MentalActSchemaProtocol): JsonSchema | undefined {
+  const visible = record(protocol.requestContext.visible);
+  const personHandles = Array.isArray(visible.nearbyObjects)
+    ? visible.nearbyObjects.flatMap((value) => {
+        const item = record(value);
+        return item.kind === '人物' && typeof item.ref === 'string' && item.ref ? [item.ref] : [];
+      })
+    : [];
+  const memoryHandles = protocol.handles.memories.map((item) => item.handle);
+  if (!personHandles.length || !memoryHandles.length) return undefined;
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['otherPersonHandle', 'sourceMemoryHandles', 'meanings', 'interpretation'],
+    properties: {
+      otherPersonHandle: handleSchema(personHandles, '眼前被本人理解的人物'),
+      sourceMemoryHandles: {
+        type: 'array',
+        minItems: 1,
+        maxItems: Math.min(4, memoryHandles.length),
+        uniqueItems: true,
+        items: handleSchema(memoryHandles, '确实涉及对方的亲历记忆'),
+      },
+      meanings: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 4,
+        uniqueItems: true,
+        items: { type: 'string', enum: [...RELATIONSHIP_APPRAISAL_MEANINGS] },
+      },
+      interpretation: stringSchema(320, '本人对真实经历的主观理解'),
+      unresolvedExpectation: stringSchema(240, '未解的期待、疑虑、债或怨'),
+      desiredResponse: stringSchema(240, '本人当前倾向采取的回应，不是行动命令'),
     },
   };
 }
@@ -257,6 +351,7 @@ function mentalActDecisionSchema(protocol: MentalActSchemaProtocol): JsonSchema 
 
 function mindIntentionSchema(protocol: MentalActSchemaProtocol): JsonSchema {
   const memoryHandles = protocol.handles.memories.map((item) => item.handle);
+  const relationshipAppraisal = relationshipAppraisalSchema(protocol);
   return {
     type: 'object',
     additionalProperties: false,
@@ -286,6 +381,7 @@ function mindIntentionSchema(protocol: MentalActSchemaProtocol): JsonSchema {
           items: handleSchema(memoryHandles, 'mind.recentEvidence 或 learnedConclusions 中本轮可引用的记忆句柄'),
         },
       } : {}),
+      ...(relationshipAppraisal ? { relationshipAppraisal } : {}),
     },
   };
 }
@@ -293,8 +389,13 @@ function mindIntentionSchema(protocol: MentalActSchemaProtocol): JsonSchema {
 function modelPlanSchema(protocol: MentalActSchemaProtocol): JsonSchema {
   const stepHandles = protocol.requestContext.availableSteps.map((step) => step.handle);
   const continuationHandles = protocol.requestContext.continuations.map((step) => step.handle);
+  const suspendedIntentHandles = (protocol.handles.suspendedIntents ?? []).map((intent) => intent.handle);
+  const resumableIntentHandles = (protocol.handles.suspendedIntents ?? [])
+    .filter((intent) => intent.resumable)
+    .map((intent) => intent.handle);
   const groundingHandles = protocol.handles.groundingFacts.map((item) => item.handle);
   const experiment = experimentSchema(protocol);
+  const feedback = planFeedbackSchema(protocol);
   return {
     type: 'object',
     additionalProperties: false,
@@ -319,6 +420,18 @@ function modelPlanSchema(protocol: MentalActSchemaProtocol): JsonSchema {
       ...(continuationHandles.length ? {
         continuationHandle: handleSchema(continuationHandles, '与计划入口配套的现有后续入口'),
       } : {}),
+      ...(resumableIntentHandles.length ? {
+        resumeIntentHandle: handleSchema(
+          resumableIntentHandles,
+          'current.suspendedWork 中人物决定恢复的旧事务；它本身就是本轮 act 入口',
+        ),
+      } : {}),
+      ...(suspendedIntentHandles.length ? {
+        abandonIntentHandle: handleSchema(
+          suspendedIntentHandles,
+          'current.suspendedWork 中人物明确决定不再保留的旧事务；只与 disposition=abandon 同用',
+        ),
+      } : {}),
       ...(groundingHandles.length ? {
         groundingFactHandles: {
           type: 'array',
@@ -327,6 +440,8 @@ function modelPlanSchema(protocol: MentalActSchemaProtocol): JsonSchema {
         },
       } : {}),
       ...(experiment ? { experiment } : {}),
+      worldAction: worldActionSchema(protocol),
+      ...(feedback ? { feedback } : {}),
     },
   };
 }
@@ -369,6 +484,40 @@ export function buildMindIntentionJsonSchema(protocol: MentalActSchemaProtocol):
 
 export function buildModelPlanJsonSchema(protocol: MentalActSchemaProtocol): ModelJsonSchema {
   return { name: 'eland_model_plan_v1', schema: modelPlanSchema(protocol) };
+}
+
+export function buildWorldResolutionJsonSchema(protocol: MentalActSchemaProtocol): ModelJsonSchema {
+  return {
+    name: 'eland_world_resolution_v1',
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['status', 'result', 'effects'],
+      properties: {
+        status: { type: 'string', enum: ['completed', 'blocked', 'failed'] },
+        result: stringSchema(320, '仅描述这次动作在世界中实际发生的结果'),
+        effects: {
+          type: 'array',
+          maxItems: 8,
+          items: {
+            type: 'object',
+            required: ['kind'],
+            additionalProperties: true,
+            properties: { kind: stringSchema(32) },
+          },
+        },
+        feedback: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['correction', 'adjustment'],
+          properties: {
+            correction: stringSchema(240),
+            adjustment: stringSchema(240),
+          },
+        },
+      },
+    },
+  };
 }
 
 export function buildModelPlanBatchJsonSchema(

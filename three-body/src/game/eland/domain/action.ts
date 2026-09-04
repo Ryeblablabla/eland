@@ -19,7 +19,7 @@ import type { SourcedMassMeasurementAction } from './measurement';
 import type { ActionOptionSemanticsV1 } from './action-option-semantics';
 import type { ProjectLeadershipSuccessionActionBasis } from './project-leadership';
 import type { CharacterAgendaProbe, CharacterAgendaProposal, CharacterAgendaUpdate } from './character-agenda';
-import type { MentalAct } from './mental-act';
+import type { MentalAct, MentalPlanTranslation } from './mental-act';
 
 export interface VoxelPosition { x: number; y: number; z: number }
 
@@ -356,7 +356,7 @@ export type SocialProposal =
   | ({
       kind: 'decision-rule'; proposerId: PersonId; partnerId: PersonId;
       collectiveId: string; requiredApproverIds: PersonId[];
-      method: 'unanimous';
+      method: 'unanimous' | 'majority-vote';
       mandateDurationMonths: number; expiresAtMonth: number;
     } & (
       | { scope: 'coordinate-material'; materialId: MaterialId }
@@ -642,6 +642,21 @@ export interface IntentGoalOutcome {
   sourceEventIds: string[];
 }
 
+/**
+ * One causal receipt for an executed plan step.  Performing an action,
+ * advancing its goal and learning from its result are deliberately separate:
+ * looking at grass can succeed without advancing a question about a deer.
+ */
+export interface IntentOutcomeReceipt {
+  version: 'intent-outcome-receipt-v1';
+  atMonth: number;
+  actionEventId: string;
+  execution: 'not-started' | 'progressed' | 'performed' | 'failed';
+  goalProgress: 'none' | 'advanced' | 'achieved' | 'regressed' | 'unknown';
+  evidence: 'none' | 'novel' | 'confirming' | 'refuting' | 'inconclusive';
+  sourceEventIds: string[];
+}
+
 /** Relative policy declared by an executable option. Absence means complete on achievement. */
 export interface ActionCompletionPolicy {
   kind: 'maintain-state';
@@ -678,6 +693,8 @@ export interface Intent {
   stateGoalUntilMonth?: number;
   lifecycle?: IntentLifecycle;
   sourceDecisionEventId: string;
+  /** Complete model-authored plan; execution may consume only its current step. */
+  plan?: MentalPlanTranslation;
   projectId?: string;
   /** Durable concern that this executable episode is currently serving. */
   characterAgendaItemId?: string;
@@ -712,6 +729,8 @@ export interface Intent {
   actionEventIds: string[];
   /** Optional for old states; never inferred from a legacy completed status. */
   goalOutcome?: IntentGoalOutcome;
+  /** Bounded recent causal receipts for plan/goal/evidence evaluation. */
+  outcomeReceipts?: IntentOutcomeReceipt[];
   blockedReason?: string;
   replanCount: number;
 }

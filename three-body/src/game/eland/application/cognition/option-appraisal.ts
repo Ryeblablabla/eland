@@ -152,10 +152,6 @@ function continuesActiveRelationshipIntent(
     && communicationAction(option)?.speakerMeaning.kind === responseKind);
 }
 
-function isSuccubusReproductionOption(option: ActionOption): boolean {
-  return actionOptionSemantics(option).reproduction?.mode === 'unilateral-trait';
-}
-
 function mergeAlignments(items: NeedAlignment[]): NeedAlignment[] {
   const byKind = new Map<string, NeedAlignment>();
   for (const item of items) {
@@ -349,9 +345,7 @@ function optionNeedAlignments(context: DecisionContext, option: ActionOption, at
     }
   }
   if (reproductionDirection(option) === 'proceed') {
-    add('generativity', 1, isSuccubusReproductionOption(option)
-      ? '魅魔特质把同地成年异性转化为一次由本人单方授权的生殖机会'
-      : '候选把当前资源、照护和关系条件转化为一次可撤回的家庭选择');
+    add('generativity', 1, '候选把当前资源、照护和关系条件纳入一次需要双方分别同意、且可撤回的家庭选择');
   }
   return mergeAlignments(result);
 }
@@ -451,13 +445,6 @@ function relationshipAppraisal(context: DecisionContext, option: ActionOption): 
   reasons: string[];
   sourceFactIds: string[];
 } {
-  if (isSuccubusReproductionOption(option)) return {
-    gate: 1,
-    consentValue: 1,
-    consentDiagnostic: 0,
-    reasons: ['魅魔的单方授权不读取目标人物关系分数，也不要求双方协议'],
-    sourceFactIds: [...option.sourceFactIds],
-  };
   const targetId = optionTargetPersonId(context, option);
   const relation = targetId ? relationTo(context.person, targetId) : undefined;
   const communication = communicationAction(option);
@@ -572,11 +559,6 @@ function familyReadinessAppraisal(
 ): { gate: number; reasons: string[]; sourceFactIds: string[]; assessment?: FamilyReadinessAssessment } {
   const direction = reproductionDirection(option);
   if (!direction) return { gate: 1, reasons: [], sourceFactIds: [] };
-  if (isSuccubusReproductionOption(option)) return {
-    gate: 1,
-    reasons: ['魅魔的单方生殖不以食物、水源、住所或照护余量作为准入门槛'],
-    sourceFactIds: [...option.sourceFactIds],
-  };
   const assessment = assessFamilyReadiness(context, atMonth);
   const gate = direction === 'proceed'
     ? clamp(Math.exp((assessment.readiness - 0.65) * 1.1), 0.48, 1.35)

@@ -12,10 +12,12 @@ export interface DecisionProbeHandleMap {
   visible: DecisionProbeVisibleHandle[];
   voxels: Array<{ handle: string; position: { x: number; y: number; z: number } }>;
   agendas: Array<{ handle: string; itemId: string; basisKey: string }>;
+  suspendedIntents: Array<{ handle: string; intentId: string; resumable: boolean }>;
   memories: Array<{
     handle: string;
     itemId: string;
     sourceFactIds: string[];
+    personIds?: string[];
     causalOutcome?: 'completed' | 'progressed' | 'blocked' | 'failed';
   }>;
   groundingFacts: Array<{
@@ -116,12 +118,18 @@ export function buildDecisionProbeHandleMap(context: DecisionRequestContext): De
       itemId: item.id,
       basisKey: item.basisKey,
     })),
+    suspendedIntents: context.suspendedIntents.map((intent, index) => ({
+      handle: `s${index + 1}`,
+      intentId: intent.id,
+      resumable: !intent.waitingFor,
+    })),
     memories: context.person.memories
       .slice(0, 20)
       .map((memory, index) => ({
         handle: `m${index + 1}`,
         itemId: memory.id,
         sourceFactIds: [...memory.sourceEventIds],
+        personIds: [...memory.personIds],
         ...(memory.causalOutcome ? { causalOutcome: memory.causalOutcome } : {}),
       })),
     groundingFacts,

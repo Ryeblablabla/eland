@@ -31,6 +31,11 @@ import { loadServerEnvValue } from './env';
 import { ModelRequestError, requestModelText, type ModelMessage } from './model-client';
 import { resolveModelEndpoint, type ResolvedModelEndpoint } from './model-config';
 import {
+  buildMindIntentionJsonSchema,
+  buildModelPlanJsonSchema,
+  buildWorldResolutionJsonSchema,
+} from './model-decision-json-schema';
+import {
   AGENT_PLAN_SYSTEM_PROMPT_V1,
   CHARACTER_AGENDA_EXTENSION_V2,
   DECISION_SYSTEM_PROMPT_V2,
@@ -134,6 +139,7 @@ interface MindIntentionOutput extends MindIntentionDraft {
   orientation: MindIntentionOrientation;
   horizon: 'momentary' | 'ongoing';
   evidenceMemoryHandles: string[];
+  relationshipAppraisal?: NonNullable<MentalAct['relationshipAppraisal']>;
 }
 
 interface ModelPlanOutput {
@@ -141,10 +147,11 @@ interface ModelPlanOutput {
   disposition?: 'act' | 'continue' | 'pause' | 'abandon' | 'stay';
   firstStepHandle?: string;
   continuationHandle?: string;
+  resumeIntentHandle?: string;
+  abandonIntentHandle?: string;
   groundingFactHandles?: string[];
   experiment?: Record<string, unknown>;
   worldAction?: ModelWorldAction;
-  worldResolution?: WorldAdjudicationResolution;
   feedback?: ModelPlanFeedback;
 }
 
@@ -152,7 +159,6 @@ interface ModelWorldAction {
   description: string;
   targetHandles: string[];
   expectedResult?: string;
-  verdict?: Record<string, unknown>;
 }
 
 interface ModelPlanFeedback {
@@ -166,6 +172,11 @@ interface WorldAdjudicationResolution {
   probe?: CharacterAgendaProbe;
   feedback: string;
 }
+
+const RELATIONSHIP_APPRAISAL_MEANINGS = new Set([
+  'gratitude', 'care', 'affection', 'attraction', 'respect', 'solidarity', 'obligation',
+  'hurt', 'anger', 'fear', 'suspicion', 'jealousy', 'rivalry', 'grief', 'ambivalence', 'uncertainty',
+] as const);
 
 function readableAgentAction(step: Record<string, unknown>): string {
   const action = text(step.action, 240);
@@ -209,6 +220,13 @@ function agentPlanRequestContext(
   intention: MindIntentionOutput,
 ): Record<string, unknown> {
   const context = agentTurnRequestContext(protocol);
+  const availableSteps = protocol.requestContext.availableSteps.map((step) => ({
+    handle: step.handle,
+    action: readableAgentAction(step),
+    priority: step.priority,
+    purpose: step.purpose,
+    target: record(step.target)?.name,
+  }));
   return {
     schemaVersion: 'agent-plan-context-v1',
     intention: {
@@ -222,7 +240,7 @@ function agentPlanRequestContext(
     current: context.current,
     recentDialogue: context.recentDialogue,
     visible: context.visible,
-    availableActions: context.availableActions,
+    availableSteps,
     actionSpace: context.actionSpace,
     ...planAgentWorldContext(),
   };
@@ -271,6 +289,10 @@ function sanitizeMindIntention(
       .filter((handle) => handles.memories.some((memory) => memory.handle === handle))
       .slice(0, 4)
     : [];
+  const relationshipAppraisal = sanitizeMindRelationshipAppraisal(raw.relationshipAppraisal, handles);
+  if (raw.relationshipAppraisal !== undefined && raw.relationshipAppraisal !== null && !relationshipAppraisal) {
+    return undefined;
+  }
   return {
     utterance,
     delivery,
@@ -278,13 +300,131 @@ function sanitizeMindIntention(
     orientation,
     horizon,
     evidenceMemoryHandles,
+    ...(relationshipAppraisal ? { relationshipAppraisal } : {}),
+  };
+}
+
+function sanitizeRelationshipMeanings(input: unknown): NonNullable<MentalAct['relationshipAppraisal']>['meanings'] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const meanings = [...new Set(input.map((value) => text(value, 32)))]
+    .filter((value): value is NonNullable<MentalAct['relationshipAppraisal']>['meanings'][number] => (
+      RELATIONSHIP_APPRAISAL_MEANINGS.has(value as never)
+    ))
+    .slice(0, 4);
+  return meanings.length > 0 && meanings.length === input.length ? meanings : undefined;
+}
+
+function sanitizeMindRelationshipAppraisal(
+  input: unknown,
+  handles: DecisionProbeHandleMap,
+): NonNullable<MentalAct['relationshipAppraisal']> | undefined {
+  const raw = record(input);
+  const otherPersonHandle = text(raw?.otherPersonHandle, 24);
+  const otherPerson = handles.visible.find((item) => (
+    item.handle === otherPersonHandle && item.kind === 'person'
+  ));
+  const otherPersonId = otherPerson?.kind === 'person' ? otherPerson.personId : undefined;
+  const sourceMemoryHandles = Array.isArray(raw?.sourceMemoryHandles)
+    ? [...new Set(raw.sourceMemoryHandles.map((value) => text(value, 24)).filter(Boolean))].slice(0, 4)
+    : [];
+  const memories = sourceMemoryHandles.map((handle) => handles.memories.find((memory) => memory.handle === handle));
+  const meanings = sanitizeRelationshipMeanings(raw?.meanings);
+  const interpretation = text(raw?.interpretation, 320);
+  if (!raw || !otherPersonId || !meanings || !interpretation || !sourceMemoryHandles.length
+    || memories.some((memory) => !memory)
+    || !memories.some((memory) => memory?.personIds?.includes(otherPersonId))) return undefined;
+  const unresolvedExpectation = text(raw.unresolvedExpectation, 240);
+  const desiredResponse = text(raw.desiredResponse, 240);
+  return {
+    version: 'mental-relationship-appraisal-v1',
+    otherPersonId,
+    meanings,
+    interpretation,
+    ...(unresolvedExpectation ? { unresolvedExpectation } : {}),
+    ...(desiredResponse ? { desiredResponse } : {}),
+    sourceEventIds: [...new Set(memories.flatMap((memory) => memory!.sourceFactIds))].slice(-24),
+  };
+}
+
+function sanitizeStagedRelationshipAppraisal(
+  input: unknown,
+  handles: DecisionProbeHandleMap,
+): NonNullable<MentalAct['relationshipAppraisal']> | undefined {
+  const raw = record(input);
+  const otherPersonId = text(raw?.otherPersonId, 160);
+  const visiblePerson = handles.visible.some((item) => item.kind === 'person' && item.personId === otherPersonId);
+  const meanings = sanitizeRelationshipMeanings(raw?.meanings);
+  const interpretation = text(raw?.interpretation, 320);
+  const requestedSources = Array.isArray(raw?.sourceEventIds)
+    ? [...new Set(raw.sourceEventIds.map((value) => text(value, 160)).filter(Boolean))].slice(-24)
+    : [];
+  const allowedSources = new Set(handles.memories
+    .filter((memory) => memory.personIds?.includes(otherPersonId))
+    .flatMap((memory) => memory.sourceFactIds));
+  if (!raw || raw.version !== 'mental-relationship-appraisal-v1' || !visiblePerson
+    || !meanings || !interpretation || !requestedSources.length
+    || requestedSources.some((sourceId) => !allowedSources.has(sourceId))) return undefined;
+  const unresolvedExpectation = text(raw.unresolvedExpectation, 240);
+  const desiredResponse = text(raw.desiredResponse, 240);
+  return {
+    version: 'mental-relationship-appraisal-v1',
+    otherPersonId,
+    meanings,
+    interpretation,
+    ...(unresolvedExpectation ? { unresolvedExpectation } : {}),
+    ...(desiredResponse ? { desiredResponse } : {}),
+    sourceEventIds: requestedSources,
+  };
+}
+
+function sanitizeMentalPlanTranslation(
+  input: unknown,
+  handles?: DecisionProbeHandleMap,
+): NonNullable<MentalAct['plan']> | undefined {
+  const raw = record(input);
+  if (!raw || raw.version !== 'mental-plan-translation-v1' || !Array.isArray(raw.steps)) return undefined;
+  const steps = raw.steps.map((value) => text(value, 240)).filter(Boolean);
+  const disposition = raw.disposition === 'act'
+    || raw.disposition === 'continue'
+    || raw.disposition === 'pause'
+    || raw.disposition === 'abandon'
+    || raw.disposition === 'stay'
+    ? raw.disposition
+    : undefined;
+  if (!steps.length || steps.length !== raw.steps.length || !disposition) return undefined;
+  const firstStepHandle = text(raw.firstStepHandle, 24);
+  const continuationHandle = text(raw.continuationHandle, 24);
+  const resumeIntentHandle = text(raw.resumeIntentHandle, 24);
+  const abandonIntentHandle = text(raw.abandonIntentHandle, 24);
+  if (resumeIntentHandle && handles
+    && !handles.suspendedIntents.some((item) => item.handle === resumeIntentHandle && item.resumable)) return undefined;
+  if (abandonIntentHandle && handles
+    && !handles.suspendedIntents.some((item) => item.handle === abandonIntentHandle)) return undefined;
+  if (resumeIntentHandle && abandonIntentHandle) return undefined;
+  const worldActionRaw = record(raw.worldAction);
+  const description = text(worldActionRaw?.description, 240);
+  const expectedResult = text(worldActionRaw?.expectedResult, 180);
+  return {
+    version: 'mental-plan-translation-v1',
+    steps,
+    disposition,
+    ...(firstStepHandle ? { firstStepHandle } : {}),
+    ...(continuationHandle ? { continuationHandle } : {}),
+    ...(resumeIntentHandle ? { resumeIntentHandle } : {}),
+    ...(abandonIntentHandle ? { abandonIntentHandle } : {}),
+    ...(description ? {
+      worldAction: {
+        description,
+        ...(expectedResult ? { expectedResult } : {}),
+      },
+    } : {}),
   };
 }
 
 const PURPOSES_BY_ORIENTATION: Record<MindIntentionOrientation, ReadonlySet<string>> = {
-  social: new Set(['conversation', 'social-coordination', 'care', 'reproduction']),
+  social: new Set(['conversation', 'social-coordination', 'care', 'conflict', 'reproduction']),
   inquiry: new Set(['inquiry', 'conversation', 'movement']),
-  survival: new Set(['homeostasis', 'safety', 'care', 'resource', 'project', 'spatial-comfort', 'movement', 'conversation']),
+  survival: new Set(['homeostasis', 'safety', 'care', 'conflict', 'resource', 'project', 'spatial-comfort', 'movement', 'conversation']),
   construction: new Set(['project', 'production', 'resource', 'movement', 'conversation']),
   acquisition: new Set(['resource', 'movement', 'conversation']),
   exploration: new Set(['movement', 'inquiry', 'resource']),
@@ -297,6 +437,16 @@ function selectedOptionForPlan(
 ): DecisionRequestContext['options'][number] | undefined {
   const match = /^o([1-9]\d*)$/u.exec(plan.firstStepHandle ?? '');
   return match ? context.options[Number(match[1]) - 1] : undefined;
+}
+
+function selectedSuspendedIntentForHandle(
+  context: DecisionRequestContext,
+  handle: string | undefined,
+  protocol: DecisionModelRequestProtocol,
+): DecisionRequestContext['suspendedIntents'][number] | undefined {
+  const intentId = protocol.handles.suspendedIntents
+    .find((candidate) => candidate.handle === handle)?.intentId;
+  return intentId ? context.suspendedIntents.find((intent) => intent.id === intentId) : undefined;
 }
 
 function normalizedSemanticText(value: string): string {
@@ -391,6 +541,9 @@ function physicalOptionSupportsIntention(
   if (purpose === 'conversation' || purpose === 'social-coordination') {
     return /说|问|告诉|交谈|聊|回应|商量|请求|提议|听|愿不愿|能否/u.test(intentionText);
   }
+  if (purpose === 'conflict') {
+    return /攻击|打|伤害|施力|推|抢|强取|偷|盗|约束|捆|绑|制服|抵抗|冲突|复仇|威胁/u.test(intentionText);
+  }
   return true;
 }
 
@@ -463,7 +616,6 @@ function sanitizeWorldAction(input: unknown, protocol: DecisionModelRequestProto
   const raw = record(input);
   const description = text(raw?.description, 240);
   const expectedResult = text(raw?.expectedResult, 180);
-  const verdict = record(raw?.verdict);
   if (!raw || !description || !Array.isArray(raw.targetHandles) || raw.targetHandles.length > 8) return undefined;
   const targetHandles = raw.targetHandles.map((value) => text(value, 24));
   if (targetHandles.some((handle) => !handle) || new Set(targetHandles).size !== targetHandles.length) return undefined;
@@ -473,27 +625,6 @@ function sanitizeWorldAction(input: unknown, protocol: DecisionModelRequestProto
     description,
     targetHandles,
     ...(expectedResult ? { expectedResult } : {}),
-    ...(verdict ? { verdict } : {}),
-  };
-}
-
-/**
- * Small local models sometimes place the verdict beside worldAction, or place
- * effects beside worldAction.verdict. Canonicalize those two shape mistakes
- * without relaxing any target, agency or physical-effect validation.
- */
-function canonicalWorldActionInput(rawPlan: Record<string, unknown>): unknown {
-  const worldAction = record(rawPlan.worldAction);
-  if (!worldAction) return rawPlan.worldAction;
-  const verdict = record(worldAction.verdict) ?? record(rawPlan.verdict);
-  if (!verdict) return worldAction;
-  const siblingEffects = Array.isArray(worldAction.effects) ? worldAction.effects : undefined;
-  return {
-    ...worldAction,
-    verdict: {
-      ...verdict,
-      ...(!Array.isArray(verdict.effects) && siblingEffects ? { effects: siblingEffects } : {}),
-    },
   };
 }
 
@@ -528,9 +659,18 @@ function worldActionSupportsIntention(
   }));
   const intentionText = normalizedSemanticText(`${intention.goal}；${intention.utterance}`);
   const actionText = normalizedSemanticText(worldAction.description);
-  const actionNamedObjects = [...new Set(names.values())].filter((name) => (
-    actionText.includes(normalizedSemanticText(name))
-  ));
+  const matchedNames = [...new Set(names.values())]
+    .map((name) => ({ name, normalized: normalizedSemanticText(name) }))
+    .filter(({ normalized }) => normalized && actionText.includes(normalized));
+  // Prefer the most specific visible name. “锡矿石” contains the generic
+  // name “石”; mentioning the former must not look like an unselected second
+  // object merely because both names are present in the scene.
+  const actionNamedObjects = matchedNames
+    .filter((candidate) => !matchedNames.some((other) => (
+      other.normalized.length > candidate.normalized.length
+        && other.normalized.includes(candidate.normalized)
+    )))
+    .map((candidate) => candidate.name);
   const selectedNames = worldAction.targetHandles
     .map((handle) => names.get(handle))
     .filter((name): name is string => Boolean(name));
@@ -546,9 +686,28 @@ function planSupportsIntention(
   plan: ModelPlanOutput,
   protocol: DecisionModelRequestProtocol,
 ): boolean {
-  if (plan.disposition !== 'act') return !plan.firstStepHandle && !plan.experiment && !plan.worldAction;
+  if (plan.disposition !== 'act') {
+    if (plan.disposition === 'abandon' && plan.abandonIntentHandle) {
+      const abandoned = selectedSuspendedIntentForHandle(context, plan.abandonIntentHandle, protocol);
+      return !plan.firstStepHandle && !plan.resumeIntentHandle && !plan.experiment && !plan.worldAction
+        && Boolean(abandoned)
+        && semanticOverlap(
+          `${intention.goal}；${intention.utterance}`,
+          `${abandoned?.summary ?? ''}；${abandoned?.plan?.steps.join('；') ?? ''}`,
+        ) >= 0.04;
+    }
+    return !plan.firstStepHandle && !plan.resumeIntentHandle && !plan.abandonIntentHandle
+      && !plan.experiment && !plan.worldAction;
+  }
   if (plan.worldAction) return worldActionSupportsIntention(protocol, intention, plan.worldAction);
   if (intention.orientation === 'rest') return false;
+  const suspendedIntent = selectedSuspendedIntentForHandle(context, plan.resumeIntentHandle, protocol);
+  if (suspendedIntent) {
+    return semanticOverlap(
+      `${intention.goal}；${intention.utterance}`,
+      `${suspendedIntent.summary}；${suspendedIntent.plan?.steps.join('；') ?? ''}`,
+    ) >= 0.04;
+  }
   const option = selectedOptionForPlan(context, plan);
   if (option) {
     if (!PURPOSES_BY_ORIENTATION[intention.orientation].has(option.semantics.purpose)) return false;
@@ -580,6 +739,10 @@ function sanitizeModelPlan(
   if (!steps.length || steps.length !== raw.steps.length) return undefined;
   const knownSteps = new Set(protocol.requestContext.availableSteps.map((step) => step.handle));
   const knownContinuations = new Set(protocol.requestContext.continuations.map((step) => step.handle));
+  const knownSuspendedIntents = new Set(protocol.handles.suspendedIntents.map((intent) => intent.handle));
+  const knownResumableIntents = new Set(protocol.handles.suspendedIntents
+    .filter((intent) => intent.resumable)
+    .map((intent) => intent.handle));
   const requestedAction = text(raw.selectedAction, 320);
   const actionMatch = readableAction && requestedAction
     ? protocol.requestContext.availableSteps.find((step) => readableAgentAction(step) === requestedAction)
@@ -593,6 +756,16 @@ function sanitizeModelPlan(
   const continuationHandle = knownContinuations.has(requestedContinuationHandle)
     ? requestedContinuationHandle
     : '';
+  const requestedResumeIntentHandle = text(raw.resumeIntentHandle, 24);
+  const resumeIntentHandle = knownResumableIntents.has(requestedResumeIntentHandle)
+    ? requestedResumeIntentHandle
+    : '';
+  if (requestedResumeIntentHandle && !resumeIntentHandle) return undefined;
+  const requestedAbandonIntentHandle = text(raw.abandonIntentHandle, 24);
+  const abandonIntentHandle = knownSuspendedIntents.has(requestedAbandonIntentHandle)
+    ? requestedAbandonIntentHandle
+    : '';
+  if (requestedAbandonIntentHandle && !abandonIntentHandle) return undefined;
   const selectedStep = protocol.requestContext.availableSteps.find((step) => step.handle === firstStepHandle);
   const groundingFactHandles = Array.isArray(raw.groundingFactHandles)
     ? [...new Set(raw.groundingFactHandles.map((value) => text(value, 24)).filter(Boolean))]
@@ -602,14 +775,13 @@ function sanitizeModelPlan(
   const experiment = record(raw.experiment);
   const validExperiment = experiment ? sanitizedProbe(experiment, protocol.handles) : undefined;
   const requestedWorldAction = raw.worldAction !== undefined && raw.worldAction !== null;
-  const worldAction = sanitizeWorldAction(canonicalWorldActionInput(raw), protocol);
+  const worldAction = sanitizeWorldAction(raw.worldAction, protocol);
   if (requestedWorldAction && !worldAction && !firstStepHandle && !validExperiment) return undefined;
   if (readableAction && experiment && !validExperiment && !worldAction) return undefined;
-  const worldResolution = worldAction
-    ? sanitizePlanAgentWorldVerdict(worldAction.verdict, worldAction, protocol)
-    : undefined;
-  if (worldAction && !worldResolution && !firstStepHandle && !validExperiment) return undefined;
-  const adjudicatedWorldAction = worldResolution && !selectedStep?.communicationKind
+  // Plan describes an attempted action.  A separate world-semantics request
+  // authors its verdict; accepting an embedded verdict here would let the
+  // character's planner decide whether its own idea worked.
+  const adjudicatedWorldAction = worldAction && !selectedStep?.communicationKind
     ? worldAction
     : undefined;
   const feedbackInput = record(raw.feedback);
@@ -626,16 +798,18 @@ function sanitizeModelPlan(
     : undefined;
   if (rawDisposition && !disposition) return undefined;
   if (!disposition) return undefined;
-  // A fully adjudicated worldAction is the Plan Agent's most specific output.
-  // Small models often also echo a generic menu choice; do not let that echo
-  // erase the concrete character-authored interaction.
+  // A free-form worldAction is the Plan's most specific output. It is still
+  // only a request here; the independent resolver authors the result later.
   const effectiveFirstStepHandle = adjudicatedWorldAction ? '' : firstStepHandle;
   const effectiveExperiment = adjudicatedWorldAction ? undefined : validExperiment;
   const actionCount = Number(Boolean(effectiveFirstStepHandle))
+    + Number(Boolean(resumeIntentHandle))
     + Number(Boolean(effectiveExperiment))
     + Number(Boolean(adjudicatedWorldAction));
   const hasAction = actionCount === 1;
   if (actionCount > 1) return undefined;
+  if (resumeIntentHandle && continuationHandle) return undefined;
+  if (abandonIntentHandle && (hasAction || continuationHandle || disposition !== 'abandon')) return undefined;
   if (disposition === 'act' && !hasAction) return undefined;
   if (disposition && disposition !== 'act' && hasAction) return undefined;
   return {
@@ -643,10 +817,11 @@ function sanitizeModelPlan(
     ...(disposition ? { disposition } : {}),
     ...(effectiveFirstStepHandle ? { firstStepHandle: effectiveFirstStepHandle } : {}),
     ...(continuationHandle ? { continuationHandle } : {}),
+    ...(resumeIntentHandle ? { resumeIntentHandle } : {}),
+    ...(abandonIntentHandle ? { abandonIntentHandle } : {}),
     ...(selectedStep?.communicationKind && groundingFactHandles.length ? { groundingFactHandles } : {}),
     ...(!effectiveFirstStepHandle && effectiveExperiment ? { experiment: experiment! } : {}),
     ...(adjudicatedWorldAction ? { worldAction: adjudicatedWorldAction } : {}),
-    ...(worldResolution ? { worldResolution } : {}),
     ...(feedback ? { feedback } : {}),
   };
 }
@@ -661,7 +836,13 @@ function stagedDecisionOutput(
   const selectedStep = plan?.firstStepHandle
     ? protocol.requestContext.availableSteps.find((step) => step.handle === plan.firstStepHandle)
     : undefined;
-  const kind = plan?.disposition === 'continue'
+  const resumedIntent = plan?.resumeIntentHandle
+    ? selectedSuspendedIntentForHandle(context, plan.resumeIntentHandle, protocol)
+    : undefined;
+  const abandonedIntent = plan?.abandonIntentHandle
+    ? selectedSuspendedIntentForHandle(context, plan.abandonIntentHandle, protocol)
+    : undefined;
+  const kind = resumedIntent || plan?.disposition === 'continue'
     ? 'continue'
     : plan?.disposition === 'pause' || plan?.disposition === 'abandon'
       ? 'reconsider'
@@ -674,6 +855,10 @@ function stagedDecisionOutput(
       : 'pursue';
   const strategy = selectedStep
     ? readableAgentAction(selectedStep)
+    : resumedIntent
+      ? `恢复此前搁置的事务：${resumedIntent.summary}`
+    : abandonedIntent
+      ? `不再保留此前搁置的事务：${abandonedIntent.summary}`
     : plan?.experiment
       ? `按自己选定的具体对象进行一次${text(plan.experiment.kind, 24) || '观察'}尝试`
       : plan?.worldAction
@@ -703,16 +888,40 @@ function stagedDecisionOutput(
     horizon: intention.horizon,
     strategy,
     assumptions: [],
+    ...(plan ? {
+      plan: {
+        version: 'mental-plan-translation-v1',
+        steps: [...plan.steps],
+        disposition: plan.disposition ?? 'stay',
+        ...(plan.firstStepHandle ? { firstStepHandle: plan.firstStepHandle } : {}),
+        ...(plan.continuationHandle ? { continuationHandle: plan.continuationHandle } : {}),
+        ...(plan.resumeIntentHandle ? { resumeIntentHandle: plan.resumeIntentHandle } : {}),
+        ...(plan.abandonIntentHandle ? { abandonIntentHandle: plan.abandonIntentHandle } : {}),
+        ...(plan.worldAction ? {
+          worldAction: {
+            description: plan.worldAction.description,
+            ...(plan.worldAction.expectedResult
+              ? { expectedResult: plan.worldAction.expectedResult }
+              : {}),
+          },
+        } : {}),
+      },
+    } : {}),
     ...(intention.evidenceMemoryHandles.length
       ? { evidenceMemoryHandles: intention.evidenceMemoryHandles }
       : {}),
+    ...(intention.relationshipAppraisal
+      ? { relationshipAppraisal: structuredClone(intention.relationshipAppraisal) }
+      : {}),
     ...(plan?.firstStepHandle ? { firstStepHandle: plan.firstStepHandle } : {}),
     ...(plan?.continuationHandle ? { continuationHandle: plan.continuationHandle } : {}),
+    ...(plan?.resumeIntentHandle ? { resumeIntentHandle: plan.resumeIntentHandle } : {}),
+    ...(plan?.abandonIntentHandle ? { abandonIntentHandle: plan.abandonIntentHandle } : {}),
     ...(plan?.groundingFactHandles ? { groundingFactHandles: plan.groundingFactHandles } : {}),
     ...(plan?.experiment ? { experiment: plan.experiment } : {}),
     ...(plan?.feedback ? { planFeedback: plan.feedback } : {}),
     ...(plan?.disposition ? { intentDisposition: plan.disposition } : {}),
-    ...(intention.horizon === 'ongoing' && protocol.characterAgendaProposal ? {
+    ...(intention.horizon === 'ongoing' && protocol.characterAgendaProposal && !resumedIntent && !abandonedIntent ? {
       concern: linkedAgendaHandle
         ? { kind: 'revise', agendaHandle: linkedAgendaHandle, importance: 60, horizonMonths: 24 }
         : { kind: 'create', importance: 60, horizonMonths: 24 },
@@ -907,6 +1116,11 @@ function sanitizeMentalAct(
   const memories = requestedMemoryHandles.map((handle) => handles.memories.find((item) => item.handle === handle));
   if (memories.some((memory) => !memory)) return undefined;
   const expectedObservation = text(raw.expectedObservation, 240);
+  const plan = sanitizeMentalPlanTranslation(raw.plan, handles);
+  const relationshipAppraisal = sanitizeStagedRelationshipAppraisal(raw.relationshipAppraisal, handles);
+  if (raw.relationshipAppraisal !== undefined && raw.relationshipAppraisal !== null && !relationshipAppraisal) {
+    return undefined;
+  }
   const planFeedbackRaw = record(raw.planFeedback);
   const planFeedbackCorrection = text(planFeedbackRaw?.correction, 240);
   const planFeedbackAdjustment = text(planFeedbackRaw?.adjustment, 240);
@@ -943,6 +1157,8 @@ function sanitizeMentalAct(
     strategy,
     assumptions,
     ...(expectedObservation ? { expectedObservation } : {}),
+    ...(plan ? { plan } : {}),
+    ...(relationshipAppraisal ? { relationshipAppraisal } : {}),
     ...(planFeedback ? { planFeedback } : {}),
     sourceEventIds: [...new Set(memories.flatMap((memory) => memory!.sourceFactIds))].slice(-24),
   };
@@ -978,7 +1194,9 @@ function concernUpdateForMentalAct(
     horizonMonths: boundedNumber(raw.horizonMonths, 12, 6, 240),
     sourceMemoryHandles,
     approach: {
-      summary: mentalAct.strategy,
+      summary: mentalAct.plan?.steps.length
+        ? mentalAct.plan.steps.join('；然后').slice(0, 240)
+        : mentalAct.strategy,
       ...(experimentInput ? { probe: experimentInput } : {}),
     },
   }, handles);
@@ -1000,24 +1218,46 @@ export function expandDecisionModelOutput(
   delete raw.delivery;
   const requestedStep = Object.prototype.hasOwnProperty.call(raw, 'firstStepHandle');
   const requestedContinuation = Object.prototype.hasOwnProperty.call(raw, 'continuationHandle');
+  const requestedResume = Object.prototype.hasOwnProperty.call(raw, 'resumeIntentHandle');
+  const requestedAbandon = Object.prototype.hasOwnProperty.call(raw, 'abandonIntentHandle');
   const stepHandle = text(raw.firstStepHandle, 24);
   const continuationHandle = text(raw.continuationHandle, 24);
+  const resumeIntentHandle = text(raw.resumeIntentHandle, 24);
+  const abandonIntentHandle = text(raw.abandonIntentHandle, 24);
   const exposedSteps = new Set(protocol.requestContext.availableSteps.map((step) => step.handle));
   const exposedContinuations = new Set(protocol.requestContext.continuations.map((step) => step.handle));
+  const exposedSuspendedIntents = new Set(protocol.handles.suspendedIntents.map((intent) => intent.handle));
+  const exposedResumableIntents = new Set(protocol.handles.suspendedIntents
+    .filter((intent) => intent.resumable)
+    .map((intent) => intent.handle));
   if ((requestedStep && !exposedSteps.has(stepHandle))
-    || (requestedContinuation && !exposedContinuations.has(continuationHandle))) return null;
+    || (requestedContinuation && !exposedContinuations.has(continuationHandle))
+    || (requestedResume && !exposedResumableIntents.has(resumeIntentHandle))
+    || (requestedAbandon && !exposedSuspendedIntents.has(abandonIntentHandle))) return null;
   const optionIndex = /^o([1-9]\d*)$/u.exec(stepHandle);
   const continuationIndex = /^f([1-9]\d*)$/u.exec(continuationHandle);
   const optionId = optionIndex ? context.options[Number(optionIndex[1]) - 1]?.id : undefined;
   const followUpOptionId = continuationIndex
     ? context.followUpOptions[Number(continuationIndex[1]) - 1]?.id
     : undefined;
+  const resumeIntentId = protocol.handles.suspendedIntents
+    .find((intent) => intent.handle === resumeIntentHandle)?.intentId;
+  const abandonIntentId = protocol.handles.suspendedIntents
+    .find((intent) => intent.handle === abandonIntentHandle)?.intentId;
   if (requestedStep && !optionId) return null;
   if (requestedContinuation && !followUpOptionId) return null;
+  if (requestedResume && !resumeIntentId) return null;
+  if (requestedAbandon && !abandonIntentId) return null;
   if (optionId) raw.optionId = optionId;
   else delete raw.optionId;
   if (followUpOptionId) raw.followUpOptionId = followUpOptionId;
   else delete raw.followUpOptionId;
+  if (resumeIntentId) raw.resumeIntentId = resumeIntentId;
+  else delete raw.resumeIntentId;
+  if (abandonIntentId) raw.abandonIntentId = abandonIntentId;
+  else delete raw.abandonIntentId;
+  delete raw.resumeIntentHandle;
+  delete raw.abandonIntentHandle;
   const selectedOptionId = text(raw.optionId, 512);
   const selectedOption = context.options.find((option) => option.id === selectedOptionId);
   const requestedGrounding = Object.prototype.hasOwnProperty.call(raw, 'groundingFactHandles');
@@ -1097,6 +1337,7 @@ async function requestMindIntention(
     temperature: decisionPhaseTemperature('mind'),
     maxOutputTokens: decisionMaxOutputTokens(),
     jsonObject: true,
+    jsonSchema: buildMindIntentionJsonSchema(protocol),
     timeoutMs: decisionTimeout(endpoint),
   });
   return { content: response.text, usage: response.usage };
@@ -1110,7 +1351,7 @@ async function requestModelPlan(
 ): Promise<{ content: string; usage: TokenUsage }> {
   const context = agentPlanRequestContext(protocol, intention);
   const messages: ModelMessage[] = [
-    { role: 'system', content: `${AGENT_PLAN_SYSTEM_PROMPT_V1}\n${PLAN_AGENT_WORLD_VERDICT_V1}` },
+    { role: 'system', content: AGENT_PLAN_SYSTEM_PROMPT_V1 },
     { role: 'user', content: JSON.stringify(context) },
   ];
   if (correction) messages.push(
@@ -1119,7 +1360,7 @@ async function requestModelPlan(
       role: 'user',
       content: [
         `上一个 Plan 协议无效：${correction.problem}。请只修正规划 JSON，不要改写 intention。`,
-        `selectedAction 必须完整复制以下某个 action：${(context.availableActions as Array<{ action: string }>).map((step) => step.action).join('、') || '无'}`,
+        `firstStepHandle 必须引用以下稳定 handle 之一：${(context.availableSteps as Array<{ handle: string }>).map((step) => step.handle).join('、') || '无'}`,
       ].join('\n'),
     },
   );
@@ -1128,9 +1369,86 @@ async function requestModelPlan(
     temperature: decisionPhaseTemperature('plan'),
     maxOutputTokens: decisionMaxOutputTokens(),
     jsonObject: true,
+    jsonSchema: buildModelPlanJsonSchema(protocol),
     timeoutMs: decisionTimeout(endpoint),
   });
   return { content: response.text, usage: response.usage };
+}
+
+function worldResolutionRequestContext(
+  protocol: DecisionModelRequestProtocol,
+  worldAction: ModelWorldAction,
+): Record<string, unknown> {
+  return {
+    schemaVersion: 'world-semantics-context-v1',
+    actor: protocol.requestContext.person,
+    situation: protocol.requestContext.situation,
+    visible: protocol.requestContext.visible,
+    actionSpace: protocol.requestContext.actionSpace,
+    worldAction,
+    ...planAgentWorldContext(),
+  };
+}
+
+async function requestWorldResolution(
+  endpoint: ResolvedModelEndpoint,
+  protocol: DecisionModelRequestProtocol,
+  worldAction: ModelWorldAction,
+  correction?: { invalidContent: string; problem: string },
+): Promise<{ content: string; usage: TokenUsage }> {
+  const messages: ModelMessage[] = [
+    { role: 'system', content: PLAN_AGENT_WORLD_VERDICT_V1 },
+    { role: 'user', content: JSON.stringify(worldResolutionRequestContext(protocol, worldAction)) },
+  ];
+  if (correction) messages.push(
+    { role: 'assistant', content: correction.invalidContent },
+    {
+      role: 'user',
+      content: `上一个世界结算协议无效：${correction.problem}。保持人物动作不变，只修正实际结果与 effects。`,
+    },
+  );
+  const response = await requestModelText(endpoint, {
+    messages,
+    temperature: 0,
+    maxOutputTokens: decisionMaxOutputTokens(),
+    jsonObject: true,
+    jsonSchema: buildWorldResolutionJsonSchema(protocol),
+    timeoutMs: decisionTimeout(endpoint),
+  });
+  return { content: response.text, usage: response.usage };
+}
+
+async function resolveWorldAction(
+  endpoint: ResolvedModelEndpoint,
+  protocol: DecisionModelRequestProtocol,
+  worldAction: ModelWorldAction | undefined,
+): Promise<{ resolution?: WorldAdjudicationResolution; usage: TokenUsage; providerRequests: number }> {
+  if (!worldAction) return {
+    usage: { inputTokens: 0, outputTokens: 0 },
+    providerRequests: 0,
+  };
+  let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+  let providerRequests = 0;
+  let correction: { invalidContent: string; problem: string } | undefined;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    providerRequests += 1;
+    const response = await requestWorldResolution(endpoint, protocol, worldAction, correction);
+    usage = addUsage(usage, response.usage);
+    let parsed: unknown;
+    try {
+      parsed = parseJson(response.content);
+    } catch {
+      correction = { invalidContent: response.content, problem: '不是 JSON 对象' };
+      continue;
+    }
+    const resolution = sanitizePlanAgentWorldVerdict(parsed, worldAction, protocol);
+    if (resolution) return { resolution, usage, providerRequests };
+    correction = {
+      invalidContent: response.content,
+      problem: '结果缺少合法的来源、对象绑定或可执行世界变化',
+    };
+  }
+  return { usage, providerRequests };
 }
 
 function boundedInteger(value: unknown, minimum: number, maximum: number): number | undefined {
@@ -1233,7 +1551,7 @@ function completedWorldEffectsMatchClaim(
   return true;
 }
 
-/** Converts the Plan Agent's embedded world verdict into server-owned refs and a bounded mutation IR. */
+/** Converts an independent world-semantics verdict into server-owned refs and a bounded mutation IR. */
 export function sanitizePlanAgentWorldVerdict(
   input: unknown,
   worldActionInput: unknown,
@@ -1398,21 +1716,13 @@ export function sanitizePlanAgentWorldVerdict(
       effects.push({ kind, ...(target?.kind === 'person' ? { target } : {}), field, delta });
       continue;
     }
-    if (kind === 'relation') {
-      const targetHandle = text(effect.targetHandle, 24);
-      const target = requestedHandles.has(targetHandle)
-        ? worldRefForHandle(protocol.handles, targetHandle, actorId)
-        : undefined;
-      const field = effect.field === 'trust' || effect.field === 'bond' || effect.field === 'fear'
-        ? effect.field
-        : undefined;
-      const delta = boundedInteger(effect.delta, -20, 20);
-      if (target?.kind !== 'person' || !field || delta === undefined) return undefined;
-      effects.push({ kind, target, field, delta });
-      continue;
-    }
     return undefined;
   }
+  // A semantic resolver may describe a transformation, but it cannot summon
+  // authoritative material.  Every produced lot must consume a named input in
+  // the same local action; known recipe executors remain the richer path.
+  if (effects.some((effect) => effect.kind === 'produce')
+    && !effects.some((effect) => effect.kind === 'consume')) return undefined;
   const hasPersistentEffect = effects.some((effect) => (
     effect.kind === 'world-state'
       || effect.kind === 'replace-voxel'
@@ -1457,6 +1767,8 @@ function normalizeDecision(context: DecisionRequestContext, input: unknown): Dec
   const reason = text(raw.reason) || mentalAct.strategy;
   const optionId = text(raw.optionId, 512);
   const followUpOptionId = text(raw.followUpOptionId, 512);
+  const resumeIntentId = text(raw.resumeIntentId, 512);
+  const abandonIntentId = text(raw.abandonIntentId, 512);
   const characterAgendaProposal = record(raw.characterAgendaProposal)
     ? raw.characterAgendaProposal as unknown as CharacterAgendaProposal
     : undefined;
@@ -1480,6 +1792,7 @@ function normalizeDecision(context: DecisionRequestContext, input: unknown): Dec
   if (communication && mentalAct.kind !== 'talk') return null;
   const activeIntentId = context.activeIntent?.id;
   const intentDisposition = text(raw.intentDisposition, 24);
+  if (abandonIntentId && intentDisposition !== 'abandon') return null;
   if (intentDisposition === 'pause' || intentDisposition === 'stay') {
     return activeIntentId ? {
       kind: 'suspend',
@@ -1494,6 +1807,16 @@ function normalizeDecision(context: DecisionRequestContext, input: unknown): Dec
     };
   }
   if (intentDisposition === 'abandon') {
+    if (abandonIntentId) {
+      const suspended = context.suspendedIntents.some((intent) => intent.id === abandonIntentId);
+      if (!suspended || option) return null;
+      return {
+        kind: 'abandon',
+        intentId: abandonIntentId,
+        reason,
+        mentalAct,
+      };
+    }
     return activeIntentId ? {
       kind: 'abandon',
       intentId: activeIntentId,
@@ -1504,6 +1827,16 @@ function normalizeDecision(context: DecisionRequestContext, input: unknown): Dec
       reason,
       mentalAct,
       ...(characterAgendaUpdate ? { characterAgendaUpdate } : {}),
+    };
+  }
+  const resumable = context.suspendedIntents.some((intent) => intent.id === resumeIntentId);
+  if (resumeIntentId) {
+    if (!resumable || option || intentDisposition !== 'act') return null;
+    return {
+      kind: 'resume',
+      intentId: resumeIntentId,
+      reason,
+      mentalAct,
     };
   }
   if (!option) {
@@ -1566,8 +1899,9 @@ export function normalizeMindPlanModelOutput(
   if (!intention) return null;
   const plan = sanitizeModelPlan(planInput, protocol);
   if (!plan) return null;
-  const effectiveWorldResolution = worldResolution ?? plan.worldResolution;
-  const alignedPlan = planSupportsIntention(context, intention, plan, protocol)
+  const planAligned = planSupportsIntention(context, intention, plan, protocol);
+  const effectiveWorldResolution = planAligned ? worldResolution : undefined;
+  const alignedPlan = planAligned
     ? plan
     : {
         steps: [`当前没有与“${intention.goal}”直接一致的执行入口，先保留这个意图`],
@@ -1590,9 +1924,11 @@ export function normalizeMindPlanModelOutput(
     ),
     protocol,
   );
-  const executionProbe = effectiveWorldResolution?.probe ?? (executionPlan.experiment
-    ? sanitizedProbe(executionPlan.experiment, protocol.handles)
-    : undefined);
+  const executionProbe = executionPlan.worldAction
+    ? effectiveWorldResolution?.probe
+    : executionPlan.experiment
+      ? sanitizedProbe(executionPlan.experiment, protocol.handles)
+      : undefined;
   return executionProbe && decision?.kind === 'idle'
     ? { ...decision, executionProbe }
     : decision;
@@ -1682,7 +2018,7 @@ async function decideOne(context: DecisionRequestContext, endpoint: ResolvedMode
       correction = { invalidContent: completion.content, problem: '不是 JSON 对象' };
       continue;
     }
-    const plan = sanitizeModelPlan(parsed, protocol, true);
+    const plan = sanitizeModelPlan(parsed, protocol);
     if (!plan) {
       correction = { invalidContent: completion.content, problem: '缺少合法的简短计划或行动引用' };
       continue;
@@ -1694,12 +2030,18 @@ async function decideOne(context: DecisionRequestContext, endpoint: ResolvedMode
       };
       continue;
     }
+    const world = await resolveWorldAction(endpoint, protocol, plan.worldAction);
+    usage = addUsage(usage, world.usage);
+    providerRequests += world.providerRequests;
+    if (plan.worldAction && !world.resolution) {
+      return { decision: null, usage, providerRequests };
+    }
     const decision = normalizeMindPlanModelOutput(
       context,
       mind.intention,
       plan,
       protocol,
-      plan.worldResolution,
+      world.resolution,
     );
     if (decision) {
       return {
@@ -1708,22 +2050,7 @@ async function decideOne(context: DecisionRequestContext, endpoint: ResolvedMode
         providerRequests,
       };
     }
-    // Surface the exact reason when a structure claim failed the claim-check,
-    // so a small model can self-correct on the retry instead of guessing.
-    const worldAction = plan.worldAction;
-    const claimText = `${worldAction?.description ?? ''}；${text(worldAction?.verdict?.result, 240)}`;
-    const rawEffects = Array.isArray(worldAction?.verdict?.effects) ? worldAction.verdict.effects : [];
-    const effectKinds = new Set(rawEffects.map((effect) => text(record(effect)?.kind, 32)));
-    correction = effectKinds.has('consume')
-      && !effectKinds.has('assemble')
-      && !effectKinds.has('modify-structure')
-      && !effectKinds.has('replace-voxel')
-      && /搭|垒|捆|架|棚|组装|拼接|捏成|塑成/u.test(claimText)
-      ? {
-        invalidContent: completion.content,
-        problem: '声称搭成/捏成了东西，但材料没有被做成实体：consume 之后必须跟 assemble。照此写：{"kind":"consume","targetHandle":"材料句柄","quantity":1},{"kind":"assemble","targetHandle":"空位v句柄","arrangement":"form","summary":"一句话称呼"}；arrangement 取 support|pile|lash|form。只用 world-state 描述"做成了"对世界不存在',
-      }
-      : { invalidContent: completion.content, problem: '所选行动不能由当前世界执行' };
+    correction = { invalidContent: completion.content, problem: '所选行动不能由当前世界执行' };
   }
   if (loadServerEnvValue('MODEL_DECISION_DEBUG') === '1') {
     console.warn(`模型端点 ${endpoint.id} 的 Mind → Plan 没有通过 Execution 接口校验`);
@@ -1749,6 +2076,7 @@ async function decideBatch(
   let planUsage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
   let planProviderRequests = 0;
   const plans: Array<ModelPlanOutput | undefined> = Array.from({ length: contexts.length });
+  const worldResolutions: Array<WorldAdjudicationResolution | undefined> = Array.from({ length: contexts.length });
   for (let index = 0; index < contexts.length; index += 1) {
     const intention = intentions[index];
     if (!intention) continue;
@@ -1764,12 +2092,17 @@ async function decideBatch(
         correction = { invalidContent: response.content, problem: '不是 JSON 对象' };
         continue;
       }
-      const candidate = sanitizeModelPlan(parsed, protocols[index], true);
+      const candidate = sanitizeModelPlan(parsed, protocols[index]);
       if (candidate && planSupportsIntention(contexts[index], intention, candidate, protocols[index])) {
+        const world = await resolveWorldAction(endpoint, protocols[index], candidate.worldAction);
+        planUsage = addUsage(planUsage, world.usage);
+        planProviderRequests += world.providerRequests;
+        if (candidate.worldAction && !world.resolution) break;
         if (loadServerEnvValue('MODEL_DECISION_DEBUG') === '1') {
           console.warn(`Plan Agent 接受 a${index + 1}: ${JSON.stringify(candidate).slice(0, 3_000)}`);
         }
         plans[index] = candidate;
+        worldResolutions[index] = world.resolution;
         break;
       }
       if (loadServerEnvValue('MODEL_DECISION_DEBUG') === '1') {
@@ -1779,14 +2112,14 @@ async function decideBatch(
         invalidContent: response.content,
         problem: candidate
           ? '所选具体行动没有推进冻结的 intention，或替换了 intention 明确指定的材料'
-          : 'Plan、worldAction.verdict 或失败 feedback 不符合协议',
+          : 'Plan、worldAction 或失败 feedback 不符合协议',
       };
     }
   }
   const decisions = contexts.map((context, index) => {
     const intention = intentions[index];
     if (!intention || !plans[index]) return null;
-    return normalizeMindPlanModelOutput(context, intention, plans[index], protocols[index], plans[index]?.worldResolution);
+    return normalizeMindPlanModelOutput(context, intention, plans[index], protocols[index], worldResolutions[index]);
   });
   const mindUsage = mindResults.reduce(
     (sum, result) => addUsage(sum, result.usage),

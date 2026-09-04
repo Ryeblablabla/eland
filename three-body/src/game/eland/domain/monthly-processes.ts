@@ -20,7 +20,7 @@ import { inventoryQuantity } from './person';
 import { addDrop } from './action-executor';
 import { WORLD_CELL_COUNT, cellId, cellX, cellY, cellsInRadius, isStandingPosition, neighbors4, setVoxel, surfaceMaterial, surfaceStandingPosition, topZ, voxelAt } from '../world/grid';
 import { seededFraction } from '../world/generator';
-import { shelterGeometryAt, shelterHeatRelief , survivalShelterAt} from './structure';
+import { shelterHeatRelief, survivalShelterAt } from './structure';
 import { advanceWorksMonth } from './works';
 import { advanceAnimalBondsMonth } from './animal-bonds';
 import { geneticKinshipRisk, inheritedGeneticLoad, KINSHIP_RISK_KNOWLEDGE_ID } from './kinship';
@@ -561,7 +561,7 @@ function recordNewborn(
   const parentalKinshipRisk = father ? geneticKinshipRisk(state, person, father) : 0;
   state.people.push(child);
   const multipleLabel = birth.count > 1 ? `（双胞胎第 ${birth.index} 个）` : '';
-  const recoveryResult = birth.postpartumSkippedByTrait ? '，魅魔特质使其无需产后恢复' : '，进入产后恢复期';
+  const recoveryResult = birth.postpartumSkippedByTrait ? '，其魅魔特质仅使本人无需产后恢复' : '，进入产后恢复期';
   const fact = event(state, atMonth, events, 'body', `${person.name}生下了${child.name}${multipleLabel}${recoveryResult}`, {
     bornPersonId: child.id,
     bornPersonName: child.name,
@@ -602,6 +602,13 @@ function recordNewborn(
     ...(birth.recoveryUntilMonth !== undefined ? { postpartumRecoveryUntilMonth: birth.recoveryUntilMonth } : {}),
     postpartumSkippedByTrait: birth.postpartumSkippedByTrait,
   }, person);
+  child.origin = {
+    version: 'person-origin-v1',
+    kind: 'birth',
+    enteredAtMonth: atMonth,
+    summary: `${child.name}在第 ${atMonth} 月出生于当前世界`,
+    sourceEventIds: [fact.id],
+  };
   bindTraitSource(child, fact.id);
   grantProphetKnowledge(child, atMonth, fact.id);
   if (child.geneticLoad >= 0.3) {

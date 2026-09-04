@@ -6,6 +6,15 @@ import type { BereavementState } from './mortuary';
 import type { ProjectFunction, ProjectNeed } from './project';
 import type { SocialLearningState } from './social-learning';
 import type { PersonTraitState } from './trait';
+import type { RelationshipEpisode } from './relationship-episode';
+import type { PersonOrigin } from './regional-population';
+
+export type {
+  RelationshipAppraisalMeaning,
+  RelationshipEpisode,
+  RelationshipEpisodeInput,
+  SubjectiveRelationshipAppraisal,
+} from './relationship-episode';
 
 export type PersonId = string;
 export type ConditionKind = 'cold' | 'heat' | 'wound' | 'illness' | 'aging' | 'pregnancy' | 'postpartum-recovery' | 'restrained' | 'dehydrated-hibernation';
@@ -283,6 +292,8 @@ export interface PersonState {
   name: string;
   color: string;
   profile: PersonProfile;
+  /** Physical/social provenance of this person's entry into the simulated map. */
+  origin?: PersonOrigin;
   bornAtMonth: number;
   lifespanMonths: number;
   diedAtMonth?: number;
@@ -325,6 +336,12 @@ export interface PersonState {
   /** 亲眼确认或亲自使用过的有限物质地点；不是全知地图。 */
   knownPlaces: KnownPlace[];
   relations: DirectedRelation[];
+  /**
+   * Directed, person-local interpretations of sourced encounters. Optional
+   * while old saves and lightweight fixtures migrate; unlike relation scores,
+   * these episodes preserve what an event meant to this particular person.
+   */
+  relationshipEpisodes?: RelationshipEpisode[];
   memories: MemoryRecord[];
   /**
    * This person's single persisted subjective document. Optional only while

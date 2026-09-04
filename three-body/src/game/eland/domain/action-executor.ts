@@ -22,9 +22,29 @@ import type {
   DropState,
   SimulationState,
 } from './model';
-import { cellId, cellX, cellY, cellsInRadius, findStandingPath, neighbors4, setVoxel, standingPathMovementCost, standingPathSegmentForTick, standingPositions, surfaceMaterial, voxelAt, type StandingPosition } from '../world/grid';
+import {
+  cellId,
+  cellX,
+  cellY,
+  cellsInRadius,
+  findStandingPath,
+  setVoxel,
+  standingPathMovementCost,
+  standingPathSegmentForEffort,
+  standingPositions,
+  surfaceMaterial,
+  voxelAt,
+  type StandingPosition,
+} from '../world/grid';
+import { BASE_ACTIVITY_EPISODE_WORK_EFFORT, physicalWorkCapacityMultiplier } from './calendar';
 import { seededFraction } from '../world/generator';
-import { createWork, modifyWork, registerWork, workAt, workShelterCoverAt } from './works';
+import {
+  createWork,
+  modifyWork,
+  recordWorkUsesFromCompletedAction,
+  registerWork,
+  workAt,
+} from './works';
 import { applyAnimalBondContact, resetAnimalBond } from './animal-bonds';
 import { communicationById } from './social-facts';
 import { remember, rememberAction } from './memory';
@@ -99,7 +119,6 @@ import {
 import {
   movementMetabolicMultiplier,
   reproductiveUpperAgeMonths,
-  traitStatesOf,
 } from './trait';
 import { addContainedInventory, addContainerInventory, addDrop, addInventory, removeEmptyStacks } from './actions/inventory';
 import {
@@ -159,25 +178,6 @@ function projectMaterialDeliveryForTransfer(
     };
   }
   return undefined;
-}
-
-function conditionWorkMultiplier(person: PersonState): number {
-  let multiplier = 1;
-  if (person.body.hydration < 10) multiplier *= 0.35;
-  else if (person.body.hydration < 35) multiplier *= 0.75;
-  if (person.body.nutrition < 10) multiplier *= 0.45;
-  else if (person.body.nutrition < 35) multiplier *= 0.8;
-  if (person.body.hydration >= 60 && person.body.nutrition >= 70) multiplier *= 1.1;
-  for (const condition of person.conditions) {
-    if (condition.kind === 'cold') multiplier *= [1, 0.85, 0.65, 0.4][condition.stage];
-    if (condition.kind === 'heat') multiplier *= [1, 0.9, 0.7, 0.45][condition.stage];
-    if (condition.kind === 'wound' || condition.kind === 'illness') multiplier *= [1, 0.88, 0.68, 0.45][condition.stage];
-    if (condition.kind === 'aging') multiplier *= [1, 0.95, 0.8, 0.55][condition.stage];
-    if (condition.kind === 'pregnancy') multiplier *= condition.stage >= 3 ? 0.65 : 0.88;
-    if (condition.kind === 'postpartum-recovery') multiplier *= condition.stage >= 3 ? 0.78 : condition.stage === 2 ? 0.88 : 0.96;
-    if (condition.kind === 'restrained') multiplier *= 0.25;
-  }
-  return Math.max(0.2, Math.min(1.5, multiplier));
 }
 
 function canonicalStringIds(value: unknown): string[] | null {
@@ -255,7 +255,7 @@ function sameInputWitnesses(
   });
 }
 
-function eventProducesOrTransfersMaterial(event: NonNullable<ReturnType<typeof worldEventById>>, materialId: MaterialId): boolean {
+export function eventProducesOrTransfersMaterial(event: NonNullable<ReturnType<typeof worldEventById>>, materialId: MaterialId): boolean {
   const listedMaterial = (value: unknown): boolean => Array.isArray(value)
     && value.some((item) => item && typeof item === 'object'
       && Number((item as Record<string, unknown>).materialId) === materialId);
@@ -268,6 +268,8 @@ function eventProducesOrTransfersMaterial(event: NonNullable<ReturnType<typeof w
       || listedMaterial(event.diff.outputs)
       || listedMaterial(event.diff.products);
   }
+  if (event.kind === 'population') return event.change === 'regional-arrival'
+    && listedMaterial(event.diff.carriedMaterials);
   if (event.kind !== 'environment') return false;
   return Number(event.diff.materialId) === materialId
     || Number(event.diff.outputMaterialId) === materialId
@@ -635,13 +637,25 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
   }
   const fullPath = findStandingPath(state.world.grid, person.position, { cellId: action.toCellId, ...(action.toZ === undefined ? {} : { z: action.toZ }) });
   if (!fullPath.length) return { status: 'blocked' as const, path: [person.position.cellId], result: '目标地表当前不可达', diff: {} };
-  // 一个 move 仍沿逐格连续路径执行；低成本道路可在同一规则刻度继续跨过下一条边。
-  const segment = standingPathSegmentForTick(state.world.grid, fullPath);
+  const workCapacity = physicalWorkCapacityMultiplier({
+    locomotion: person.baselineCapacities.locomotion,
+    hydration: person.body.hydration,
+    nutrition: person.body.nutrition,
+    conditions: person.conditions,
+  });
+  // One action tick is a coherent activity episode. The path remains exact,
+  // while body state changes how much of it can be covered in that episode.
+  const segment = standingPathSegmentForEffort(
+    state.world.grid,
+    fullPath,
+    BASE_ACTIVITY_EPISODE_WORK_EFFORT,
+    workCapacity,
+  );
   const from = { cellId: person.position.cellId, z: person.position.z };
   const to = segment.at(-1) ?? from;
   const moved = to.cellId !== from.cellId || to.z !== from.z;
   const movementCost = moved ? standingPathMovementCost(state.world.grid, segment) : 0;
-  const spent = movementCost / conditionWorkMultiplier(person);
+  const spent = movementCost / workCapacity;
   person.position.cellId = to.cellId;
   person.position.z = to.z;
   if (moved) person.position.lastPath.push(...segment.slice(1).map((position) => position.cellId));
@@ -849,9 +863,39 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   // 容器目前只是空间持有者，不自带所有权；以后由 claim/title 决定规范授权。
   const authorized = action.from.kind === 'ground' || action.from.kind === 'container' || action.from.personId === person.id || agreementAuthorized || permissionAuthorized || mandateAuthorized;
   const witnessedBy = state.people.filter((candidate) => sameLocation(candidate, person)).map((candidate) => candidate.id);
-  if (!authorized && sourcePerson && sourcePerson.body.health > 20 && !sourcePerson.conditions.some((condition) => condition.kind === 'restrained')) {
+  const ownerCanContest = Boolean(sourcePerson
+    && isAlive(sourcePerson)
+    && !isDormantDehydratedHibernating(sourcePerson)
+    && !sourcePerson.conditions.some((condition) => condition.kind === 'restrained'));
+  const bodyReadiness = (candidate: PersonState): number => (
+    (candidate.body.health + candidate.body.hydration + candidate.body.nutrition) / 300
+  );
+  const takingContest = !authorized && sourcePerson && ownerCanContest
+    ? {
+        actorPotential: Math.min(person.baselineCapacities.manipulation, person.baselineCapacities.locomotion)
+          * bodyReadiness(person),
+        ownerPotential: Math.max(sourcePerson.baselineCapacities.perception, sourcePerson.baselineCapacities.manipulation)
+          * bodyReadiness(sourcePerson),
+        actorRoll: seededFraction(state.seed, `unauthorized-taking:actor:${eventId}`),
+        ownerRoll: seededFraction(state.seed, `unauthorized-taking:owner:${eventId}`),
+      }
+    : undefined;
+  const takingSucceeded = !takingContest
+    || takingContest.actorPotential * (0.5 + takingContest.actorRoll)
+      > takingContest.ownerPotential * (0.5 + takingContest.ownerRoll);
+  if (!authorized && sourcePerson && !takingSucceeded) {
     applyRelationEvidence(sourcePerson, person.id, eventId, { trust: -7, fear: 3 });
-    return { status: 'blocked' as const, result: `${sourcePerson.name}阻止了未经授权的取物`, diff: { authorized: false, attempted: true, resistedBy: sourcePerson.id, witnessedBy } };
+    return {
+      status: 'blocked' as const,
+      result: `${sourcePerson.name}察觉并阻止了未经授权的取物`,
+      diff: {
+        authorized: false,
+        attempted: true,
+        resistedBy: sourcePerson.id,
+        witnessedBy,
+        takingContest,
+      },
+    };
   }
   if (sourceDrop) sourceDrop.quantity -= quantity;
   if (sourceStack && sourcePerson) {
@@ -974,6 +1018,11 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       from: action.from,
       to: action.to,
       witnessedBy,
+      ...(!authorized && sourcePerson ? {
+        unauthorizedTaking: true,
+        ownerCouldContest: ownerCanContest,
+        ...(takingContest ? { takingContest } : {}),
+      } : {}),
       sourceEventIds: sourceEventIds.slice(-24),
       sourceLineageKeys: sourceLineageKeys.slice(-32),
       ...(surfaceWaterPosition ? {
@@ -1479,12 +1528,8 @@ function executeReproduce(state: SimulationState, person: PersonState, action: E
   const consent = action.authorizationRef
     ? activeReproductionAgreementBetween(state, person.id, other.id, atMonth, action.authorizationRef)
     : undefined;
-  const succubusTrait = person.sex === 'female'
-    ? traitStatesOf(person).find((trait) => trait.id === 'succubus')
-    : undefined;
-  const unilateralTraitAuthorization = !consent && Boolean(succubusTrait);
-  if (!consent && !unilateralTraitAuthorization) {
-    return { status: 'blocked' as const, result: '没有有效的双方生殖协议或魅魔单方授权，生殖过程不发生', diff: { consent: false } };
+  if (!consent) {
+    return { status: 'blocked' as const, result: '没有双方明确接受且仍有效的生殖协议，生殖过程不发生', diff: { consent: false, mutualConsent: false } };
   }
   if (reproductionAttemptedBetweenInMonth(state, person.id, other.id, atMonth)) {
     return {
@@ -1493,9 +1538,9 @@ function executeReproduce(state: SimulationState, person: PersonState, action: E
       diff: {
         consent: true,
         attemptedThisMonth: true,
-        ...(consent
-          ? { mutualConsent: true, authorizationMode: 'agreement', agreementId: consent.id }
-          : { mutualConsent: false, authorizationMode: 'succubus-unilateral', consentingPersonIds: [person.id], traitId: 'succubus' }),
+        mutualConsent: true,
+        authorizationMode: 'agreement',
+        agreementId: consent.id,
       },
     };
   }
@@ -1514,35 +1559,22 @@ function executeReproduce(state: SimulationState, person: PersonState, action: E
       sourceEventIds: [...(relation?.sourceEventIds ?? [])],
     };
   });
-  const consentDiff = consent
-    ? {
-        consent: true,
-        mutualConsent: true,
-        authorizationMode: 'agreement',
-        agreementId: consent.id,
-        relationshipSnapshot,
-      }
-    : {
-        consent: true,
-        mutualConsent: false,
-        authorizationMode: 'succubus-unilateral',
-        consentingPersonIds: [person.id],
-        nonConsentingPersonId: other.id,
-        traitId: 'succubus',
-        traitSourceEventIds: [...(succubusTrait?.sourceEventIds ?? [])],
-        relationshipSnapshot,
-      };
+  const consentDiff = {
+    consent: true,
+    mutualConsent: true,
+    authorizationMode: 'agreement',
+    agreementId: consent.id,
+    relationshipSnapshot,
+  };
   if (!female || !male
     || age(female) < 16 * 12
     || age(male) < 16 * 12
-    || (!unilateralTraitAuthorization && age(female) > reproductiveUpperAgeMonths(female))
-    || (unilateralTraitAuthorization
-      ? female.conditions.some((condition) => condition.kind === 'pregnancy')
-      : hasReproductiveRecoveryCondition(female))
-    || (!unilateralTraitAuthorization && Math.min(
+    || age(female) > reproductiveUpperAgeMonths(female)
+    || hasReproductiveRecoveryCondition(female)
+    || Math.min(
       female.body.health, female.body.hydration, female.body.nutrition,
       male.body.health, male.body.hydration, male.body.nutrition,
-    ) < 55)) {
+    ) < 55) {
     return { status: 'blocked' as const, result: '当前身体条件不能开始妊娠过程', diff: consentDiff };
   }
   const livingPopulation = livingPeople(state).length;
@@ -1556,9 +1588,7 @@ function executeReproduce(state: SimulationState, person: PersonState, action: E
   female.conditions.push({
     id: `condition-pregnancy-${female.id}-${atMonth}`,
     kind: 'pregnancy', stage: 1, sinceMonth: atMonth, dueAtMonth: atMonth + 9,
-    sourceEventIds: consent
-      ? [consent.proposalEventId, ...(consent.responseEventId ? [consent.responseEventId] : []), eventId]
-      : [...new Set([...(succubusTrait?.sourceEventIds ?? []), eventId])],
+    sourceEventIds: [consent.proposalEventId, ...(consent.responseEventId ? [consent.responseEventId] : []), eventId],
     otherPersonId: male.id,
   });
   return { status: 'completed' as const, result: `${female.name}进入妊娠过程`, diff: { conceived: true, femaleId: female.id, maleId: male.id, dueAtMonth: atMonth + 9, chance, sample, sampleKey, kinshipRisk, ...capacityDiff, ...consentDiff } };
@@ -2752,6 +2782,7 @@ export function executePrimitiveAction(
   recordCollectiveAction(state, fact);
   recordGovernanceAction(state, fact);
   recordPermissionAction(state, fact);
+  recordWorkUsesFromCompletedAction(state.world, fact);
   recordInteractionFailureKnowledge(state, fact);
   recordWitnessedDeclarationFulfillment(state, fact);
   rememberAction(state, fact);

@@ -10,7 +10,6 @@ import {
 import type { DecisionRequestContext } from './decision-context';
 import { MBTI_PERSONA_PRESETS, type MbtiType } from '../../mbti-persona-presets';
 import { materialDefinition, materialHas } from '../../domain/material';
-import type { PersonState } from '../../domain/person';
 
 export interface MentalActRequestContext {
   schemaVersion: 'mental-act-context-v5';
@@ -55,12 +54,14 @@ export type MindActionPossibilityKind =
   | 'acquire'
   | 'survive'
   | 'care'
+  | 'conflict'
   | 'talk'
   | 'coordinate'
   | 'continue-project'
   | 'produce'
   | 'reproduce'
   | 'mortuary-care'
+  | 'resume-work'
   | 'known-craft'
   | 'open-craft'
   | 'other';
@@ -244,6 +245,21 @@ function semanticPersonalityPreset(value: unknown): Record<string, unknown> | un
 
 function semanticPerson(value: unknown): Record<string, unknown> {
   const person = object(value);
+  const relationshipHistory = rows(person.relationshipEpisodes).map((episodeValue) => {
+    const episode = object(episodeValue);
+    return {
+      with: stringValue(episode.otherPersonName),
+      when: `第 ${numberValue(episode.experiencedAtMonth)} 月`,
+      meanings: rows(episode.meanings).map(stringValue).filter(Boolean),
+      interpretation: stringValue(episode.interpretation),
+      ...(stringValue(episode.unresolvedExpectation)
+        ? { unresolvedExpectation: stringValue(episode.unresolvedExpectation) }
+        : {}),
+      ...(stringValue(episode.desiredResponse)
+        ? { desiredResponse: stringValue(episode.desiredResponse) }
+        : {}),
+    };
+  }).filter((episode) => episode.with && episode.interpretation);
   return {
     id: stringValue(person.id),
     name: stringValue(person.name),
@@ -251,6 +267,7 @@ function semanticPerson(value: unknown): Record<string, unknown> {
     physicalState: physicalState(person),
     capabilities: capabilitySummary(person.capacities),
     character: semanticCharacter(person),
+    ...(relationshipHistory.length ? { subjectiveRelationshipHistory: relationshipHistory } : {}),
   };
 }
 
@@ -413,6 +430,11 @@ const AGREEMENT_KINDS: Record<string, string> = {
   jointProject: '共同项目约定',
   reproduce: '生育约定',
   companion: '陪伴约定',
+  collective: '共同体约定',
+  membership: '成员接纳约定',
+  permission: '资源许可约定',
+  'decision-rule': '共同决策规则提议',
+  mandate: '有限任期候选授权',
 };
 
 const AGREEMENT_STATUS: Record<string, string> = {
@@ -423,6 +445,7 @@ const AGREEMENT_STATUS: Record<string, string> = {
   rejected: '已经拒绝',
   withdrawn: '已经撤回',
   expired: '已经过期',
+  cancelled: '已经取消',
 };
 
 function progressSummary(value: unknown): string {
@@ -436,6 +459,7 @@ function progressSummary(value: unknown): string {
 function semanticCurrent(value: unknown): Record<string, unknown> {
   const current = object(value);
   const activeIntent = object(current.activeIntent);
+  const activePlan = object(activeIntent.plan);
   const activeProject = object(current.activeProject);
   const materialPlan = object(activeProject.materialPlan);
   const agreements = rows(current.agreements).map((agreementValue) => {
@@ -446,6 +470,8 @@ function semanticCurrent(value: unknown): Record<string, unknown> {
       ? '现在需要本人回应'
       : agreement.fulfilledBySelf
         ? '本人已经完成自己的部分'
+        : agreement.rejectedBySelf
+          ? '本人已经明确反对'
         : agreement.acceptedBySelf
           ? '本人已经接受，但还没有完成自己的部分'
           : '本人尚未接受';
@@ -453,15 +479,27 @@ function semanticCurrent(value: unknown): Record<string, unknown> {
       kind,
       state,
       ownState,
+      electorate: numberValue(agreement.electorateCount),
+      support: numberValue(agreement.supportCount),
+      opposition: numberValue(agreement.oppositionCount),
       ...(typeof agreement.dueAtMonth === 'number' ? { due: `第 ${agreement.dueAtMonth} 月` } : {}),
     };
   });
   const collectives = rows(current.collectives).map((collectiveValue) => {
     const collective = object(collectiveValue);
+    const rules = rows(collective.decisionRules).map((ruleValue) => {
+      const rule = object(ruleValue);
+      return {
+        method: rule.method === 'majority-vote' ? '多数表决' : '全体同意',
+        scope: rule.scope === 'coordinate-material' ? '协调具体物资' : '指定反复项目职责承担者',
+      };
+    });
     return {
       purpose: stringValue(collective.purposeSummary),
       state: stringValue(collective.status),
       members: numberValue(collective.activeMemberCount),
+      rules,
+      ownMandates: rows(collective.ownMandates),
     };
   });
   return {
@@ -470,6 +508,20 @@ function semanticCurrent(value: unknown): Record<string, unknown> {
         summary: stringValue(activeIntent.summary),
         progress: progressSummary(activeIntent.progress),
         nextStepType: stringValue(activeIntent.nextActionKind),
+        ...(rows(activePlan.steps).length ? {
+          authoredPlan: rows(activePlan.steps).map(stringValue).filter(Boolean),
+        } : {}),
+        ...(rows(activeIntent.recentOutcomes).length ? {
+          recentOutcomes: rows(activeIntent.recentOutcomes).map((outcomeValue) => {
+            const outcome = object(outcomeValue);
+            return {
+              when: `第 ${numberValue(outcome.atMonth)} 月`,
+              action: stringValue(outcome.execution),
+              goal: stringValue(outcome.goalProgress),
+              evidence: stringValue(outcome.evidence),
+            };
+          }),
+        } : {}),
       },
     } : {}),
     ...(stringValue(activeProject.summary) ? {
@@ -485,7 +537,36 @@ function semanticCurrent(value: unknown): Record<string, unknown> {
             : undefined,
       },
     } : {}),
-    suspendedWork: rows(current.suspendedIntents).slice(0, 2).map((intentValue) => stringValue(object(intentValue).summary)).filter(Boolean),
+    suspendedWork: rows(current.suspendedIntents).flatMap((intentValue) => {
+      const intent = object(intentValue);
+      const handle = stringValue(intent.handle);
+      const summary = stringValue(intent.summary);
+      if (!summary) return [];
+      const plan = object(intent.plan);
+      return [{
+        ...(handle ? { handle } : {}),
+        summary,
+        progress: progressSummary(intent.progress),
+        nextStepType: stringValue(intent.nextActionKind),
+        since: `第 ${numberValue(intent.createdAtMonth)} 月`,
+        lastProgress: `第 ${numberValue(intent.lastProgressAtMonth)} 月`,
+        ...(intent.waitingFor === 'world-change' ? { state: '正在等待真实世界变化' } : {}),
+        ...(rows(plan.steps).length ? {
+          authoredPlan: rows(plan.steps).map(stringValue).filter(Boolean),
+        } : {}),
+        ...(rows(intent.recentOutcomes).length ? {
+          recentOutcomes: rows(intent.recentOutcomes).map((outcomeValue) => {
+            const outcome = object(outcomeValue);
+            return {
+              when: `第 ${numberValue(outcome.atMonth)} 月`,
+              action: stringValue(outcome.execution),
+              goal: stringValue(outcome.goalProgress),
+              evidence: stringValue(outcome.evidence),
+            };
+          }),
+        } : {}),
+      }];
+    }),
     agreements,
     collectives,
   };
@@ -511,6 +592,10 @@ function semanticMindCurrent(
   return {
     ...(stringValue(activeWork.summary) ? { ongoingCommitment: stringValue(activeWork.summary) } : {}),
     ...(pressingMatters.length ? { pressingMatters } : {}),
+    suspendedWork: rows(current.suspendedWork).map((workValue) => {
+      const { handle: _planOnlyHandle, ...work } = object(workValue);
+      return work;
+    }),
     agreements: rows(current.agreements),
     collectives: rows(current.collectives),
   };
@@ -670,6 +755,7 @@ const PURPOSE_NAMES: Record<string, string> = {
   safety: '处理安全问题',
   resource: '取得资源',
   care: '照顾他人',
+  conflict: '处理人际冲突',
   inquiry: '观察或验证问题',
   project: '推进项目',
   conversation: '与人交谈',
@@ -821,6 +907,7 @@ const MIND_STEP_POSSIBILITIES: Record<string, MindActionPossibility> = {
   '处理安全问题': { kind: 'survive', description: '应对眼前已经存在的环境或野兽危险' },
   '取得资源': { kind: 'acquire', description: '取得至少一种当前可达或已有明确来源的资源' },
   '照顾他人': { kind: 'care', description: '对当前确实需要帮助的人采取已有现实依据的照护' },
+  '处理人际冲突': { kind: 'conflict', description: '对眼前的人试图强取、约束或施力；对方可以抵抗，行为会留下伤害与社会后果' },
   '观察或验证问题': { kind: 'observe', description: '观察一个当前持有或眼前可见的具体对象' },
   '推进项目': { kind: 'continue-project', description: '继续一个当前已经存在并有现实下一步的项目' },
   '与人交谈': { kind: 'talk', description: '与当前附近的人交谈，或回应实际听见的话' },
@@ -866,7 +953,7 @@ function parseCombineTechniqueInputs(id: string): { inputs: Map<number, number>;
  * backpack — into a coarse logistics hint. Hidden world state (remote drops,
  * other people's stock, recipe outcomes) never enters these hints.
  */
-function knownCraftHints(person: PersonState): string[] {
+function knownCraftHints(person: Pick<DecisionRequestContext['person'], 'inventory' | 'knowledge'>): string[] {
   const held = new Map<number, number>();
   for (const stack of person.inventory) {
     held.set(stack.materialId, (held.get(stack.materialId) ?? 0) + stack.quantity);
@@ -903,6 +990,12 @@ function mindActionPossibilities(
   };
   for (const step of context.availableSteps) add(MIND_STEP_POSSIBILITIES[stringValue(step.purpose)]);
   for (const operation of context.actionSpace.operations) add(MIND_OPERATION_POSSIBILITIES[operation.kind]);
+  if (rows(object(context.current).suspendedWork).length) {
+    add({
+      kind: 'resume-work',
+      description: '恢复一项本人此前主动搁置、现在仍未结束的事务',
+    });
+  }
   for (const hint of context.knownCraftHints ?? []) {
     availableNow.push({ kind: 'known-craft', description: hint });
   }

@@ -647,7 +647,12 @@ export function upsertCharacterAgenda(
       && item.status !== 'abandoned'
       && item.theme === theme
       && aimTextNearDuplicate(item.aim, aim));
-  const approachBasis = characterAgendaApproachBasisKey(basisKey, proposal.approach);
+  // A paraphrase may arrive with a freshly generated agenda basis. Once it is
+  // recognized as the same concern, approach identity must remain rooted in
+  // the retained agenda basis too; otherwise every paraphrase manufactures a
+  // new approach and eventually fills the concern with wording variants.
+  const retainedBasisKey = existing?.basisKey ?? basisKey;
+  const approachBasis = characterAgendaApproachBasisKey(retainedBasisKey, proposal.approach);
   if (!existing) {
     let evictedItemId: string | undefined;
     if (state.items.length >= MAX_CHARACTER_AGENDA_ITEMS) {
@@ -691,8 +696,14 @@ export function upsertCharacterAgenda(
     existing.aim = aim;
     existing.theme = theme;
     existing.importance = boundedInteger(proposal.importance, existing.importance, 0, 100);
-    existing.horizonMonths = boundedInteger(proposal.horizonMonths, existing.horizonMonths, 1, 240);
-    existing.targetAtMonth = Math.max(existing.targetAtMonth, atMonth + existing.horizonMonths);
+    // horizonMonths/targetAtMonth describe the concern's original subjective
+    // horizon. New wording or evidence reviews do not create more calendar
+    // time. A deliberately paused concern can still begin a new episode when
+    // new evidence causes the person to take it up again.
+    if (existing.status === 'suspended') {
+      existing.horizonMonths = boundedInteger(proposal.horizonMonths, existing.horizonMonths, 1, 240);
+      existing.targetAtMonth = atMonth + existing.horizonMonths;
+    }
     existing.lastReviewedAtMonth = atMonth;
     existing.sourceFactIds = mergeFactIds(existing.sourceFactIds, sourceFactIds);
     existingApproach.lastConsideredAtMonth = atMonth;
@@ -712,8 +723,10 @@ export function upsertCharacterAgenda(
   existing.aim = aim;
   existing.theme = theme;
   existing.importance = boundedInteger(proposal.importance, existing.importance, 0, 100);
-  existing.horizonMonths = boundedInteger(proposal.horizonMonths, existing.horizonMonths, 1, 240);
-  existing.targetAtMonth = Math.max(existing.targetAtMonth, atMonth + existing.horizonMonths);
+  if (existing.status === 'suspended') {
+    existing.horizonMonths = boundedInteger(proposal.horizonMonths, existing.horizonMonths, 1, 240);
+    existing.targetAtMonth = atMonth + existing.horizonMonths;
+  }
   existing.lastReviewedAtMonth = atMonth;
   existing.sourceFactIds = mergeFactIds(existing.sourceFactIds, sourceFactIds);
   let evictedApproachId: string | undefined;
@@ -877,7 +890,9 @@ export function reconcileCharacterAgendaApproach(
   approach.latestOutcome = outcome;
   approach.lastConsideredAtMonth = atMonth;
   approach.disposition = dispositionAfter(approach.disposition, outcome);
-  item.lastReviewedAtMonth = atMonth;
+  // A world result is new evidence, not a subjective review. Keeping the
+  // review timestamp unchanged lets application code distinguish "the person
+  // considered this" from "something happened to the attempted method".
   item.sourceFactIds = mergeFactIds(item.sourceFactIds, evidence);
   delete item.activeIntentId;
   item.activeApproachId = outcome === 'supported' ? approach.id : undefined;

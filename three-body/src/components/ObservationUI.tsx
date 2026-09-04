@@ -120,6 +120,16 @@ function ageLabel(months: number): string {
 type AgentRelation = NonNullable<SocietyAgent['relations']>[number];
 type RelationTone = 'close' | 'trusted' | 'guarded' | 'strained' | 'known';
 
+const SUBJECTIVE_RELATIONSHIP_MEANINGS: Record<string, string> = {
+  gratitude: '感激', care: '牵挂', affection: '亲昵', attraction: '吸引', respect: '敬重',
+  solidarity: '同舟', obligation: '亏欠', hurt: '受伤', anger: '愤怒', fear: '害怕',
+  suspicion: '怀疑', jealousy: '嫉妒', rivalry: '竞争', grief: '哀恸', ambivalence: '矛盾', uncertainty: '不确定',
+};
+
+function subjectiveMeaningLabel(value: string): string {
+  return SUBJECTIVE_RELATIONSHIP_MEANINGS[value] ?? value;
+}
+
 function relationTone(relation: AgentRelation): RelationTone {
   if (relation.fear >= 28 && relation.fear >= Math.max(relation.trust, relation.bond)) return 'guarded';
   if (relation.trust <= -8) return 'strained';
@@ -227,7 +237,7 @@ function PersonRelationGraph({ agent }: { agent: SocietyAgent }) {
               )}
               <text className="person-relation__name" x={x} y={y + 37}>{compactName(relation.name)}</text>
               <text className="person-relation__kind" fill={color} x={x} y={y + 50}>{relationLabel(tone)}</text>
-              <title>{`${relation.name} · ${relationLabel(tone)} · 信任 ${relation.trust} · 亲近 ${relation.bond} · 戒惧 ${relation.fear}`}</title>
+              <title>{`${relation.name} · ${relationLabel(tone)} · 信任 ${relation.trust} · 亲近 ${relation.bond} · 戒惧 ${relation.fear}${relation.subjective ? ` · ${relation.subjective.meanings.map(subjectiveMeaningLabel).join('、')}：${relation.subjective.interpretation}` : ''}`}</title>
             </g>
           );
         })}
@@ -249,10 +259,27 @@ function PersonRelationGraph({ agent }: { agent: SocietyAgent }) {
         )}
         <text className="person-relations__center-name" x={centerX} y={centerY + 43}>{compactName(agent.name)}</text>
       </svg>
+      {relations.some((relation) => relation.subjective) && (
+        <div className="person-relations__subjective">
+          {relations.filter((relation) => relation.subjective).map((relation) => (
+            <article key={relation.personId}>
+              <p>
+                <strong>{relation.name}</strong>
+                <span>{relation.subjective!.meanings.map(subjectiveMeaningLabel).join(' · ')}</span>
+                <time>第 {relation.subjective!.experiencedAtMonth} 月</time>
+              </p>
+              <blockquote>{relation.subjective!.interpretation}</blockquote>
+              {relation.subjective!.unresolvedExpectation && <small>未决：{relation.subjective!.unresolvedExpectation}</small>}
+              {relation.subjective!.desiredResponse && <small>此刻倾向：{relation.subjective!.desiredResponse}</small>}
+            </article>
+          ))}
+        </div>
+      )}
       <ul className="observation-sr-only">
         {relations.map((relation) => (
           <li key={relation.personId}>
             {relation.name}，{relationLabel(relationTone(relation))}，信任 {relation.trust}，亲近 {relation.bond}，戒惧 {relation.fear}
+            {relation.subjective ? `；本人理解为${relation.subjective.meanings.map(subjectiveMeaningLabel).join('、')}：${relation.subjective.interpretation}` : ''}
           </li>
         ))}
       </ul>

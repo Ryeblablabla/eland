@@ -57,6 +57,9 @@ try {
   assert.equal('maxItems' in planSchema.properties.steps, false, 'Plan must not impose an arbitrary step-count cap');
   assert.deepEqual(planSchema.properties.firstStepHandle.enum, ['o1', 'o2']);
   assert.deepEqual(planSchema.properties.disposition.enum, ['act', 'continue', 'pause', 'abandon', 'stay']);
+  assert.equal(planSchema.properties.worldAction.additionalProperties, false);
+  assert.equal('verdict' in planSchema.properties.worldAction.properties, false,
+    'Plan may describe an action but must not author its own result');
 
   const semanticProtocol = {
     requestContext: {
@@ -93,9 +96,32 @@ try {
   const stagedExperiments = stagedPlan.properties.experiment.oneOf;
   const stagedObserve = stagedExperiments.find((variant) => variant.properties.kind.enum.includes('observe'));
   assert.deepEqual(stagedObserve.properties.targetHandle.enum.sort(), ['d1', 'h1', 'h2', 'v1']);
+  assert.deepEqual(stagedPlan.properties.worldAction.properties.targetHandles.items.enum.sort(),
+    ['d1', 'h1', 'h2', 'self', 'v1'],
+    'free-form actions must bind only to currently exposed world objects');
+  const resolutionSchema = schemaModule.buildWorldResolutionJsonSchema(semanticProtocol).schema;
+  assert.deepEqual(resolutionSchema.properties.status.enum, ['completed', 'blocked', 'failed']);
   const semanticMind = schemaModule.buildMindIntentionJsonSchema(semanticProtocol).schema;
   assert.equal('concern' in semanticMind.properties, false,
     'Mind must not manage concern lifecycle state');
+  const relationshipMind = schemaModule.buildMindIntentionJsonSchema({
+    ...semanticProtocol,
+    requestContext: {
+      ...semanticProtocol.requestContext,
+      visible: {
+        ...semanticProtocol.requestContext.visible,
+        nearbyObjects: [{ ref: 'p1', kind: '人物' }],
+      },
+    },
+    handles: {
+      ...semanticProtocol.handles,
+      visible: [{ handle: 'p1', kind: 'person', personId: 'person-2' }],
+      memories: [{ handle: 'm1', itemId: 'memory-1', sourceFactIds: ['fact-1'], personIds: ['person-2'] }],
+    },
+  }).schema;
+  assert.deepEqual(relationshipMind.properties.relationshipAppraisal.properties.otherPersonHandle.enum, ['p1']);
+  assert.equal(relationshipMind.properties.relationshipAppraisal.properties.meanings.maxItems, 4,
+    'subjective relationship meaning may be mixed without becoming an unbounded prose channel');
   console.log('model decision JSON Schema tests passed');
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });

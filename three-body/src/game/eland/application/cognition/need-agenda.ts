@@ -20,7 +20,11 @@ import { relationTo } from '../../domain/relation';
 import { actionOptionSemantics } from '../../domain/action-option-semantics';
 import { recurringDutyMandateForExistingOption } from '../../domain/governance';
 import { currentRecordUseProject } from './record-use-project';
-import { characterAgendaStateOf, type CharacterAgendaItem } from '../../domain/character-agenda';
+import {
+  canReconsiderCharacterAgendaApproach,
+  characterAgendaStateOf,
+  type CharacterAgendaItem,
+} from '../../domain/character-agenda';
 import { PERSONAL_RESERVE_UNITS } from '../../domain/permission';
 
 export type NeedKind =
@@ -152,27 +156,46 @@ function durableAgendaNeedKind(item: CharacterAgendaItem): NeedKind {
   return 'inquiry';
 }
 
+/**
+ * A remembered concern is not automatically a current need. It enters the
+ * option appraisal only while a real episode is active or one of its methods
+ * can presently be attempted. Waiting for evidence, consent, or a missing
+ * affordance therefore keeps the concern in memory without occupying the
+ * person's working attention.
+ */
+export function characterAgendaItemIsActionable(item: CharacterAgendaItem): boolean {
+  if (item.activeIntentId) return true;
+  return item.approaches.some((approach) => {
+    if (!approach.probe) return approach.disposition === 'executable-now';
+    if (approach.disposition !== 'executable-now'
+      && approach.disposition !== 'bounded-experiment'
+      && approach.disposition !== 'observation-needed') return false;
+    return canReconsiderCharacterAgendaApproach(approach);
+  });
+}
+
+/** Subjective importance is the signal; elapsed calendar time adds nothing. */
+export function characterAgendaNeedUrgency(item: Pick<CharacterAgendaItem, 'importance'>): number {
+  return clamp(item.importance / 100);
+}
+
 export function deriveNeedAgenda(context: DecisionContext, atMonth: number): NeedSignal[] {
   const person = context.person;
   const needs: NeedSignal[] = [];
   for (const item of characterAgendaStateOf(person, atMonth).items) {
     if (item.status === 'fulfilled' || item.status === 'abandoned' || item.status === 'suspended') continue;
-    const horizonPressure = clamp((atMonth - item.createdAtMonth + 1) / Math.max(1, item.horizonMonths));
-    const unresolvedPressure = item.status === 'blocked' ? 0.1 : item.status === 'incubating' ? 0.04 : 0.08;
+    if (!characterAgendaItemIsActionable(item)) continue;
     needs.push({
       key: `need:character-agenda:${item.id}`,
       kind: durableAgendaNeedKind(item),
-      urgency: clamp(0.18 + item.importance / 180 + horizonPressure * 0.16 + unresolvedPressure),
-      reasons: [`本人仍把“${item.aim}”视为未解决的长期关切`],
+      urgency: characterAgendaNeedUrgency(item),
+      reasons: [`本人仍把“${item.aim}”视为未解决的长期关切，并且眼前已有可以实际推进的办法`],
       sourceFactIds: [...item.sourceFactIds],
       characterAgendaItemId: item.id,
     });
   }
   const positiveReproductionOptions = context.options.filter((option) => (
     actionOptionSemantics(option).reproduction?.direction === 'proceed'
-  ));
-  const succubusReproductionOptions = positiveReproductionOptions.filter((option) => (
-    actionOptionSemantics(option).reproduction?.mode === 'unilateral-trait'
   ));
   const reproductiveWithdrawalOptions = context.options.filter((option) => (
     actionOptionSemantics(option).reproduction?.direction === 'refuse'
@@ -383,22 +406,15 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
     const generativityConsideration = 0.34 + ageWindow * 0.6;
     const readinessModulation = 0.78 + Math.sqrt(familyReadiness.readiness) * 0.22;
     const readinessUrgency = generativityConsideration * readinessModulation;
-    const urgency = succubusReproductionOptions.length
-      ? Math.max(0.48 + ageWindow * 0.2, readinessUrgency)
-      : readinessUrgency;
     needs.push(signal(
       'generativity',
-      urgency,
-      succubusReproductionOptions.length
-        ? ['魅魔特质产生了不依赖关系、双方协议或家庭准备度的单方生殖机会']
-        : [
-            '本人眼前存在一段可追溯关系，因而开始考虑是否共同形成下一代',
-            `本人当前可感知的食物、水源、住所、照护余量与气候共同形成${Math.round(familyReadiness.readiness * 100)}%的家庭准备度`,
-            ...familyReadiness.reasons,
-          ],
-      succubusReproductionOptions.length
-        ? [...new Set(succubusReproductionOptions.flatMap((option) => option.sourceFactIds))]
-        : [...new Set([...relationshipSources, ...familyReadiness.sourceFactIds])],
+      readinessUrgency,
+      [
+        '本人眼前存在一项可与另一人共同商议的生育可能，是否形成协议仍由双方各自决定',
+        `本人当前可感知的食物、水源、住所、照护余量与气候共同形成${Math.round(familyReadiness.readiness * 100)}%的家庭准备度`,
+        ...familyReadiness.reasons,
+      ],
+      [...new Set([...relationshipSources, ...familyReadiness.sourceFactIds])],
     ));
   }
 

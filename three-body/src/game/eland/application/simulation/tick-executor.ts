@@ -37,13 +37,37 @@ import type { ObservationProjector } from './observation-projector';
 import { buildCurrentMonthDecisionContext } from './tick-planner';
 
 const authoritativeRulePlanner = new RulePlanner();
-const modelOwnedFallbackPlanner: AgentDecider = {
-  defersVoluntarySocialChoicesToModel: true,
-  decide: () => ({ kind: 'idle', reason: '本轮没有形成通过接口的模型意图' }),
-};
+// A live model owns open-ended social choices, but it never owns the ability
+// to act.  This planner keeps required replies, accepted commitments and
+// grounded physical work available without inventing optional social speech.
+const modelOwnedFallbackPlanner = new RulePlanner({
+  deferVoluntarySocialChoicesToModel: true,
+});
 const MAX_MODEL_MENTAL_ACTS_PER_PERSON_MONTH = 2;
 
-function cognitiveTriggerPersonIds(state: SimulationState, events: readonly WorldEvent[]): Set<PersonId> {
+/**
+ * A missing model review cannot silently replace work the person already
+ * chose. Immediate danger, a required reply and an accepted obligation remain
+ * authoritative local interruptions; every other fallback simply lets the
+ * current Intent execute below without persisting an idle DecisionFact.
+ */
+function preserveExistingExecution(
+  context: DecisionContext,
+  localDecision: Decision,
+  atMonth: number,
+): Decision {
+  if (!context.activeIntent || localDecision.kind === 'idle') return localDecision;
+  const exemption = decisionBudgetExemption(context, atMonth);
+  if (exemption === 'emergency'
+    || exemption === 'required-response'
+    || exemption === 'fulfillment') return localDecision;
+  return {
+    kind: 'idle',
+    reason: `继续已有安排：${context.activeIntent.summary}`,
+  };
+}
+
+function cognitiveTriggerPersonIds(events: readonly WorldEvent[]): Set<PersonId> {
   const people = new Set<PersonId>();
   const speakers = new Set(events.flatMap((event) => event.kind === 'action'
     && event.status === 'completed'
@@ -212,31 +236,50 @@ async function executeSimulationAsync(
     ? modelOwnedFallbackPlanner
     : authoritativeRulePlanner;
   const timedFallbackPlanner = fallbackPlanner as AgentDecider & { decideAt?: RulePlanner['decideAt'] };
+  // Freeze the local month-opening choice before the remote request. Model
+  // capacity may replace one of these choices, but cannot decide whether the
+  // person gets a planning turn at all. A failed/partial/invalid response then
+  // remains an infrastructure detail and never becomes an authored idle fact.
+  const localReviewDecisions = new Map<PersonId, Decision>(prepared.candidates.map((context) => [
+    context.person.id,
+    timedFallbackPlanner.decideAt
+      ? timedFallbackPlanner.decideAt(context, { atMonth: prepared.atMonth, planningTick: 1 })
+      : fallbackPlanner.decide(context),
+  ]));
+  const fallbackDecisions = new Map<PersonId, Decision>(prepared.candidates.map((context) => {
+    const localDecision = localReviewDecisions.get(context.person.id)!;
+    return [context.person.id, preserveExistingExecution(context, localDecision, prepared.atMonth)];
+  }));
   const modelPersonIds = new Set(modelContexts.map((context) => context.person.id));
-  const fallbackFor = (context: DecisionContext): Decision => (
-    prepared.naturallyTriggeredPeople.has(context.person.id)
-      ? timedFallbackPlanner.decideAt
-        ? timedFallbackPlanner.decideAt(context, { atMonth: prepared.atMonth, planningTick: 1 })
-        : fallbackPlanner.decide(context)
-      : { kind: 'idle', reason: '对话中定下的下一步没有通过当前本地条件复核' }
-  );
+  const fallbackFor = (context: DecisionContext): Decision => fallbackDecisions.get(context.person.id)
+    ?? (timedFallbackPlanner.decideAt
+      ? timedFallbackPlanner.decideAt(context, { atMonth: prepared.atMonth, planningTick: 1 })
+      : fallbackPlanner.decide(context));
   for (const context of prepared.candidates.filter((candidate) => !modelPersonIds.has(candidate.person.id))) {
     decisions.set(context.person.id, { decision: fallbackFor(context), usedModel: false });
   }
   let modelDecisions: (Decision | null)[] = [];
   try {
-    modelDecisions = modelContexts.length ? await batch.decideAll(modelContexts) : [];
+    const response = modelContexts.length ? await batch.decideAll(modelContexts) : [];
+    modelDecisions = Array.isArray(response) ? response : [];
   } catch {
-    // Physical reflexes and existing execution remain authoritative, but a
-    // failed model call must not invent a new subjective direction locally.
+    // Keep the already computed local choices. Network failure is not a
+    // character decision and therefore creates no model-authored idle fact.
     modelDecisions = [];
   }
   modelContexts.forEach((context, index) => {
     const proposed = modelDecisions[index];
-    const decision = proposed ? validateModelDecision(context, proposed) : null;
+    const localDecision = fallbackFor(context);
+    const localReviewDecision = localReviewDecisions.get(context.person.id) ?? localDecision;
+    let decision: Decision | null = null;
+    try {
+      decision = proposed ? validateModelDecision(context, proposed, localReviewDecision) : null;
+    } catch {
+      // Runtime-invalid adapter output follows the same local path as null.
+    }
     decisions.set(context.person.id, decision
       ? { decision, usedModel: true }
-      : { decision: fallbackFor(context), usedModel: false });
+      : { decision: localDecision, usedModel: false });
   });
   const execution = createMonthExecution({
     observationProjector,
@@ -253,7 +296,7 @@ async function executeSimulationAsync(
     if (tick.actionTick >= PLANNING_TICKS_PER_MONTH
       || !batch.ownsVoluntarySocialChoices) continue;
     const nextTick = tick.actionTick + 1;
-    const triggeredContexts = [...cognitiveTriggerPersonIds(prepared.state, tick.events)]
+    const triggeredContexts = [...cognitiveTriggerPersonIds(tick.events)]
       .filter((personId) => (modelTurns.get(personId) ?? 0) < MAX_MODEL_MENTAL_ACTS_PER_PERSON_MONTH)
       .flatMap((personId) => {
         const person = personById(prepared.state, personId);
@@ -273,17 +316,36 @@ async function executeSimulationAsync(
     });
     execution.attempted.total += triggeredContexts.length;
     execution.attempted.exempt += triggeredContexts.length;
+    const localReviewDecisions = triggeredContexts.map((context) => (
+      modelOwnedFallbackPlanner.decideAt(context, { atMonth: prepared.atMonth, planningTick: nextTick })
+    ));
+    const localDecisions = triggeredContexts.map((context, index) => (
+      preserveExistingExecution(context, localReviewDecisions[index], prepared.atMonth)
+    ));
     let proposed: (Decision | null)[] = [];
     try {
-      proposed = await batch.decideAll(triggeredContexts);
+      const response = await batch.decideAll(triggeredContexts);
+      proposed = Array.isArray(response) ? response : [];
     } catch {
+      applyPlanningDecisions(execution, triggeredContexts.map((context, index) => ({
+        context,
+        decision: localDecisions[index],
+        usedModel: false,
+      })), nextTick);
       continue;
     }
-    const accepted = triggeredContexts.flatMap((context, index) => {
-      const decision = proposed[index]
-        ? validateModelDecision(context, proposed[index]!)
-        : null;
-      return decision ? [{ context, decision, usedModel: true }] : [];
+    const accepted = triggeredContexts.map((context, index) => {
+      let decision: Decision | null = null;
+      try {
+        decision = proposed[index]
+          ? validateModelDecision(context, proposed[index]!, localReviewDecisions[index])
+          : null;
+      } catch {
+        // Invalid model output is replaced by the precomputed local decision.
+      }
+      return decision
+        ? { context, decision, usedModel: true }
+        : { context, decision: localDecisions[index], usedModel: false };
     });
     applyPlanningDecisions(execution, accepted, nextTick);
   }

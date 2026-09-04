@@ -158,6 +158,63 @@ function duration(proposal: SocialProposal): number {
   return 4;
 }
 
+type CollectiveDecisionMethod = 'unanimous' | 'majority-vote';
+
+/** The rule itself, not a personality score, determines how many explicit responses settle a vote. */
+function collectiveDecisionMethod(
+  state: SimulationState,
+  agreement: Agreement,
+): CollectiveDecisionMethod | undefined {
+  if (agreement.proposal.kind === 'decision-rule') return agreement.proposal.method;
+  if (agreement.proposal.kind !== 'mandate') return undefined;
+  const proposal = agreement.proposal;
+  return state.collectives
+    .find((collective) => collective.id === proposal.collectiveId)
+    ?.decisionRules.find((rule) => rule.id === proposal.decisionRuleId)
+    ?.method;
+}
+
+function resolveCollectiveVoteIfSettled(
+  agreement: Agreement,
+  method: CollectiveDecisionMethod,
+  atMonth: number,
+): void {
+  const electorate = new Set(agreement.partyIds);
+  const support = new Set(agreement.acceptedByPersonIds.filter((personId) => electorate.has(personId))).size;
+  const unresolved = agreement.requiredResponderIds.filter((personId) => (
+    !agreement.acceptedByPersonIds.includes(personId)
+      && !agreement.rejectedByPersonIds.includes(personId)
+  )).length;
+  const requiredSupport = method === 'unanimous'
+    ? electorate.size
+    : Math.floor(electorate.size / 2) + 1;
+  if (support >= requiredSupport) {
+    agreement.status = 'active';
+    agreement.acceptedAtMonth = atMonth;
+    agreement.dueAtMonth = atMonth + duration(agreement.proposal);
+  } else if (support + unresolved < requiredSupport) {
+    agreement.status = 'rejected';
+    agreement.resolvedAtMonth = atMonth;
+  }
+}
+
+function governanceElectorateMatchesCurrentMembers(
+  state: SimulationState,
+  proposal: SocialProposal,
+): boolean {
+  if (proposal.kind !== 'decision-rule' && proposal.kind !== 'mandate') return true;
+  const collective = state.collectives.find((candidate) => candidate.id === proposal.collectiveId);
+  if (!collective) return false;
+  const currentMembers = new Set(collective.memberships.flatMap((membership) => {
+    const member = state.people.find((person) => person.id === membership.personId);
+    return membership.status === 'active' && member && isAlive(member) ? [membership.personId] : [];
+  }));
+  const proposedElectorate = new Set([proposal.proposerId, ...proposal.requiredApproverIds]);
+  return currentMembers.size >= 2
+    && currentMembers.size === proposedElectorate.size
+    && [...currentMembers].every((personId) => proposedElectorate.has(personId));
+}
+
 export function reproductionAttemptedInMonth(agreement: Agreement, atMonth: number): boolean {
   return agreement.proposal.kind === 'reproduce'
     && agreement.lastReproductionAttemptAtMonth === atMonth;
@@ -337,6 +394,11 @@ export function activeReproductionAgreementBetween(
     && agreement.proposal.kind === 'reproduce'
     && agreement.partyIds.includes(a)
     && agreement.partyIds.includes(b)
+    // `active` is cached lifecycle state.  Execution additionally verifies the
+    // actual consent record so malformed/legacy state cannot turn a proposal
+    // or one person's answer into authorization for both bodies.
+    && agreement.acceptedByPersonIds.includes(a)
+    && agreement.acceptedByPersonIds.includes(b)
     && (agreement.acceptedAtMonth ?? Number.POSITIVE_INFINITY) <= atMonth
     && (agreement.dueAtMonth ?? Number.NEGATIVE_INFINITY) >= atMonth);
 }
@@ -721,6 +783,7 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
   if (action.kind === 'talk') {
     const content = action.speakerMeaning;
     if ((content.kind === 'request' || content.kind === 'offer') && content.proposal && !agreementById(state, content.id)) {
+      if (!governanceElectorateMatchesCurrentMembers(state, content.proposal)) return;
       const pair = parties(content.proposal);
       const reachedAudienceIds = languageInterpreterIds(fact.diff, content.id);
       if (!pair.requiredResponderIds.every((id) => reachedAudienceIds.includes(id))) return;
@@ -779,19 +842,33 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       || agreement.rejectedByPersonIds.includes(fact.who)
       || fact.atMonth > agreementResponseDeadline(agreement, fact.who)
       || !agreement.partyIds.some((personId) => personId !== fact.who && understoodBy.includes(personId))) return;
+    if (!governanceElectorateMatchesCurrentMembers(state, agreement.proposal)) {
+      agreement.status = 'cancelled';
+      agreement.resolvedAtMonth = fact.atMonth;
+      agreement.responseEventId = fact.id;
+      agreement.sourceEventIds = [...new Set([...agreement.sourceEventIds, fact.id])];
+      return;
+    }
     agreement.responseEventId = fact.id;
     agreement.sourceEventIds = [...new Set([...agreement.sourceEventIds, fact.id])];
+    const decisionMethod = collectiveDecisionMethod(state, agreement);
     if (content.kind === 'accept') {
       agreement.acceptedByPersonIds.push(fact.who);
-      if (agreement.requiredResponderIds.every((id) => agreement.acceptedByPersonIds.includes(id))) {
+      if (decisionMethod) {
+        resolveCollectiveVoteIfSettled(agreement, decisionMethod, fact.atMonth);
+      } else if (agreement.requiredResponderIds.every((id) => agreement.acceptedByPersonIds.includes(id))) {
         agreement.status = 'active';
         agreement.acceptedAtMonth = fact.atMonth;
         agreement.dueAtMonth = fact.atMonth + duration(agreement.proposal);
       }
     } else {
       agreement.rejectedByPersonIds.push(fact.who);
-      agreement.status = 'rejected';
-      agreement.resolvedAtMonth = fact.atMonth;
+      if (decisionMethod) {
+        resolveCollectiveVoteIfSettled(agreement, decisionMethod, fact.atMonth);
+      } else {
+        agreement.status = 'rejected';
+        agreement.resolvedAtMonth = fact.atMonth;
+      }
     }
     if (agreement.proposal.kind === 'companion' || agreement.proposal.kind === 'reproduce') {
       const responder = personById(state, fact.who);
@@ -848,12 +925,16 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
   if (action.kind === 'act' && action.operation === 'reproduce') {
     const target = action.targets.find((item) => item.kind === 'person');
     if (!target || target.kind !== 'person') return;
-    const candidate = action.authorizationRef ? agreementById(state, action.authorizationRef) : undefined;
-    const agreement = candidate?.status === 'active'
-      && candidate.proposal.kind === 'reproduce'
-      && candidate.partyIds.includes(fact.who)
-      && candidate.partyIds.includes(target.personId)
-      ? candidate
+    const agreement = fact.status === 'completed'
+      && fact.diff.mutualConsent === true
+      && action.authorizationRef
+      ? activeReproductionAgreementBetween(
+          state,
+          fact.who,
+          target.personId,
+          fact.atMonth,
+          action.authorizationRef,
+        )
       : undefined;
     if (agreement) {
       agreement.reproductionAttemptEventIds = [...new Set([

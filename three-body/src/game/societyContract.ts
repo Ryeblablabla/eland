@@ -72,6 +72,15 @@ export interface SocietyAgent {
     bond: number;
     fear: number;
     sourceEventIds: string[];
+    /** 最近一次有事实来源的单向主观理解；它不代表对方也这样想。 */
+    subjective?: {
+      meanings: string[];
+      interpretation: string;
+      unresolvedExpectation?: string;
+      desiredResponse?: string;
+      experiencedAtMonth: number;
+      sourceEventIds: string[];
+    };
   }[];
   /** 最近一次真实执行的原语，供场景做只读视觉投影；缺失时才回退到 active intent。 */
   visualAction?: ActionVisualView;

@@ -16,6 +16,7 @@ export interface ActionOptionSemanticsV1 {
     | 'safety'
     | 'resource'
     | 'care'
+    | 'conflict'
     | 'inquiry'
     | 'project'
     | 'conversation'
@@ -48,7 +49,8 @@ export interface ActionOptionSemanticsV1 {
   reproduction?: {
     direction: 'proceed' | 'refuse';
     phase: 'proposal' | 'response' | 'attempt' | 'withdrawal';
-    mode: 'mutual' | 'unilateral-trait';
+    /** Reproductive meaning is always a two-person consent process. */
+    mode: 'mutual';
   };
   /** Current typed social situation only; it never records an observer outcome. */
   socialContext?: {
@@ -106,6 +108,7 @@ const PURPOSES = [
   'safety',
   'resource',
   'care',
+  'conflict',
   'inquiry',
   'project',
   'conversation',
@@ -121,7 +124,7 @@ const MINIMUM_LIFE_STAGES = ['learning-child', 'adolescent', 'adult'] as const;
 const CONVERSATION_TURNS = ['opening', 'response'] as const;
 const REPRODUCTION_DIRECTIONS = ['proceed', 'refuse'] as const;
 const REPRODUCTION_PHASES = ['proposal', 'response', 'attempt', 'withdrawal'] as const;
-const REPRODUCTION_MODES = ['mutual', 'unilateral-trait'] as const;
+const REPRODUCTION_MODES = ['mutual'] as const;
 const COOPERATION_KINDS = [
   'assist',
   'exchange',
@@ -200,7 +203,7 @@ function inferredReproduction(
   if (action.kind === 'act' && action.operation === 'reproduce') return {
     direction: 'proceed',
     phase: 'attempt',
-    mode: action.authorizationRef ? 'mutual' : 'unilateral-trait',
+    mode: 'mutual',
   };
   if (action.kind !== 'talk') return undefined;
   const content = action.speakerMeaning;
@@ -651,9 +654,6 @@ export function validateActionOptionSemantics(value: unknown): ActionOptionSeman
   if (reproduction?.phase === 'withdrawal' && reproduction.direction !== 'refuse') {
     throw new Error('Reproduction withdrawal must refuse');
   }
-  if (reproduction?.mode === 'unilateral-trait' && reproduction.phase !== 'attempt') {
-    throw new Error('Unilateral-trait reproduction is only valid for an attempt');
-  }
   if (socialContext?.assistNeed && socialContext.cooperationKind !== 'assist') {
     throw new Error('Assist need requires assist cooperation context');
   }
@@ -702,9 +702,13 @@ function validateSemanticConsistency(
     throw new Error('Conversation semantics must match the typed conversation payload');
   }
   if (execution.kind === 'act' && execution.operation === 'reproduce') {
+    if (!execution.authorizationRef) {
+      throw new Error('Executable reproduction requires a mutual agreement reference');
+    }
     if (semantics.obligation !== 'commitment-action'
       || semantics.purpose !== 'reproduction'
-      || semantics.reproduction?.phase !== 'attempt') {
+      || semantics.reproduction?.phase !== 'attempt'
+      || semantics.reproduction.mode !== 'mutual') {
       throw new Error('Executable reproduction must carry commitment-action reproduction semantics');
     }
   }
@@ -803,7 +807,12 @@ export function isPreselectedConversationOpeningOption(option: ActionOption): bo
 export function isModelOwnedVoluntarySocialOption(option: ActionOption): boolean {
   const semantics = actionOptionSemantics(option);
   if (semantics.obligation !== 'optional') return false;
-  if (executionAction(option).kind !== 'talk') return false;
+  const execution = executionAction(option);
+  if (semantics.purpose === 'conflict') return true;
+  if (execution.kind === 'transfer'
+    && execution.from.kind === 'person'
+    && !execution.authorizationRef) return true;
+  if (execution.kind !== 'talk') return false;
   const social = semantics.socialContext;
   return !(social?.cooperationKind === 'assist'
     && social.phase === 'proposal'

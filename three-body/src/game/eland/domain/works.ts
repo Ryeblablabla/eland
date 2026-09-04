@@ -1,7 +1,7 @@
 import type { MaterialId } from './material';
 import { materialDefinition, materialHas } from './material';
 import type { PersonId } from './person';
-import { cellId, cellX, cellY, neighbors4, setVoxel, voxelAt, type VoxelWorld } from '../world/grid';
+import { cellId, neighbors4, setVoxel, voxelAt, type VoxelWorld } from '../world/grid';
 import { seededFraction } from '../world/generator';
 
 /**
@@ -12,10 +12,12 @@ import { seededFraction } from '../world/generator';
  * - profile 是组件材料、数量与排布方式的确定性纯函数，不是隐藏的成品配方；
  * - 实体锚定一个真实体素（3D 渲染与体素物理免费获得），身份、来源与状态轨迹
  *   保存在实体上，因而可以被加件、被观察、衰减和塌落；
- * - 时代门槛与项目系统只认既有设施体素；Works 影响生存与社会，不解锁时代。
+ * - 造物的名字、意图和建造本身都不是功能证据；只有可回放的真实使用
+ *   或示范回执，才能让观察器把它当成文明实践。
  */
 
 export const WORK_SCHEMA_VERSION = 'works-v1' as const;
+export const WORK_USE_RECEIPT_VERSION = 'work-use-receipt-v1' as const;
 
 /** 物理形态基元。开放但受控：每个基元只有几何含义，不对应任何成品。 */
 export const WORK_ARRANGEMENTS = ['support', 'pile', 'lash', 'form'] as const;
@@ -42,6 +44,29 @@ export interface WorkProfile {
   stability: number;
 }
 
+export type WorkUseKind = 'use' | 'demonstration';
+
+/**
+ * 一次对造物功能的可回放承认。
+ *
+ * `functionKey` 是一次已发生行为的开放语义，不是预置设施类型；文明
+ * 观察器只计数重复使用、持续存在和人际传播，不会按该字符串解锁能力。
+ * `evidencePaths` 指向来源 ActionFact 中真正提交的结果（例如
+ * `diff.appliedEffects`），避免把叙事性 result 当成世界变化。
+ */
+export interface WorkUseReceipt {
+  version: typeof WORK_USE_RECEIPT_VERSION;
+  id: string;
+  workId: string;
+  kind: WorkUseKind;
+  functionKey: string;
+  actorId: PersonId;
+  witnessIds: PersonId[];
+  atMonth: number;
+  sourceEventId: string;
+  evidencePaths: string[];
+}
+
 export interface WorkState {
   version: typeof WORK_SCHEMA_VERSION;
   id: string;
@@ -58,6 +83,8 @@ export interface WorkState {
   createdAtMonth: number;
   lastTouchedAtMonth: number;
   sourceEventIds: string[];
+  /** 只由已提交行为写入；旧存档可没有该折叠。 */
+  useReceipts?: WorkUseReceipt[];
 }
 
 export const WORK_COLLAPSE_CONDITION = 25;
@@ -65,6 +92,9 @@ export const WORK_SHELTER_COVER_THRESHOLD = 55;
 const MAX_WORKS = 128;
 const MAX_WORK_SOURCE_EVENTS = 16;
 const MAX_WORK_COMPONENTS = 12;
+const MAX_WORK_USE_RECEIPTS = 96;
+const MAX_WORK_USE_WITNESSES = 24;
+const MAX_WORK_EVIDENCE_PATHS = 8;
 
 export function workIdAt(position: { x: number; y: number; z: number }): string {
   return `work:${position.x}:${position.y}:${position.z}`;
@@ -86,6 +116,279 @@ export function workAt(
 
 export function workCell(work: WorkState): number {
   return cellId(work.position.x, work.position.y);
+}
+
+export type ReplayableWorkUseAction = {
+  id: string;
+  kind: 'action';
+  atMonth: number;
+  who: PersonId;
+  cellId: number;
+  toCellId: number;
+  pathSegment: number[];
+  status: 'progressed' | 'completed' | 'blocked' | 'failed';
+  action: unknown;
+  diff: Record<string, unknown>;
+};
+
+export interface WorkAdoptionObservation {
+  workId: string;
+  active: boolean;
+  receipts: WorkUseReceipt[];
+  userIds: PersonId[];
+  witnessIds: PersonId[];
+  functionKeys: string[];
+  firstUsedAtMonth: number | null;
+  lastUsedAtMonth: number | null;
+  useSpanMonths: number;
+  survivingMonths: number;
+}
+
+function normalizedUniqueStrings(values: readonly string[], limit: number): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].slice(0, limit);
+}
+
+function meaningfulEvidence(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
+
+function valueAtEvidencePath(event: ReplayableWorkUseAction, path: string): unknown {
+  const segments = path.split('.').filter(Boolean);
+  if (!segments.length || !['action', 'diff', 'pathSegment', 'toCellId'].includes(segments[0])) return undefined;
+  let value: unknown = event;
+  for (const segment of segments) {
+    if (!value || typeof value !== 'object' || !(segment in value)) return undefined;
+    value = (value as Record<string, unknown>)[segment];
+  }
+  return value;
+}
+
+function actionTargetPositions(action: unknown): Array<{ x: number; y: number; z: number }> {
+  if (!action || typeof action !== 'object') return [];
+  const record = action as Record<string, unknown>;
+  const directTargets = Array.isArray(record.targets) ? record.targets : [];
+  const adjudication = record.adjudication && typeof record.adjudication === 'object'
+    ? record.adjudication as Record<string, unknown>
+    : undefined;
+  const adjudicatedTargets = Array.isArray(adjudication?.targets) ? adjudication.targets : [];
+  return [...directTargets, ...adjudicatedTargets].flatMap((target) => {
+    if (!target || typeof target !== 'object') return [];
+    const candidate = target as { kind?: unknown; position?: { x?: unknown; y?: unknown; z?: unknown } };
+    if (candidate.kind !== 'voxel'
+      || ![candidate.position?.x, candidate.position?.y, candidate.position?.z]
+        .every((value) => Number.isInteger(Number(value)))) return [];
+    return [{
+      x: Number(candidate.position?.x),
+      y: Number(candidate.position?.y),
+      z: Number(candidate.position?.z),
+    }];
+  });
+}
+
+function eventExplicitlyReferencesWork(value: unknown, workId: string, depth = 0): boolean {
+  if (!value || typeof value !== 'object' || depth > 4) return false;
+  if (Array.isArray(value)) return value.some((entry) => eventExplicitlyReferencesWork(entry, workId, depth + 1));
+  const record = value as Record<string, unknown>;
+  if (record.workId === workId) return true;
+  return Object.values(record).some((entry) => eventExplicitlyReferencesWork(entry, workId, depth + 1));
+}
+
+function eventWitnessIds(event: ReplayableWorkUseAction): Set<PersonId> {
+  const result = new Set<PersonId>();
+  const collect = (value: unknown, parentKey = '', depth = 0): void => {
+    if (!value || typeof value !== 'object' || depth > 4) return;
+    if (Array.isArray(value)) {
+      if (/(?:witness|observer|perceived|interpreter).*ids?$/iu.test(parentKey)) {
+        value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+          .forEach((entry) => result.add(entry));
+      } else value.forEach((entry) => collect(entry, parentKey, depth + 1));
+      return;
+    }
+    Object.entries(value).forEach(([key, entry]) => collect(entry, key, depth + 1));
+  };
+  collect(event.diff);
+  return result;
+}
+
+function eventOccurredAtWork(event: ReplayableWorkUseAction, work: WorkState): boolean {
+  if (eventExplicitlyReferencesWork(event.diff, work.id)) return true;
+  if (actionTargetPositions(event.action).some((position) => (
+    position.x === work.position.x
+      && position.y === work.position.y
+      && Math.abs(position.z - work.position.z) <= 1
+  ))) return true;
+  const nearbyCells = new Set([workCell(work), ...neighbors4(workCell(work))]);
+  return nearbyCells.has(event.cellId)
+    || nearbyCells.has(event.toCellId)
+    || event.pathSegment.some((candidate) => nearbyCells.has(candidate));
+}
+
+function eventDirectlyTargetsWork(event: ReplayableWorkUseAction, work: WorkState): boolean {
+  return eventExplicitlyReferencesWork(event.diff, work.id)
+    || actionTargetPositions(event.action).some((position) => (
+      position.x === work.position.x
+        && position.y === work.position.y
+        && Math.abs(position.z - work.position.z) <= 1
+    ));
+}
+
+function eventWorkFunctionKey(event: ReplayableWorkUseAction): string {
+  const action = event.action && typeof event.action === 'object'
+    ? event.action as Record<string, unknown>
+    : {};
+  const kind = typeof action.kind === 'string' ? action.kind : 'interaction';
+  if (kind === 'act' && typeof action.operation === 'string') return `act:${action.operation}`;
+  if (kind === 'talk') {
+    const meaning = action.speakerMeaning && typeof action.speakerMeaning === 'object'
+      ? action.speakerMeaning as Record<string, unknown>
+      : {};
+    return `talk:${typeof meaning.kind === 'string' ? meaning.kind : 'interaction'}`;
+  }
+  const effects = Array.isArray(event.diff.appliedEffects)
+    ? event.diff.appliedEffects.flatMap((effect) => (
+      effect && typeof effect === 'object' && typeof (effect as { kind?: unknown }).kind === 'string'
+        ? [String((effect as { kind: string }).kind)]
+        : []
+    ))
+    : [];
+  return effects.length ? `${kind}:${[...new Set(effects)].sort().join('+')}` : kind;
+}
+
+function eventEvidencePaths(event: ReplayableWorkUseAction): string[] {
+  if (event.pathSegment.length > 1) return ['pathSegment'];
+  return Object.entries(event.diff)
+    .filter(([key, value]) => !['worldAdjudicated', 'request', 'planFeedback'].includes(key)
+      && meaningfulEvidence(value))
+    .map(([key]) => `diff.${key}`)
+    .slice(0, MAX_WORK_EVIDENCE_PATHS);
+}
+
+/**
+ * 把已提交的行为挂到造物上。这个函数不接受“成功了”之类自由断言：
+ * 调用方必须指出事件里哪些结构化字段承载了实际结果。
+ */
+export function recordWorkUse(
+  world: { works?: WorkState[] },
+  input: {
+    workId: string;
+    kind: WorkUseKind;
+    functionKey: string;
+    actorId: PersonId;
+    witnessIds?: readonly PersonId[];
+    atMonth: number;
+    sourceEventId: string;
+    evidencePaths: readonly string[];
+  },
+): WorkUseReceipt {
+  const work = workById(world, input.workId);
+  if (!work) throw new Error(`造物 ${input.workId} 不存在，不能记录使用`);
+  const functionKey = input.functionKey.trim().slice(0, 120);
+  const evidencePaths = normalizedUniqueStrings(input.evidencePaths, MAX_WORK_EVIDENCE_PATHS);
+  const witnessIds = normalizedUniqueStrings(input.witnessIds ?? [], MAX_WORK_USE_WITNESSES);
+  if (!functionKey || !input.sourceEventId.trim() || !evidencePaths.length) {
+    throw new Error('造物使用回执必须指向具体功能、来源事件和实际结果字段');
+  }
+  if (!Number.isSafeInteger(input.atMonth) || input.atMonth < work.createdAtMonth) {
+    throw new Error('造物使用回执的月份早于它的建造时间');
+  }
+  if (input.kind === 'demonstration' && !witnessIds.length) {
+    throw new Error('示范回执必须有至少一名见证者');
+  }
+  const id = `work-use:${work.id}:${encodeURIComponent(input.sourceEventId)}:${input.kind}`;
+  const receipt: WorkUseReceipt = {
+    version: WORK_USE_RECEIPT_VERSION,
+    id,
+    workId: work.id,
+    kind: input.kind,
+    functionKey,
+    actorId: input.actorId,
+    witnessIds,
+    atMonth: input.atMonth,
+    sourceEventId: input.sourceEventId,
+    evidencePaths,
+  };
+  work.useReceipts = [...(work.useReceipts ?? []).filter((existing) => (
+    existing.id !== id && existing.sourceEventId !== input.sourceEventId
+  )), receipt]
+    .sort((left, right) => left.atMonth - right.atMonth || left.id.localeCompare(right.id))
+    .slice(-MAX_WORK_USE_RECEIPTS);
+  return receipt;
+}
+
+/**
+ * 执行器的单点接线：一个 completed ActionFact 提交后调用一次即可。
+ * 只有显式指向造物锚点/身份的行为会写回执，仅从旁路过不会被误认为使用。
+ */
+export function recordWorkUsesFromCompletedAction(
+  world: { works?: WorkState[] },
+  event: ReplayableWorkUseAction,
+): WorkUseReceipt[] {
+  if (event.status !== 'completed') return [];
+  const evidencePaths = eventEvidencePaths(event);
+  if (!evidencePaths.length) return [];
+  return (world.works ?? []).flatMap((work) => {
+    if (work.condition <= WORK_COLLAPSE_CONDITION
+      || work.sourceEventIds.includes(event.id)
+      || !eventDirectlyTargetsWork(event, work)) return [];
+    const witnessIds = [...eventWitnessIds(event)].filter((personId) => personId !== event.who);
+    return [recordWorkUse(world, {
+      workId: work.id,
+      kind: witnessIds.length ? 'demonstration' : 'use',
+      functionKey: eventWorkFunctionKey(event),
+      actorId: event.who,
+      witnessIds,
+      atMonth: event.atMonth,
+      sourceEventId: event.id,
+      evidencePaths,
+    })];
+  });
+}
+
+/**
+ * 从权威事件回放造物的采用情况。失败行为、建造行为本身、纯文本断言、
+ * 无法在来源事件中核对的见证者，都不会被算成使用或传播。
+ */
+export function observeWorkAdoption(
+  work: WorkState,
+  events: readonly ReplayableWorkUseAction[],
+  atMonth: number,
+): WorkAdoptionObservation {
+  const byId = new Map(events.map((event) => [event.id, event]));
+  const receipts = (work.useReceipts ?? []).flatMap((receipt) => {
+    const event = byId.get(receipt.sourceEventId);
+    if (receipt.version !== WORK_USE_RECEIPT_VERSION
+      || receipt.workId !== work.id
+      || !event
+      || event.status !== 'completed'
+      || event.who !== receipt.actorId
+      || event.atMonth !== receipt.atMonth
+      || event.atMonth < work.createdAtMonth
+      || work.sourceEventIds.includes(event.id)
+      || !eventOccurredAtWork(event, work)
+      || !receipt.evidencePaths.every((path) => meaningfulEvidence(valueAtEvidencePath(event, path)))) return [];
+    if (receipt.kind !== 'demonstration') return [{ ...receipt, witnessIds: [] }];
+    const witnessedInEvent = eventWitnessIds(event);
+    const witnessIds = receipt.witnessIds.filter((personId) => witnessedInEvent.has(personId));
+    return witnessIds.length ? [{ ...receipt, witnessIds }] : [];
+  });
+  const months = receipts.map((receipt) => receipt.atMonth).sort((left, right) => left - right);
+  return {
+    workId: work.id,
+    active: work.condition > WORK_COLLAPSE_CONDITION,
+    receipts,
+    userIds: [...new Set(receipts.map((receipt) => receipt.actorId))],
+    witnessIds: [...new Set(receipts.flatMap((receipt) => receipt.witnessIds))],
+    functionKeys: [...new Set(receipts.map((receipt) => receipt.functionKey))],
+    firstUsedAtMonth: months[0] ?? null,
+    lastUsedAtMonth: months.at(-1) ?? null,
+    useSpanMonths: months.length ? (months.at(-1) ?? months[0]) - months[0] + 1 : 0,
+    survivingMonths: Math.max(0, atMonth - work.createdAtMonth + 1),
+  };
 }
 
 /**
@@ -174,7 +477,6 @@ export function createWork(
     atMonth: number;
     sourceEventId: string;
   },
-  existing?: WorkState[],
 ): WorkState {
   const components = mergeComponents([], input.components);
   return {
@@ -191,6 +493,7 @@ export function createWork(
     createdAtMonth: input.atMonth,
     lastTouchedAtMonth: input.atMonth,
     sourceEventIds: [input.sourceEventId],
+    useReceipts: [],
   };
 }
 

@@ -6,17 +6,18 @@ import {
   worldEventById,
 } from './event-index';
 import type { LiveSocialEvidenceDescriptor } from './live-social-evidence';
+import { liveSocialEvidenceDescriptorFromWorldEvent } from './live-social-evidence';
 import {
   REPRODUCTION_REOFFER_MONTHS_AFTER_CONCEPTION,
   REPRODUCTION_REOFFER_MONTHS_AFTER_NO_CONCEPTION,
 } from './population-capacity';
 import { reproductiveResponsibility } from './dependent-care';
 import {
-  COMPANION_RELATION_THRESHOLD,
   relationTo,
   relationshipEvidenceSourceEventIds,
   relationshipPairKey,
 } from './relation';
+import { relationshipEpisodeSourceFactIds } from './relationship-episode';
 import { reproductiveUpperAgeMonths } from './trait';
 import { agreementsForPerson } from './agreement';
 import { intentsOwnedBy } from './state-index';
@@ -97,11 +98,23 @@ function relationshipEvidenceDescriptors(
   includeFounding = false,
 ): LiveSocialEvidenceDescriptor[] {
   const relation = relationTo(proposer, partner.id);
-  return liveSocialEvidenceForPersonSources(
+  const relationEvidence = liveSocialEvidenceForPersonSources(
     state,
     proposer,
     relationshipEvidenceSourceEventIds(relation),
-  ).filter((event) => qualifiesAsRelationshipEvidence(
+  );
+  // RelationshipEpisode is an observer-owned source lane. Resolve its ids
+  // against the authoritative event ledger, then require the same exact-pair
+  // causal checks as legacy relation evidence. A free-text appraisal alone
+  // can therefore never invent a shared encounter.
+  const subjectiveEpisodeEvidence = relationshipEpisodeSourceFactIds(proposer, partner.id)
+    .flatMap((eventId) => {
+      const event = worldEventById(state, eventId);
+      return event ? [liveSocialEvidenceDescriptorFromWorldEvent(event)] : [];
+    });
+  return [...new Map([...relationEvidence, ...subjectiveEpisodeEvidence]
+    .map((event) => [event.eventId, event])).values()]
+    .filter((event) => qualifiesAsRelationshipEvidence(
       state,
       event,
       proposer.id,
@@ -169,10 +182,6 @@ function isDirectIntimacyEvidence(
   return Boolean(child
     && child.geneticParents.includes(proposer.id)
     && child.geneticParents.includes(partner.id));
-}
-
-function evidenceMonths(events: readonly LiveSocialEvidenceDescriptor[]): Set<number> {
-  return new Set(events.map((event) => event.atMonth));
 }
 
 function directIntimacyEvidence(
@@ -301,18 +310,15 @@ export function hasSourcedReproductiveRelationship(
   basis = buildRelationshipCausalBasis(state, person, partner, 'reproduce'),
 ): boolean {
   if (basis.kind !== 'reproduce' || basis.proposerId !== person.id || basis.partnerId !== partner.id) return false;
-  const relation = relationTo(person, partner.id);
-  const relationshipEvents = relationshipEvidenceDescriptors(state, person, partner)
-    .filter((event) => basis.relationshipKeys.includes(event.eventId));
-  const intimateEvents = relationshipEvents
-    .filter((event) => isDirectIntimacyEvidence(state, event, person, partner));
-  return Boolean(relation
-    && relation.trust >= COMPANION_RELATION_THRESHOLD
-    && relation.bond >= COMPANION_RELATION_THRESHOLD
-    && evidenceMonths(relationshipEvents).size >= 2
-    && intimateEvents.length > 0);
+  return relationshipEvidenceDescriptors(state, person, partner)
+    .some((event) => basis.relationshipKeys.includes(event.eventId));
 }
 
+/**
+ * This names an experienced relationship context, not readiness, affection,
+ * consent, or proposal eligibility. Numeric relation projections are never
+ * consulted; the person's model may interpret the same sources differently.
+ */
 export function hasCultivatedCompanionRelationship(
   state: SimulationState,
   person: PersonState,
@@ -320,16 +326,8 @@ export function hasCultivatedCompanionRelationship(
   basis = buildRelationshipCausalBasis(state, person, partner, 'companion'),
 ): boolean {
   if (basis.kind !== 'companion' || basis.proposerId !== person.id || basis.partnerId !== partner.id) return false;
-  const relation = relationTo(person, partner.id);
-  const relationshipEvents = relationshipEvidenceDescriptors(state, person, partner)
-    .filter((event) => basis.relationshipKeys.includes(event.eventId));
-  const intimateEvents = relationshipEvents
-    .filter((event) => isDirectIntimacyEvidence(state, event, person, partner));
-  return Boolean(relation
-    && relation.trust >= COMPANION_RELATION_THRESHOLD
-    && relation.bond >= COMPANION_RELATION_THRESHOLD
-    && evidenceMonths(relationshipEvents).size >= 2
-    && intimateEvents.length > 0);
+  return relationshipEvidenceDescriptors(state, person, partner)
+    .some((event) => basis.relationshipKeys.includes(event.eventId));
 }
 
 export function hasNewRelationshipEvidence(
@@ -392,8 +390,10 @@ export function canOfferRelationshipProposal(
   partner: PersonState,
   basis: RelationshipCausalBasis,
 ): boolean {
-  if (basis.kind === 'companion' && !hasCultivatedCompanionRelationship(state, proposer, partner, basis)) return false;
-  if (basis.kind === 'reproduce' && !hasSourcedReproductiveRelationship(state, proposer, partner, basis)) return false;
+  if (basis.proposerId !== proposer.id || basis.partnerId !== partner.id) return false;
+  // Suitability is subjective. This domain check only prevents duplicate or
+  // stale proposal episodes; trust, bond, fear, and the number/type of shared
+  // experiences never unlock or forbid the possibility of asking.
   const inFlight = intentsOwnedBy(state, proposer.id).some((intent) => intent.ownerId === proposer.id
     && (intent.status === 'active' || intent.status === 'suspended')
     && intent.relationshipBasis?.subjectKey === basis.subjectKey

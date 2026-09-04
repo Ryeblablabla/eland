@@ -1,4 +1,8 @@
 import { MATERIAL_PALETTE, Material, materialDefinition, materialHas, type MaterialId } from '../domain/material';
+import {
+  ACTIVITY_EPISODES_PER_MONTH,
+  BASE_ACTIVITY_EPISODE_WORK_EFFORT,
+} from '../domain/calendar';
 
 export const WORLD_WIDTH = 84;
 export const WORLD_DEPTH = 52;
@@ -285,8 +289,14 @@ export function standingMovementCost(world: VoxelWorld, from: StandingPosition, 
   return Math.max(1, 2 + Math.max(0, to.z - from.z) + plantPenalty - roadRelief);
 }
 
-/** 普通平地恰好消耗一个刻度；连续低成本路面可以在同一刻度继续前进。 */
-export const STANDING_MOVEMENT_BUDGET_PER_TICK = 2 as const;
+/**
+ * Baseline work allocated to one travel episode. This is deliberately larger
+ * than one flat-ground edge: an activity episode represents a coherent trip
+ * segment, not one footstep disguised as a month-scale planning tick.
+ */
+export const STANDING_MOVEMENT_WORK_BUDGET_PER_EPISODE = BASE_ACTIVITY_EPISODE_WORK_EFFORT;
+/** @deprecated Use STANDING_MOVEMENT_WORK_BUDGET_PER_EPISODE. */
+export const STANDING_MOVEMENT_BUDGET_PER_TICK = STANDING_MOVEMENT_WORK_BUDGET_PER_EPISODE;
 
 export function standingPathMovementCost(world: VoxelWorld, path: readonly StandingPosition[]): number {
   let cost = 0;
@@ -296,40 +306,97 @@ export function standingPathMovementCost(world: VoxelWorld, path: readonly Stand
   return cost;
 }
 
-export function standingPathSegmentForTick(
+export function standingPathSegmentForEffort(
   world: VoxelWorld,
   path: readonly StandingPosition[],
+  availableWorkEffort = STANDING_MOVEMENT_WORK_BUDGET_PER_EPISODE,
+  workCapacityMultiplier = 1,
 ): StandingPosition[] {
   if (path.length <= 1) return path.map((position) => ({ ...position }));
   const segment = [{ ...path[0] }];
   let spent = 0;
+  const movementBudget = Math.max(0, availableWorkEffort)
+    * Math.max(0.01, workCapacityMultiplier);
   for (let index = 1; index < path.length; index += 1) {
     const edgeCost = standingMovementCost(world, path[index - 1], path[index]);
     // 高成本地形仍允许人物至少跨过一条相邻边，不能因预算不足永久卡死。
-    if (segment.length > 1 && spent + edgeCost > STANDING_MOVEMENT_BUDGET_PER_TICK) break;
+    if (segment.length > 1 && spent + edgeCost > movementBudget) break;
     segment.push({ ...path[index] });
     spent += edgeCost;
   }
   return segment;
 }
 
-/** 用与执行器相同的预算规则估算整条站立路径需要多少规划刻度。 */
-export function standingPathMovementTicks(world: VoxelWorld, path: readonly StandingPosition[]): number {
-  let ticks = 0;
+/** @deprecated Use standingPathSegmentForEffort. */
+export function standingPathSegmentForTick(
+  world: VoxelWorld,
+  path: readonly StandingPosition[],
+): StandingPosition[] {
+  return standingPathSegmentForEffort(world, path);
+}
+
+/** Estimate coherent travel episodes with the same indivisible-edge rule as execution. */
+export function standingPathMovementEpisodes(
+  world: VoxelWorld,
+  path: readonly StandingPosition[],
+  availableWorkEffort = STANDING_MOVEMENT_WORK_BUDGET_PER_EPISODE,
+  workCapacityMultiplier = 1,
+): number {
+  let episodes = 0;
   let index = 0;
+  const movementBudget = Math.max(0, availableWorkEffort)
+    * Math.max(0.01, workCapacityMultiplier);
   while (index < path.length - 1) {
     let spent = 0;
     let moved = false;
     while (index < path.length - 1) {
       const edgeCost = standingMovementCost(world, path[index], path[index + 1]);
-      if (moved && spent + edgeCost > STANDING_MOVEMENT_BUDGET_PER_TICK) break;
+      if (moved && spent + edgeCost > movementBudget) break;
       spent += edgeCost;
       moved = true;
       index += 1;
     }
-    ticks += 1;
+    episodes += 1;
   }
-  return ticks;
+  return episodes;
+}
+
+export interface StandingPathTravelEstimate {
+  movementEffort: number;
+  workEffort: number;
+  episodes: number;
+  months: number;
+}
+
+/**
+ * Month-scale travel estimate derived from physical path effort. Short local
+ * trips normally fit within one month; only paths that exceed the person's
+ * aggregate embodied capacity become multi-month expeditions.
+ */
+export function standingPathTravelEstimate(
+  world: VoxelWorld,
+  path: readonly StandingPosition[],
+  workCapacityMultiplier = 1,
+): StandingPathTravelEstimate {
+  const safeMultiplier = Math.max(0.01, workCapacityMultiplier);
+  const movementEffort = standingPathMovementCost(world, path);
+  const episodes = standingPathMovementEpisodes(
+    world,
+    path,
+    STANDING_MOVEMENT_WORK_BUDGET_PER_EPISODE,
+    safeMultiplier,
+  );
+  return {
+    movementEffort,
+    workEffort: movementEffort / safeMultiplier,
+    episodes,
+    months: Math.max(1, Math.ceil(episodes / ACTIVITY_EPISODES_PER_MONTH)),
+  };
+}
+
+/** @deprecated Use standingPathMovementEpisodes or standingPathTravelEstimate. */
+export function standingPathMovementTicks(world: VoxelWorld, path: readonly StandingPosition[]): number {
+  return standingPathMovementEpisodes(world, path);
 }
 
 function manhattan(a: number, b: number): number {

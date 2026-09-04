@@ -10,6 +10,7 @@ const simulationBundle = path.join(temporaryDirectory, 'simulation.mjs');
 const decisionContextBundle = path.join(temporaryDirectory, 'decision-context.mjs');
 const gatewayBundle = path.join(temporaryDirectory, 'model-decision-gateway.mjs');
 const modelReviewBundle = path.join(temporaryDirectory, 'model-review.mjs');
+const intentExecutionBundle = path.join(temporaryDirectory, 'intent-execution.mjs');
 const personMindBundle = path.join(temporaryDirectory, 'person-mind.mjs');
 const spokenMeaningBundle = path.join(temporaryDirectory, 'spoken-meaning.mjs');
 const esbuild = path.resolve('node_modules/.bin/esbuild');
@@ -39,6 +40,7 @@ try {
   bundle('src/game/eland/application/model-decision/decision-context.ts', decisionContextBundle);
   bundle('server/model-decision-gateway.ts', gatewayBundle);
   bundle('src/game/eland/application/simulation/model-review.ts', modelReviewBundle);
+  bundle('src/game/eland/application/simulation/intent-execution.ts', intentExecutionBundle);
   bundle('src/game/eland/domain/person-mind.ts', personMindBundle);
   bundle('src/game/eland/domain/spoken-meaning.ts', spokenMeaningBundle);
 
@@ -46,6 +48,7 @@ try {
   const decisionContext = await import(`${pathToFileURL(decisionContextBundle).href}?test=${Date.now()}`);
   const gateway = await import(`${pathToFileURL(gatewayBundle).href}?test=${Date.now()}`);
   const modelReview = await import(`${pathToFileURL(modelReviewBundle).href}?test=${Date.now()}`);
+  const intentExecution = await import(`${pathToFileURL(intentExecutionBundle).href}?test=${Date.now()}`);
   const personMind = await import(`${pathToFileURL(personMindBundle).href}?test=${Date.now()}`);
   const spokenMeaning = await import(`${pathToFileURL(spokenMeaningBundle).href}?test=${Date.now()}`);
   const state = simulation.createInitialState(9_732, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
@@ -558,20 +561,20 @@ try {
     description: '用指甲在自己手里的锡矿石表面划出一道浅痕，并亲手确认痕迹是否留下',
     targetHandles: ['h9'],
     expectedResult: '锡矿石表面留下一道之后还能看见的浅痕',
-    verdict: {
-      status: 'completed',
-      result: '指甲没有改变锡矿石的形状，但表面留下了一道之后还能辨认的浅痕',
-      effects: [
-        { kind: 'knowledge', summary: '指甲无法改变锡矿石形状，但能在表面留下浅痕' },
-        {
-          kind: 'world-state', targetHandle: 'h9', stateKey: 'surface-condition',
-          stateValue: '有一道浅划痕', summary: '这块锡矿石表面留有一道浅划痕',
-        },
-      ],
-    },
+  };
+  const worldVerdict = {
+    status: 'completed',
+    result: '指甲没有改变锡矿石的形状，但表面留下了一道之后还能辨认的浅痕',
+    effects: [
+      { kind: 'knowledge', summary: '指甲无法改变锡矿石形状，但能在表面留下浅痕' },
+      {
+        kind: 'world-state', targetHandle: 'h9', stateKey: 'surface-condition',
+        stateValue: '有一道浅划痕', summary: '这块锡矿石表面留有一道浅划痕',
+      },
+    ],
   };
   const worldResolution = gateway.sanitizePlanAgentWorldVerdict(
-    worldAction.verdict,
+    worldVerdict,
     worldAction,
     fullInventoryProtocol,
   );
@@ -597,10 +600,13 @@ try {
   );
   assert.equal(worldDecision?.executionProbe?.kind, 'world-interaction',
     'an accepted Plan Agent verdict must enter the ordinary execution probe path');
+  assert.deepEqual(worldDecision?.mentalAct?.plan?.steps, ['平码并轻推确认'],
+    'the complete Plan translation must survive normalization instead of disappearing after its first action');
+  assert.equal('verdict' in (worldDecision?.mentalAct?.plan?.worldAction ?? {}), false,
+    'persisted character plans must contain expectations, never world-authored outcomes');
   assert.equal(modelReview.validateModelDecision(context, worldDecision)?.executionProbe?.kind, 'world-interaction',
     'the pre-commit model review must not strip an accepted Plan Agent action before Execution sees it');
-  const { verdict: detachedVerdict, ...worldActionWithoutVerdict } = worldAction;
-  const canonicalizedWorldDecision = gateway.normalizeMindPlanModelOutput(
+  const selfAdjudicatedWorldDecision = gateway.normalizeMindPlanModelOutput(
     fullInventoryProjected,
     {
       utterance: '我想在锡矿石表面划一道痕，看看它会不会留下来。',
@@ -609,12 +615,12 @@ try {
     },
     {
       steps: ['用指甲做一次局部划痕测试'], disposition: 'act',
-      worldAction: worldActionWithoutVerdict, verdict: detachedVerdict,
+      worldAction, verdict: worldVerdict,
     },
     fullInventoryProtocol,
   );
-  assert.equal(canonicalizedWorldDecision?.executionProbe?.kind, 'world-interaction',
-    'a detached small-model verdict must be canonicalized before strict physical validation');
+  assert.equal(selfAdjudicatedWorldDecision?.executionProbe, undefined,
+    'the character Plan must not be allowed to author or smuggle in its own world result');
   assert.equal(gateway.sanitizePlanAgentWorldVerdict({
     status: 'completed',
     result: '锡矿石表面留下了一道浅痕',
@@ -714,6 +720,79 @@ try {
   }, plantingAction, plantingProtocol);
   assert.equal(materializedPlanting?.probe?.adjudication.effects[1]?.kind, 'replace-voxel',
     'planting must materialize a crop voxel so ordinary monthly growth owns later evolution');
+
+  const relationshipState = simulation.createInitialState(27_104, {
+    endpoint: { kind: 'months', value: 4 }, chaosIntensity: 0,
+  });
+  relationshipState.clock.elapsedMonths = 2;
+  const relationshipObserver = relationshipState.people[0];
+  const relationshipOther = relationshipState.people[1];
+  relationshipOther.position = { ...relationshipObserver.position };
+  const relationshipSource = {
+    id: 'relationship-appraisal-source', kind: 'environment', atMonth: 2, orderInMonth: 0,
+    cellId: relationshipObserver.position.cellId, change: 'relationship',
+    result: `${relationshipOther.name}在共同劳动时留下帮助${relationshipObserver.name}`,
+    diff: { participantIds: [relationshipObserver.id, relationshipOther.id], sourceEventIds: [] },
+  };
+  relationshipState.world.past.push(relationshipSource);
+  relationshipObserver.memories.unshift({
+    id: 'relationship-appraisal-memory', kind: 'relationship',
+    summary: relationshipSource.result, importance: 72, createdAtMonth: 2, lastRecalledAtMonth: 2,
+    personIds: [relationshipOther.id], sourceEventIds: [relationshipSource.id],
+  });
+  relationshipState.memoryStore.items.unshift({
+    id: 'agent-memory:relationship-appraisal', ownerId: relationshipObserver.id, lane: 'social',
+    gist: relationshipSource.result, precision: 'specific', confidence: 80, salience: 80,
+    emotionalValence: 0.35, personIds: [relationshipOther.id], topicKeys: ['relationship'],
+    sourceEventIds: [relationshipSource.id], sourceMemoryIds: ['relationship-appraisal-memory'],
+    unresolved: true, firstExperiencedAtMonth: 2, lastExperiencedAtMonth: 2, lastRecalledAtMonth: 2,
+  });
+  const relationshipContext = simulation.buildDecisionContexts(relationshipState, 2)
+    .find((candidate) => candidate.person.id === relationshipObserver.id);
+  assert(relationshipContext, 'relationship appraisal test requires an observer decision context');
+  const relationshipProjected = decisionContext.buildDecisionRequestContext(relationshipContext);
+  const relationshipProtocol = gateway.buildDecisionModelRequestProtocol(relationshipProjected, {
+    characterAgendaProposal: false,
+  });
+  const relationshipPersonHandle = relationshipProtocol.handles.visible.find((item) => (
+    item.kind === 'person' && item.personId === relationshipOther.id
+  ))?.handle;
+  const relationshipMemoryHandle = relationshipProtocol.handles.memories.find((item) => (
+    item.itemId === 'agent-memory:relationship-appraisal'
+  ))?.handle;
+  assert(relationshipPersonHandle,
+    'Mind must receive a request-scoped handle for the visible person');
+  assert(relationshipMemoryHandle,
+    'Mind must receive a request-scoped handle for the sourced shared memory');
+  const appraisalDecision = gateway.normalizeMindPlanModelOutput(
+    relationshipProjected,
+    {
+      utterance: '她那次留下帮我，我感激，可也想知道下次她会不会仍然这样。',
+      delivery: 'normal', goal: '弄清我是否愿意继续信任她',
+      orientation: 'social', horizon: 'ongoing',
+      relationshipAppraisal: {
+        otherPersonHandle: relationshipPersonHandle,
+        sourceMemoryHandles: [relationshipMemoryHandle],
+        meanings: ['gratitude', 'uncertainty'],
+        interpretation: '她在我需要时留下帮了我，但一次经历还不足以让我确定以后。',
+        unresolvedExpectation: '下次困难时她会不会留下？',
+        desiredResponse: '再与她做一件具体的事。',
+      },
+    },
+    { steps: ['先保留这个未解的判断'], disposition: 'stay' },
+    relationshipProtocol,
+  );
+  assert.deepEqual(appraisalDecision?.mentalAct?.relationshipAppraisal?.meanings,
+    ['gratitude', 'uncertainty'],
+    'Mind-authored relationship meaning must survive without becoming a numeric score');
+  intentExecution.applyDecision(
+    relationshipState, relationshipObserver, relationshipContext, appraisalDecision, true, 2, 1, 1,
+  );
+  const storedRelationshipEpisode = relationshipObserver.relationshipEpisodes?.at(-1);
+  assert.equal(storedRelationshipEpisode?.otherPersonId, relationshipOther.id);
+  assert.deepEqual(storedRelationshipEpisode?.sourceFactIds, [relationshipSource.id]);
+  assert.equal(relationshipOther.relationshipEpisodes?.length ?? 0, 0,
+    'one observer appraisal must never install a reciprocal feeling on the other person');
 
   const compilerTrial = {
     ...projected.options[0],

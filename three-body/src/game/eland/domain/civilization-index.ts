@@ -10,6 +10,12 @@ import { livingPeople } from './state-index';
 import { actionFacts, worldEventById, worldEventFacts } from './event-index';
 import { observeFunctionalBuildings, observeMaterialCapabilities } from './era-progression';
 import { languageInterpreterIds } from './language-perception';
+import { observePhysicalStructureUseReceipts } from './structure';
+import {
+  WORK_COLLAPSE_CONDITION,
+  observeWorkAdoption,
+  workCell,
+} from './works';
 import {
   WORLD_CELL_COUNT,
   cellId,
@@ -50,9 +56,9 @@ const MATERIAL_CAPABILITY_WEIGHTS = {
 // observer flags must never be read by planners or world rules.
 const USE_FUNCTIONAL_TERRITORY = true;
 const FILTER_SOCIAL_SELF_DYADS = true;
-export const CIVILIZATION_INDEX_FORMULA_VERSION = 'open-material-institution-v1';
+export const CIVILIZATION_INDEX_FORMULA_VERSION = 'demonstrated-practice-v2';
 export const CIVILIZATION_INDEX_CERTIFIED_FLOOR_FORMULA_VERSION =
-  'open-material-institution-v1-certified-current-root-lower-bound-v1' as const;
+  'demonstrated-practice-v2-certified-current-root-lower-bound-v1' as const;
 
 export interface CertifiedCivilizationIndexFacilityFacts {
   /** Canonical facility identity; duplicates fail closed. */
@@ -305,10 +311,12 @@ export function calculateCertifiedCivilizationIndexFloor(
   const living = livingPeople(state);
   const historicalPeople = state.people.filter((person) => person.bornAtMonth <= state.clock.elapsedMonths);
   const generationCount = new Set(historicalPeople.map((person) => person.generation)).size;
+  // The compact shell does not carry replayable structure-use receipts. A
+  // standing structure is therefore deliberately omitted from this floor;
+  // existence or a building name alone is not evidence of function.
   const completeStructures = state.derived.structures.filter((structure) => structure.complete).length;
   const cultivatedCells = state.derived.regions.find((region) => region.kind === 'cultivated')?.cells.length ?? 0;
-  const activeFacilities = facts.facilities.filter((facility) => facility.active);
-  const usedFacilities = activeFacilities.filter((facility) => facility.useCount > 0);
+  const usedFacilities = facts.facilities.filter((facility) => facility.active && facility.useCount > 0);
   const multiUserUsedFacilities = usedFacilities.filter((facility) => facility.userCount >= 2);
   const functionalInstitutions = state.derived.institutions.length;
   const recordedKnowledge = state.records.length;
@@ -318,8 +326,7 @@ export function calculateCertifiedCivilizationIndexFloor(
   );
 
   const populationPoints = living.length * 6 + Math.max(0, generationCount - 1) * 8;
-  const territoryPoints = completeStructures * 8
-    + activeFacilities.length * 9
+  const territoryPoints = usedFacilities.length * 9
     + Math.min(30, cultivatedCells * 0.8);
   const technologyPoints = materialCapabilityPoints + usedFacilities.length * 4;
   const socialPoints = functionalInstitutions * 18 + multiUserUsedFacilities.length * 6;
@@ -337,7 +344,8 @@ export function calculateCertifiedCivilizationIndexFloor(
     }),
     territory: component(territoryPoints, WEIGHTS.territory, {
       completeStructures,
-      activeFunctionalBuildings: activeFacilities.length,
+      observedCompleteStructures: completeStructures,
+      activeFunctionalBuildings: usedFacilities.length,
       cultivatedCells,
     }),
     technology: component(technologyPoints, WEIGHTS.technology, {
@@ -368,6 +376,37 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
 
   const events = worldEventFacts(state);
   const actions = actionFacts(state);
+  const peopleIds = new Set(state.people.map((person) => person.id));
+  const structureUseReceipts = new Map(state.derived.structures.map((structure) => [
+    structure.id,
+    observePhysicalStructureUseReceipts(structure, actions),
+  ]));
+  const demonstratedStructures = state.derived.structures.filter((structure) => (
+    structure.complete
+      && structure.capacity > 0
+      && (structure.weatherProtection > 0 || structure.thermalInsulation > 0)
+      && (structureUseReceipts.get(structure.id)?.length ?? 0) > 0
+  ));
+  const workAdoptions = (state.world.works ?? [])
+    .filter((work) => work.condition > WORK_COLLAPSE_CONDITION)
+    .map((work) => ({ work, observation: observeWorkAdoption(work, actions, state.clock.elapsedMonths) }))
+    .filter(({ observation }) => observation.active && observation.receipts.length > 0);
+  const workReceipts = workAdoptions.flatMap(({ observation }) => observation.receipts);
+  const workUserIds = new Set(workAdoptions.flatMap(({ observation }) => observation.userIds)
+    .filter((personId) => peopleIds.has(personId)));
+  const workWitnessIds = new Set(workAdoptions.flatMap(({ observation }) => observation.witnessIds)
+    .filter((personId) => peopleIds.has(personId)));
+  const workFunctionKeys = new Set(workAdoptions.flatMap(({ observation }) => observation.functionKeys));
+  const demonstratedWorkCount = workAdoptions.filter(({ observation }) => (
+    observation.receipts.some((receipt) => receipt.kind === 'demonstration'
+      && receipt.witnessIds.some((personId) => peopleIds.has(personId)))
+  )).length;
+  const diffusedWorkCount = workAdoptions.filter(({ observation }) => (
+    observation.userIds.filter((personId) => peopleIds.has(personId)).length >= 2
+      || observation.witnessIds.some((personId) => peopleIds.has(personId))
+  )).length;
+  const workUseSpanMonths = workAdoptions.reduce((sum, { observation }) => sum + observation.useSpanMonths, 0);
+  const workSurvivingMonths = workAdoptions.reduce((sum, { observation }) => sum + observation.survivingMonths, 0);
   const territoryObservation = USE_FUNCTIONAL_TERRITORY ? (() => {
     const livingIds = new Set(living.map((person) => person.id));
   const cognitiveCells = new Set<number>();
@@ -381,20 +420,28 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
     actionCells(event).forEach((cell) => cognitiveCells.add(cell));
   }
 
-  const functionalStructures = state.derived.structures.filter((structure) => structure.complete
-    && structure.capacity > 0
-    && (structure.weatherProtection > 0 || structure.thermalInsulation > 0));
+  const functionalStructures = demonstratedStructures;
   const incompleteStructureCells = new Set(state.derived.structures
     .filter((structure) => !structure.complete)
     .flatMap((structure) => structure.occupiedCells));
   const functionalStructureCells = new Set(functionalStructures.flatMap((structure) => structure.occupiedCells));
-  const standingContainers = state.containers.filter((container) => voxelAt(
+  const allStandingContainers = state.containers.filter((container) => voxelAt(
     state.world.grid, container.position.x, container.position.y, container.position.z,
   ) === Material.Container || voxelAt(
     state.world.grid, container.position.x, container.position.y, container.position.z,
   ) === Material.Granary);
-  const standingContainerIds = new Set(standingContainers.map((container) => container.id));
+  const standingContainerIds = new Set(allStandingContainers.map((container) => container.id));
+  const usedContainerIds = new Set<string>();
+  for (const event of actions) {
+    if (event.status !== 'completed' || event.action.kind !== 'transfer') continue;
+    if (event.action.from.kind === 'container' && standingContainerIds.has(event.action.from.containerId)) usedContainerIds.add(event.action.from.containerId);
+    if (event.action.to.kind === 'container' && standingContainerIds.has(event.action.to.containerId)) usedContainerIds.add(event.action.to.containerId);
+  }
+  const standingContainers = allStandingContainers.filter((container) => (
+    usedContainerIds.has(container.id) || container.inventory.some((stack) => stack.quantity > 0)
+  ));
   const containerCellsById = new Map(standingContainers.map((container) => [container.id, cellId(container.position.x, container.position.y)]));
+  const functionalWorkCells = new Set(workAdoptions.map(({ work }) => workCell(work)));
   const cultivatedCells = new Set(state.derived.regions
     .filter((region) => region.kind === 'cultivated')
     .flatMap((region) => region.cells));
@@ -404,22 +451,33 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
   const functionalCells = new Set<number>([
     ...functionalStructureCells,
     ...containerCellsById.values(),
+    ...functionalWorkCells,
     ...cultivatedCells,
   ]);
   functionalCells.forEach((cell) => cognitiveCells.add(cell));
 
   const persistentModifiedCells = currentHumanModifiedCells(state, events, actions);
-  state.derived.structures.forEach((structure) => structure.occupiedCells.forEach((cell) => persistentModifiedCells.add(cell)));
+  functionalStructures.forEach((structure) => structure.occupiedCells.forEach((cell) => persistentModifiedCells.add(cell)));
   standingContainers.forEach((container) => persistentModifiedCells.add(cellId(container.position.x, container.position.y)));
+  functionalWorkCells.forEach((cell) => persistentModifiedCells.add(cell));
   cultivatedCells.forEach((cell) => persistentModifiedCells.add(cell));
-  const traceCells = new Set([...persistentModifiedCells].filter((cell) => !functionalCells.has(cell) && !incompleteStructureCells.has(cell)));
+  const unprovenArtifactCells = new Set<number>([
+    ...state.derived.structures
+      .filter((structure) => !functionalStructures.some((candidate) => candidate.id === structure.id))
+      .flatMap((structure) => structure.occupiedCells),
+    ...(state.world.works ?? [])
+      .filter((work) => !workAdoptions.some((candidate) => candidate.work.id === work.id))
+      .map((work) => workCell(work)),
+    ...allStandingContainers
+      .filter((container) => !standingContainers.some((candidate) => candidate.id === container.id))
+      .map((container) => cellId(container.position.x, container.position.y)),
+  ]);
+  const traceCells = new Set([...persistentModifiedCells].filter((cell) => (
+    !functionalCells.has(cell)
+      && !incompleteStructureCells.has(cell)
+      && !unprovenArtifactCells.has(cell)
+  )));
 
-  const usedContainerIds = new Set<string>();
-  for (const event of actions) {
-    if (event.status !== 'completed' || event.action.kind !== 'transfer') continue;
-    if (event.action.from.kind === 'container' && standingContainerIds.has(event.action.from.containerId)) usedContainerIds.add(event.action.from.containerId);
-    if (event.action.to.kind === 'container' && standingContainerIds.has(event.action.to.containerId)) usedContainerIds.add(event.action.to.containerId);
-  }
   const storedUnits = standingContainers.reduce((sum, container) => sum
     + container.inventory.reduce((inventorySum, stack) => inventorySum + stack.quantity, 0), 0);
   const shelterCapacity = functionalStructures.reduce((sum, structure) => sum + structure.capacity, 0);
@@ -429,6 +487,8 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
     + shelterProtectionUnits
     + standingContainers.length * 1.5
     + usedContainerIds.size * 1.5
+    + workAdoptions.length
+    + Math.min(workReceipts.length, 24) / 8
     + Math.min(storedUnits, 48) / 12
     + cultivatedCells.size / 8;
 
@@ -441,6 +501,7 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
   const functionalSiteAnchorCells = new Set<number>([
     ...functionalStructureCells,
     ...containerCellsById.values(),
+    ...functionalWorkCells,
     ...cultivatedSiteCells,
   ]);
   const functionalSiteComponents = connectedCellComponents(functionalSiteAnchorCells);
@@ -460,11 +521,26 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
     structure.occupiedCells.forEach((cell) => establishSite(cell, establishedAt));
   }
   for (const container of standingContainers) establishSite(cellId(container.position.x, container.position.y), container.createdAtMonth);
+  for (const { work } of workAdoptions) establishSite(workCell(work), work.createdAtMonth);
   for (const region of state.derived.regions) {
     if (region.kind !== 'cultivated') continue;
     region.cells.forEach((cell) => establishSite(cell, region.firstObservedMonth));
   }
   const siteUsageMonths = functionalSiteComponents.map(() => new Set<number>());
+  for (const structure of functionalStructures) {
+    const index = structure.occupiedCells
+      .map((cell) => functionalSiteByCell.get(cell))
+      .find((candidate) => candidate !== undefined);
+    if (index === undefined) continue;
+    for (const receipt of structureUseReceipts.get(structure.id) ?? []) {
+      siteUsageMonths[index].add(receipt.atMonth);
+    }
+  }
+  for (const { work, observation } of workAdoptions) {
+    const index = functionalSiteByCell.get(workCell(work));
+    if (index === undefined) continue;
+    for (const receipt of observation.receipts) siteUsageMonths[index].add(receipt.atMonth);
+  }
   for (const event of actions) {
     if (event.status !== 'completed' || event.action.kind === 'move') continue;
     if (event.action.kind === 'act' && event.action.operation === 'combine'
@@ -484,10 +560,6 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
     touchedSites.forEach((index) => {
       if (event.atMonth >= siteEstablishmentMonths[index]) siteUsageMonths[index].add(event.atMonth);
     });
-  }
-  for (const person of living) {
-    const index = functionalSiteByCell.get(person.position.cellId);
-    if (index !== undefined) siteUsageMonths[index].add(state.clock.elapsedMonths);
   }
   const sustainedFunctionalSites = functionalSiteComponents.filter((_, index) => {
     const months = [...siteUsageMonths[index]].sort((left, right) => left - right);
@@ -527,10 +599,11 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
   const constructionProgressScore = saturating(incompleteStructureCells.size, 60);
   const functionalCapacityScore = saturating(functionalCapacityUnits, 20);
   const networkScore = saturating(sustainedFunctionalSites + logisticsRoutes * 2, 14);
-  const infrastructureScore = persistentTraceScore * 0.1
-    + constructionProgressScore * 0.1
+  // Construction progress remains diagnostic evidence, but contributes no
+  // civilization value until somebody actually uses the resulting thing.
+  const infrastructureScore = persistentTraceScore * 0.15
     + functionalCapacityScore * 0.55
-    + networkScore * 0.25;
+    + networkScore * 0.3;
   const rawTerritoryScore = cognitiveScore * 0.55 + infrastructureScore * 0.45;
   const territoryCap = functionalSiteComponents.length === 0 ? 25
     : sustainedFunctionalSites < 2 && logisticsRoutes === 0 ? 55 : 100;
@@ -542,11 +615,23 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
     traceCells: traceCells.size,
     trailCells: trailCells.size,
     incompleteStructureCells: incompleteStructureCells.size,
+    unprovenArtifactCells: unprovenArtifactCells.size,
     functionalStructureCells: functionalStructureCells.size,
     functionalStructures: functionalStructures.length,
+    structureUseReceipts: [...structureUseReceipts.values()].reduce((sum, receipts) => sum + receipts.length, 0),
     shelterCapacity,
-    standingContainers: standingContainers.length,
+    standingContainers: allStandingContainers.length,
     usedContainers: usedContainerIds.size,
+    functionalContainers: standingContainers.length,
+    activeWorks: state.world.works?.filter((work) => work.condition > WORK_COLLAPSE_CONDITION).length ?? 0,
+    usedWorks: workAdoptions.length,
+    workUseReceipts: workReceipts.length,
+    workUsers: workUserIds.size,
+    workWitnesses: workWitnessIds.size,
+    demonstratedWorks: demonstratedWorkCount,
+    diffusedWorks: diffusedWorkCount,
+    workUseSpanMonths,
+    workSurvivingMonths,
     storedUnits,
     cultivatedCells: cultivatedCells.size,
     cultivatedSiteCells: cultivatedSiteCells.size,
@@ -742,7 +827,10 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
         ? Math.min(rawHistoryScore, 70)
         : rawHistoryScore;
 
-  const functionalBuildings = state.derived.functionalBuildings ?? observeFunctionalBuildings(state);
+  const installedFacilities = observeFunctionalBuildings(state);
+  const functionalBuildings = installedFacilities.filter((facility) => (
+    facility.active && facility.useEventIds.length > 0
+  ));
   const materialCapabilities = observeMaterialCapabilities(state);
   const stageRank = { hypothesis: 0, sample: 1, repeatable: 2, distributed: 3, institutional: 4 } as const;
   const materialCapabilityPoints = materialCapabilityPointsFromCanonicalObservations(
@@ -750,23 +838,30 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
   );
   const generationCount = new Set(historicalPeople.map((person) => person.generation)).size;
   const cultivatedCells = state.derived.regions.find((region) => region.kind === 'cultivated')?.cells.length ?? 0;
-  const usedFacilities = functionalBuildings.filter((facility) => facility.useEventIds.length > 0);
+  const usedFacilities = functionalBuildings;
+  const workPracticePoints = saturating(workReceipts.length, 16) * 0.1
+    + saturating(workFunctionKeys.size, 8) * 0.05;
+  const workDiffusionPoints = saturating(diffusedWorkCount + workWitnessIds.size, 10) * 0.1;
   const populationPoints = living.length * 6 + Math.max(0, generationCount - 1) * 8;
   const territoryPoints = territoryScore * 0.35
-    + state.derived.structures.filter((structure) => structure.complete).length * 8
+    + demonstratedStructures.length * 8
     + functionalBuildings.length * 9
+    + workAdoptions.length * 5
     + Math.min(30, cultivatedCells * 0.8);
   const technologyPoints = technologyScore * 0.5
     + materialCapabilityPoints
-    + usedFacilities.length * 4;
+    + usedFacilities.length * 4
+    + workPracticePoints;
   const socialPoints = socialScore * 0.5
     + functionalInstitutions * 18
     + usedFacilities.filter((facility) => facility.userIds.length >= 2).length * 6
+    + workDiffusionPoints
     + completedJointProjects.length * 2;
   const historyPoints = historyScore * 0.35
     + state.records.length * 8
     + transmittedTechniques * 3
-    + crossGenerationKnowledge * 8;
+    + crossGenerationKnowledge * 8
+    + demonstratedWorkCount * 2;
 
   const components: CivilizationIndex['components'] = {
     population: {
@@ -777,8 +872,13 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
       score: roundedOpen(territoryPoints), weight: WEIGHTS.territory,
       evidence: {
         ...territoryObservation.evidence,
+        installedFacilities: installedFacilities.length,
         functionalBuildings: functionalBuildings.length,
         usedFacilities: usedFacilities.length,
+        demonstratedStructures: demonstratedStructures.length,
+        usedWorks: workAdoptions.length,
+        workUseSpanMonths,
+        workSurvivingMonths,
         cultivatedCells,
       },
     },
@@ -787,6 +887,9 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
       evidence: {
         confidentTechniques: confidentTechniques.size, realizedProcesses: realizedProcesses.size,
         techniqueDiffusion: rounded(techniqueDiffusion),
+        workFunctions: workFunctionKeys.size,
+        workUseReceipts: workReceipts.length,
+        workPracticePoints: roundedOpen(workPracticePoints),
         materialCapabilityPoints: roundedOpen(materialCapabilityPoints),
         processedWoodStage: stageRank[materialCapabilities.find((item) => item.key === 'processed-wood')?.stage ?? 'hypothesis'],
         masonryStoneStage: stageRank[materialCapabilities.find((item) => item.key === 'masonry-stone')?.stage ?? 'hypothesis'],
@@ -806,6 +909,10 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
         roleHolders,
         activeCollectives: activeCollectives.length,
         largestCollectiveSize,
+        diffusedWorks: diffusedWorkCount,
+        workUsers: workUserIds.size,
+        workWitnesses: workWitnessIds.size,
+        workDiffusionPoints: roundedOpen(workDiffusionPoints),
       },
     },
     history: {
@@ -824,6 +931,7 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
         taughtFacts: taughtFactIds.size,
         transmittedTechniques,
         crossGenerationKnowledge,
+        demonstratedWorks: demonstratedWorkCount,
       },
     },
   };
@@ -832,10 +940,4 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
     formulaVersion: CIVILIZATION_INDEX_FORMULA_VERSION,
     total: roundedOpen(total), calculatedAtMonth: state.clock.elapsedMonths, components,
   };
-}
-
-export function civilizationStageFor(index: CivilizationIndex): string {
-  if (index.total < 120) return '原始部落';
-  if (index.total < 300) return '农耕定居';
-  return '古代文明';
 }

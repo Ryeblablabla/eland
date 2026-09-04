@@ -2,7 +2,6 @@ import { completedConstructionActions, planningOverlayEvents } from './event-ind
 import { committedHistoryView } from './history';
 import { materialDefinition, materialHas, type MaterialId } from './material';
 import type {
-  ActionFact,
   PhysicalConstructionRecord,
   PhysicalStructure,
   PhysicalStructureIndex,

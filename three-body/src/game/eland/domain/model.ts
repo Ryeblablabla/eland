@@ -1,5 +1,5 @@
 import { MONTHS_PER_YEAR } from './calendar';
-import type { ActionOption, Intent, IntentDecision, PrimitiveAction } from './action';
+import type { ActionOption, Intent, IntentDecision, PrimitiveAction, WorldRef } from './action';
 import type { MaterialId } from './material';
 import type { PersonId, PersonState } from './person';
 import type { VoxelWorld } from '../world/grid';
@@ -8,6 +8,8 @@ import type { RecordPayload } from './record';
 import type { CollectiveState } from './collective';
 import type { ResourcePermission } from './permission';
 import type { ContainerState } from './container';
+import type { WorkState } from './works';
+import type { AnimalBondState } from './animal-bonds';
 import type { AnimalState } from './animal';
 import type { ProjectState } from './project';
 import type { MechanicalPowerWorldState } from './mechanical-power';
@@ -63,6 +65,22 @@ export interface DropState {
     requesterId: PersonId;
     expiresAtMonth: number;
   };
+}
+
+/** Durable semantic state created by a Plan Agent interaction when no narrower subsystem owns it. */
+export interface OpenWorldFact {
+  id: string;
+  atMonth: number;
+  cellId: number;
+  z: number;
+  actorId: PersonId;
+  summary: string;
+  targetRefs: WorldRef[];
+  /** Exact entity/property owned by this current open state. */
+  targetRef?: WorldRef;
+  stateKey?: string;
+  stateValue?: string;
+  sourceEventId: string;
 }
 
 /**
@@ -210,8 +228,8 @@ export interface DecisionFact extends BaseEvent {
   foresightEvidence?: ForesightDecisionEvidence;
   /** Accepted subjective concerns and their locally compiled disposition. */
   characterAgendaEvidence?: CharacterAgendaDecisionEvidence[];
-  /** Every model-authored decision exposes one transparent thought-language signal. */
-  thoughtBroadcast?: LanguageBroadcast;
+  /** The one outward language wave emitted by a model-authored decision. */
+  languageBroadcast?: LanguageBroadcast;
   result: string;
 }
 
@@ -382,6 +400,10 @@ export interface DecisionMonthLedger {
   speechInputTokens?: number;
   speechOutputTokens?: number;
   speechProviderRequests?: number;
+  memoryCompactionInputTokens?: number;
+  memoryCompactionOutputTokens?: number;
+  memoryCompactionProviderRequests?: number;
+  memoryCompactionCapsules?: number;
 }
 
 export interface EraSchedule {
@@ -407,7 +429,7 @@ export interface ExternalEraRegime {
 export interface EraPrediction {
   id: string;
   predictorId: PersonId;
-  audienceIds: PersonId[];
+  perceivedByPersonIds: PersonId[];
   madeAtMonth: number;
   targetEpoch: EpochKind;
   predictedStartMonth: number;
@@ -538,41 +560,46 @@ export interface SimulationIdentityCounters {
 }
 
 export interface SimulationState {
-  schemaVersion: 17;
+  schemaVersion: 19;
   seed: number;
   branchId: string;
-  /** Optional for schema-17 states written before monotonic identity allocation. */
+  /** Optional only for compact test fixtures; creation initializes it. */
   identityCounters?: SimulationIdentityCounters;
   clock: { unit: 'month'; elapsedMonths: number; monthsPerYear: typeof MONTHS_PER_YEAR };
   world: {
     grid: VoxelWorld;
     drops: DropState[];
     animals: AnimalState[];
-    /** Optional only for old schema-v17 states and compact test fixtures. */
+    /** Open-ended local changes adjudicated outside the fixed recipe/action catalogue. */
+    openFacts?: OpenWorldFact[];
+    /** Person-built composite entities (lean-tos, stacks, lattices) from open interaction. */
+    works?: WorkState[];
+    /** Person↔animal bond tracks derived from real contact (feeding, calming). */
+    animalBonds?: AnimalBondState[];
+    /** Optional only for compact test fixtures. */
     remains?: HumanRemainsState[];
     /** Physical memorial carriers created by completed mortuary acts. */
     memorials?: MemorialMarkerState[];
     past: WorldEvent[];
-    /** Optional for old schema-17 states and compact fixtures; restore derives it from full history. */
+    /** Optional for compact fixtures; restore derives it from full history. */
     historyCursor?: WorldHistoryCursorV1;
     /** Incremental traversal counts keyed by `cellId:z`. */
     traffic?: Record<string, number>;
-    /** Optional on schema v17 for compatibility; new and restored states initialize v1 explicitly. */
+    /** Optional only for compact fixtures; new and restored states initialize v1 explicitly. */
     mechanicalPower?: MechanicalPowerWorldState;
-    /** Optional on schema v17; the first authoritative electrical installation initializes v1. */
+    /** Optional until the first authoritative electrical installation initializes v1. */
     electricalPower?: ElectricalPowerWorldState;
     /**
      * Physical cache rebuilt from committed construction facts and voxels.
-     * Optional because persisted schema-17 states and hand-built fixtures can
-     * omit it; creation, state adoption and month commit reconstruct it.
+     * Optional because hand-built fixtures may omit it; creation, state
+     * adoption and month commit reconstruct it.
      */
     physicalStructureIndex?: PhysicalStructureIndex;
   };
   people: PersonState[];
   /**
-   * Unified owner-scoped cognitive memory and live conversation coordination.
-   * Optional so existing schema-17 saves hydrate without reconstructing a past
-   * the person may no longer remember.
+   * Unified owner-scoped cognitive memory. Optional only for compact fixtures;
+   * state adoption creates the current version without migrating legacy data.
    */
   memoryStore?: AgentMemoryStoreState;
   intents: Intent[];
@@ -619,7 +646,7 @@ export interface EnvironmentEventInput {
 }
 
 export interface EvolutionReport {
-  schemaVersion: 17;
+  schemaVersion: 19;
   exportedAt: string;
   civilization: SimulationState['civilization'];
   finalState: SimulationState;

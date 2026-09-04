@@ -6,7 +6,7 @@ import type {
   SimulationState,
   WorldEvent,
 } from './model';
-import { Material } from './material';
+import { Material, materialHas } from './material';
 import { isAlive, type PersonId, type PersonState } from './person';
 import {
   projectPressureEvidenceDescriptorFromWorldEvent,
@@ -22,6 +22,7 @@ import {
 import { intentById } from './state-index';
 import { hasAgentRememberedGroundedConversationBasis } from './agent-memory';
 import { WORLD_CELL_COUNT } from '../world/grid';
+import { languageInterpreterIds } from './language-perception';
 
 export interface ActionActivityIndex {
   traffic: number[];
@@ -169,7 +170,6 @@ function liveSocialEvidenceWithCurrentIntentBasis(
 /** Resolve an owner-scoped social source from the full committed history or planning overlay. */
 function liveSocialEvidenceForCurrentOwnerSource(
   state: EventReadState,
-  owner: PersonState,
   membership: ReadonlySet<string>,
   eventId: string,
 ): LiveSocialEvidenceDescriptor | undefined {
@@ -198,7 +198,6 @@ export function liveSocialEvidenceForPersonSource(
   const owner = assertCurrentLivingLiveSocialOwner(state, person);
   return liveSocialEvidenceForCurrentOwnerSource(
     state,
-    owner,
     new Set(livePersonSocialSourceEventIds(owner)),
     eventId,
   );
@@ -224,7 +223,7 @@ export function liveSocialEvidenceForPersonSources(
   const membership = new Set(livePersonSocialSourceEventIds(owner));
   return [...new Set(eventIds)]
     .flatMap((eventId) => (
-      liveSocialEvidenceForCurrentOwnerSource(state, owner, membership, eventId) ?? []
+      liveSocialEvidenceForCurrentOwnerSource(state, membership, eventId) ?? []
     ))
     .sort(compareLiveSocialEvidenceDescriptors);
 }
@@ -315,6 +314,16 @@ function supportRecipientIds(event: ActionFact): PersonId[] {
   return [...recipientIds];
 }
 
+function isCompletedConstructionActionEvent(event: ActionFact): boolean {
+  if (event.status !== 'completed') return false;
+  if (event.action.kind === 'act' && event.action.operation === 'combine'
+    && typeof event.diff.outputMaterialId === 'number' && event.diff.position) return true;
+  return event.action.kind === 'world-interact'
+    && event.action.adjudication.effects.some((effect) => effect.kind === 'replace-voxel'
+      && materialHas(effect.materialId, 'solid')
+      && materialHas(effect.materialId, 'building'));
+}
+
 export function registerPlanningEventOverlay(
   state: SimulationState,
   events: WorldEvent[],
@@ -366,16 +375,17 @@ export function registerPlanningEventOverlay(
         overlay.groundedCommunications.push(event);
         if (conversation.turn === 'opening') {
           overlay.groundedOpeningBasisKeys.add(conversation.basisKey);
-          const openings = overlay.groundedOpeningsByListener.get(conversation.listenerId) ?? [];
-          openings.push(event);
-          overlay.groundedOpeningsByListener.set(conversation.listenerId, openings);
+          for (const interpreterId of languageInterpreterIds(event.diff, event.action.speakerMeaning.id)) {
+            const openings = overlay.groundedOpeningsByListener.get(interpreterId) ?? [];
+            openings.push(event);
+            overlay.groundedOpeningsByListener.set(interpreterId, openings);
+          }
         } else if (conversation.referenceEventId) overlay.groundedResponseOpeningIds.add(conversation.referenceEventId);
       }
     }
     if (event.action.kind === 'act' && event.action.operation === 'separate'
       && Number(event.diff.sourceMaterialId) === Material.CropMature) overlay.matureCropHarvests.push(event);
-    if (event.action.kind === 'act' && event.action.operation === 'combine'
-      && typeof event.diff.outputMaterialId === 'number' && event.diff.position) overlay.completedConstructionActions.push(event);
+    if (isCompletedConstructionActionEvent(event)) overlay.completedConstructionActions.push(event);
   });
   planningOverlays.set(state, overlay);
 }
@@ -518,9 +528,11 @@ function indexFor(state: Pick<EventReadState, 'world'>): CachedEventIndex {
         index.groundedCommunications.push(event);
         if (conversation.turn === 'opening') {
           index.groundedOpeningBasisKeys.add(conversation.basisKey);
-          const openings = index.groundedOpeningsByListener.get(conversation.listenerId) ?? [];
-          openings.push(event);
-          index.groundedOpeningsByListener.set(conversation.listenerId, openings);
+          for (const interpreterId of languageInterpreterIds(event.diff, event.action.speakerMeaning.id)) {
+            const openings = index.groundedOpeningsByListener.get(interpreterId) ?? [];
+            openings.push(event);
+            index.groundedOpeningsByListener.set(interpreterId, openings);
+          }
         }
         else if (conversation.referenceEventId) index.groundedResponseOpeningIds.add(conversation.referenceEventId);
       }
@@ -528,10 +540,7 @@ function indexFor(state: Pick<EventReadState, 'world'>): CachedEventIndex {
     if (event.action.kind === 'act'
       && event.action.operation === 'separate'
       && Number(event.diff.sourceMaterialId) === Material.CropMature) index.matureCropHarvests.push(event);
-    if (event.action.kind === 'act'
-      && event.action.operation === 'combine'
-      && typeof event.diff.outputMaterialId === 'number'
-      && event.diff.position) index.completedConstructionActions.push(event);
+    if (isCompletedConstructionActionEvent(event)) index.completedConstructionActions.push(event);
   }
   index.indexedLength = history.length;
   index.lastIndexedEvent = history.at(-1);
@@ -605,10 +614,10 @@ export function hasGroundedConversationOpeningBasis(state: SimulationState, basi
   return Boolean(planningOverlays.get(state)?.groundedOpeningBasisKeys.has(basisKey)) || indexFor(state).groundedOpeningBasisKeys.has(basisKey);
 }
 
-type CommunicateAction = Extract<ActionFact['action'], { kind: 'talk' }>;
-type ClaimRepresentation = Extract<CommunicateAction['speakerMeaning'], { kind: 'claim' }>;
+type TalkAction = Extract<ActionFact['action'], { kind: 'talk' }>;
+type ClaimRepresentation = Extract<TalkAction['speakerMeaning'], { kind: 'claim' }>;
 type GroundedConversationActionFact = ActionFact & {
-  action: CommunicateAction & {
+  action: TalkAction & {
     speakerMeaning: ClaimRepresentation & {
       conversation: NonNullable<ClaimRepresentation['conversation']>;
     };
@@ -716,10 +725,10 @@ export function createRememberedGroundedOpeningBasisSnapshot(
       const conversation = evidence.action?.communication?.groundedConversation;
       if (!evidence.action?.completed || !conversation) continue;
       if (conversation.turn !== 'opening') continue;
-      openingIdentities.add(groundedOpeningIdentity(
+      for (const interpreterId of conversation.interpreterIds) openingIdentities.add(groundedOpeningIdentity(
         conversation.basisKey,
         conversation.speakerId,
-        conversation.listenerId,
+        interpreterId,
       ));
     }
     resolvedByPersonId.set(personId, resolvedById);
@@ -773,7 +782,7 @@ export function hasRememberedGroundedConversationOpeningBasis(
       if (conversation?.turn === 'opening'
         && conversation.basisKey === basisKey
         && conversation.speakerId === speakerId
-        && conversation.listenerId === listenerId) return true;
+        && conversation.interpreterIds.includes(listenerId)) return true;
     }
   }
   return false;
@@ -800,7 +809,7 @@ function recentGroundedConversationFactsForListener(
       || event.atMonth > currentMonth) return;
     const conversation = event.action.speakerMeaning.conversation;
     const belongsToListener = conversation?.turn === 'opening'
-      ? conversation.listenerId === listenerId
+      ? languageInterpreterIds(event.diff, event.action.speakerMeaning.id).includes(listenerId)
       : event.who === listenerId;
     if (belongsToListener) merged.set(event.id, event);
   };
@@ -830,7 +839,7 @@ export function groundedConversationOpeningsForListener(
     .filter((event) => event.action.kind === 'talk'
       && event.action.speakerMeaning.kind === 'claim'
       && event.action.speakerMeaning.conversation?.turn === 'opening'
-      && event.action.speakerMeaning.conversation.listenerId === listenerId);
+      && languageInterpreterIds(event.diff, event.action.speakerMeaning.id).includes(listenerId));
 }
 
 export function matureCropHarvestActions(state: SimulationState): readonly ActionFact[] {

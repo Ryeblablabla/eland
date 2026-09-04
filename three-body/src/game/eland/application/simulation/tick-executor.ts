@@ -15,6 +15,7 @@ import type {
 } from '../../domain/model';
 import { isAlive, type PersonId } from '../../domain/person';
 import { personById } from '../../domain/state-index';
+import { languageInterpreterIds } from '../../domain/language-perception';
 import { isProductionOption, RulePlanner } from '../rule-planner';
 import {
   decisionBudgetExemption,
@@ -36,9 +37,10 @@ import type { ObservationProjector } from './observation-projector';
 import { buildCurrentMonthDecisionContext } from './tick-planner';
 
 const authoritativeRulePlanner = new RulePlanner();
-const modelOwnedSocialFallbackPlanner = new RulePlanner({
-  deferVoluntarySocialChoicesToModel: true,
-});
+const modelOwnedFallbackPlanner: AgentDecider = {
+  defersVoluntarySocialChoicesToModel: true,
+  decide: () => ({ kind: 'idle', reason: '本轮没有形成通过接口的模型意图' }),
+};
 const MAX_MODEL_MENTAL_ACTS_PER_PERSON_MONTH = 2;
 
 function cognitiveTriggerPersonIds(state: SimulationState, events: readonly WorldEvent[]): Set<PersonId> {
@@ -50,8 +52,18 @@ function cognitiveTriggerPersonIds(state: SimulationState, events: readonly Worl
     : []));
   for (const event of events) {
     if (event.kind !== 'action') continue;
+    if (event.action.kind === 'act'
+      && event.action.operation === 'hunt'
+      && event.diff.killed === true) {
+      people.add(event.who);
+      if (Array.isArray(event.diff.witnessedBy)) {
+        event.diff.witnessedBy.forEach((personId) => {
+          if (typeof personId === 'string') people.add(personId);
+        });
+      }
+    }
     if (event.action.kind === 'talk' && event.status === 'completed') {
-      ((event.diff.understoodByPersonIds as string[] | undefined) ?? []).forEach((personId) => people.add(personId));
+      languageInterpreterIds(event.diff, event.action.speakerMeaning.id).forEach((personId) => people.add(personId));
       continue;
     }
     if (event.status === 'blocked' || event.status === 'failed') {
@@ -67,9 +79,6 @@ function cognitiveTriggerPersonIds(state: SimulationState, events: readonly Worl
       if (!speakers.has(event.who)) people.add(event.who);
       continue;
     }
-    if (event.status === 'completed'
-      && !speakers.has(event.who)
-      && !personById(state, event.who)?.activeIntentId) people.add(event.who);
   }
   return people;
 }
@@ -162,7 +171,8 @@ async function executeSimulationAsync(
     ordinaryCandidates.length,
     Math.floor(prepared.state.decisionBudget.credits + living / ORDINARY_DECISION_PERSON_MONTHS),
     availableModelContexts(rolling, living),
-    Math.floor(availableModelTokens(rolling, living, prepared.state.decisionBudget.tokensPerContext) / prepared.state.decisionBudget.tokensPerContext),
+    Math.floor(availableModelTokens(rolling, living, prepared.state.decisionBudget.tokensPerContext)
+      / prepared.state.decisionBudget.tokensPerContext),
   );
   const importance = (context: DecisionContext) => {
     const exemption = decisionBudgetExemption(context, prepared.atMonth);
@@ -199,12 +209,15 @@ async function executeSimulationAsync(
   const modelContexts = rank([...exemptContexts, ...ordinaryContexts]);
   const decisions = new Map<PersonId, { decision: Decision; usedModel: boolean }>();
   const fallbackPlanner = batch.ownsVoluntarySocialChoices
-    ? modelOwnedSocialFallbackPlanner
+    ? modelOwnedFallbackPlanner
     : authoritativeRulePlanner;
+  const timedFallbackPlanner = fallbackPlanner as AgentDecider & { decideAt?: RulePlanner['decideAt'] };
   const modelPersonIds = new Set(modelContexts.map((context) => context.person.id));
   const fallbackFor = (context: DecisionContext): Decision => (
     prepared.naturallyTriggeredPeople.has(context.person.id)
-      ? fallbackPlanner.decideAt(context, { atMonth: prepared.atMonth, planningTick: 1 })
+      ? timedFallbackPlanner.decideAt
+        ? timedFallbackPlanner.decideAt(context, { atMonth: prepared.atMonth, planningTick: 1 })
+        : fallbackPlanner.decide(context)
       : { kind: 'idle', reason: '对话中定下的下一步没有通过当前本地条件复核' }
   );
   for (const context of prepared.candidates.filter((candidate) => !modelPersonIds.has(candidate.person.id))) {
@@ -214,8 +227,8 @@ async function executeSimulationAsync(
   try {
     modelDecisions = modelContexts.length ? await batch.decideAll(modelContexts) : [];
   } catch {
-    // The transitional foreground model path may fail, but the authoritative
-    // rule plan above still commits the month.
+    // Physical reflexes and existing execution remain authoritative, but a
+    // failed model call must not invent a new subjective direction locally.
     modelDecisions = [];
   }
   modelContexts.forEach((context, index) => {

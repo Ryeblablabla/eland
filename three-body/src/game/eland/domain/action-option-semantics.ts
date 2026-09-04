@@ -268,7 +268,6 @@ function inferredSocialContext(
   const counterpartIds = [...new Set([
     ...(option.target?.kind === 'person' ? [option.target.personId] : []),
     ...(targetId ? [targetId] : []),
-    ...(content.kind === 'claim' && content.conversation ? [content.conversation.listenerId] : []),
   ])];
   if (content.kind === 'claim' && content.conversation) return normalizedSocialContext({
     cooperationKind: 'conversation',

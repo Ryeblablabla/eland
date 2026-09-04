@@ -266,7 +266,15 @@ function PersonRelationGraph({ agent }: { agent: SocietyAgent }) {
   );
 }
 
-const PERSON_MIND_SECTION_TITLES = ['当前关切', '经历', '信念', '最近思考'] as const;
+const PERSON_MIND_SECTION_TITLES = ['当前未决', '近期证据', '已学结论'] as const;
+const PERSON_MIND_SECTION_ALIASES: Record<string, typeof PERSON_MIND_SECTION_TITLES[number]> = {
+  当前未决: '当前未决',
+  近期证据: '近期证据',
+  已学结论: '已学结论',
+  当前关切: '当前未决',
+  经历: '近期证据',
+  信念: '已学结论',
+};
 
 interface PersonMindSection {
   title: typeof PERSON_MIND_SECTION_TITLES[number];
@@ -279,11 +287,13 @@ function parsePersonMindMarkdown(markdown: string): PersonMindSection[] {
   for (const rawLine of markdown.split(/\r?\n/u)) {
     const line = rawLine.trim();
     const heading = /^#\s+(.+)$/u.exec(line)?.[1];
-    if (heading && PERSON_MIND_SECTION_TITLES.some((title) => title === heading)) {
-      currentTitle = heading;
+    const normalizedHeading = heading ? PERSON_MIND_SECTION_ALIASES[heading] : undefined;
+    if (normalizedHeading) {
+      currentTitle = normalizedHeading;
       entriesByTitle.set(currentTitle, []);
       continue;
     }
+    if (heading) currentTitle = undefined;
     if (!currentTitle || !line || line === '_无_' || line.startsWith('<!--')) continue;
     const entry = /^-\s+(?:\[[mgd]\d+\]\s*)?(.+)$/u.exec(line)?.[1];
     if (entry) entriesByTitle.get(currentTitle)?.push(entry);

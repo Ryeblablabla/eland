@@ -12,7 +12,7 @@
 | --- | --- |
 | [ELAND 模块边界](../three-body/src/game/eland/README.md) | 当前模块、运行链和主要源码入口 |
 | [规则优先人物架构](./rule-first-agent-architecture-v1.md) | 因果 BDI、人格 / 记忆 / 结果后验、本地规划器和可选模型的权威边界 |
-| [统一人物记忆 v1](./unified-agent-memory-v1.md) | 六类主观记忆、真实对话、压缩模糊遗忘、情境检索与 ConversationEpisode |
+| [统一人物记忆 v1](./unified-agent-memory-v1.md) | 六类主观记忆、统一决策语言、逐人传播噪声、解释驱动回应与压缩模糊遗忘 |
 | [人物 Prompt Contract v2](./agent-prompt-contract-v2.md) | Decision / Voice / Player Conversation 的权威分工、Character Card、Scene Contract 和人工真实感审阅 |
 | [人物特质](./person-traits-v1.md) | 十三种永久特质、固定先民配置、确定性遗传、随机异变与领域效果 |
 | [月度时间模型](./monthly-time-model-v1.md) | 固定月份、15 tick、身体、关系、协议与月末提交 |

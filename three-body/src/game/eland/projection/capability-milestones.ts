@@ -18,7 +18,7 @@ import {
   worldEventFacts,
 } from '../domain/event-index';
 import { cellX, cellY, neighbors4 } from '../world/grid';
-import { languageBroadcastFromDiff } from '../domain/language-perception';
+import { languageInterpreterIds } from '../domain/language-perception';
 import {
   eventManufacturedMeasurementArtifact,
   eventSupportsMeasurementStackMaterial,
@@ -262,9 +262,9 @@ function detectorConditions(): Record<DetectorKey, readonly string[]> {
     clothing: ['纤维或兽皮参与 combine', 'completed diff 产生衣物或兽皮衣'],
     shelter: ['多次建造动作形成有来源体素结构', '结构具有内部空间、容量和防护且标记 complete'],
     settlement: ['存在完整功能住所或多个功能据点', '存活人物持续使用相关格子或设施'],
-    communication: ['communicate 保存结构化表达与发送者', '至少一名不同人物处于实际 audience'],
-    'direct-communication': ['communicate 通过 voice 或 gesture 发送结构化表达', '至少一名不同人物处于实际 audience'],
-    'gesture-communication': ['communicate 明确使用 gesture 渠道', '至少一名不同人物处于实际 audience'],
+    communication: ['talk 产生无收件人的空间语言广播', '至少一名不同人物实际理解了传播后的信号'],
+    'direct-communication': ['talk 保存说话者的主观表达', '至少一名不同人物实际理解了传播后的信号'],
+    'gesture-communication': ['旧手势声道已在破坏性迁移中删除', '当前规则不再产生这一证据'],
     'natural-observation': ['人物完成 attend 并指向动物、体素或自然掉落物', '观察事实保存人物和真实世界对象'],
     'tested-hypothesis': ['可靠技术知识引用至少一次真实物质试验', '同一知识来源还包含 understood/verified 的主动核验'],
     'trial-learning': ['可靠技术知识引用至少两次真实物质试验', '试验来源跨越阶段门槛要求的月份'],
@@ -302,7 +302,7 @@ function detectorConditions(): Record<DetectorKey, readonly string[]> {
     mandate: ['全体同意规则先成为 DecisionRule', '成员随后按规则接受限时 Mandate'],
     'exercised-mandate': ['限时授权保存持有人与物资范围', '成员真实贡献且协调者真实分配同一种物资'],
     'returned-mandate': ['授权曾被成员真实行使', '期限到达或成员关系结束后 mandate 转为 expired/ended'],
-    prediction: ['人物向真实 audience 作出带时间窗的纪元预言', 'EraPrediction 保存预测者、目标纪元与来源'],
+    prediction: ['人物说出带时间窗的纪元预言且被他人实际理解', 'EraPrediction 保存预测者、理解者、目标纪元与来源'],
     'correct-prediction': ['预言先于目标纪元变化提出', '结算事实记录 correct=true 与误差月份'],
     'incorrect-prediction': ['预言先于截止月提出', '结算事实记录 correct=false 与误差月份'],
     'prediction-practice': ['同一预测者至少有两次已结算预言', '每次预言保存独立来源与正确/错误后果'],
@@ -315,7 +315,7 @@ function detectorConditions(): Record<DetectorKey, readonly string[]> {
     'knowledge-preservation': ['知识保存项目由已有知识与中断风险触发', '实体记录被制作且项目完成'],
     'forest-harvest': ['separate 指向真实木材、树叶或植物体素', 'completed diff 记录来源材料与取得物'],
     'mutual-aid': ['至少两项 assist agreement 被真实履行', '援助涉及重复人物网络或不同月份'],
-    'permission-revoked': ['许可先由共同体约定形成并可被行使', '授权者 communicate revoke 后 permission 状态为 revoked'],
+    'permission-revoked': ['许可先由共同体约定形成并可被行使', '授权者 talk revoke 被对方理解后 permission 状态为 revoked'],
     'theft-attempt': ['person→person 转移未经授权', '动作 blocked 且 attempted=true/resistedBy，物资未转手'],
     'theft-success': ['person→person 转移未经授权', '动作 completed 且 authorized=false，保存来源、去向、物资与数量'],
     violence: ['exert 指向不同人物', 'completed diff 保存 victimId、正伤害与伤口来源'],
@@ -323,7 +323,7 @@ function detectorConditions(): Record<DetectorKey, readonly string[]> {
     restraint: ['绳作为真实库存材料被消耗', 'completed diff 与 restrained 条件保存同一人物和来源'],
     'release-restraint': ['目标先有带来源 restrained 条件', 'separate 完成并保存 releasedPersonId/sourceConditionId'],
     breach: ['约定已被所需回应者接受并进入 active', '超期未履行后显式产生 agreement:breached；只保留提议、接受和违约结果证据'],
-    'collective-withdrawal': ['人物先拥有 active membership', '本人 communicate withdraw 并使 membership 状态变为 withdrawn'],
+    'collective-withdrawal': ['人物先拥有 active membership', '本人 talk withdraw 被理解并使 membership 状态变为 withdrawn'],
     'collective-collapse': ['共同体曾有至少两名真实成员', '主动退出链使状态转为 dormant/dissolved；单纯死亡另记衰退'],
     'collective-recovery': ['共同体或其前身先经历成员退出/休眠', '随后新成员接受加入并恢复 active 规模'],
     'technique-loss': ['历史上至少一名人物持有已核验技术且每名持有者均有死亡事实', '最后持有者死亡后无活着可靠持有者且无同 payload 的实体记录载体'],
@@ -657,12 +657,12 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
     }
     case 'communication':
       return completed.flatMap((event) => event.action.kind === 'talk'
-        && (languageBroadcastFromDiff(event.diff)?.understoodByPersonIds ?? []).some((id) => id !== event.who)
-        ? episode([event], [event.who, ...(languageBroadcastFromDiff(event.diff)?.understoodByPersonIds ?? [])]) ?? [] : []);
+        && languageInterpreterIds(event.diff, event.action.speakerMeaning.id).some((id) => id !== event.who)
+        ? episode([event], [event.who, ...languageInterpreterIds(event.diff, event.action.speakerMeaning.id)]) ?? [] : []);
     case 'direct-communication':
       return completed.flatMap((event) => event.action.kind === 'talk'
-        && (languageBroadcastFromDiff(event.diff)?.understoodByPersonIds ?? []).some((id) => id !== event.who)
-        ? episode([event], [event.who, ...(languageBroadcastFromDiff(event.diff)?.understoodByPersonIds ?? [])]) ?? [] : []);
+        && languageInterpreterIds(event.diff, event.action.speakerMeaning.id).some((id) => id !== event.who)
+        ? episode([event], [event.who, ...languageInterpreterIds(event.diff, event.action.speakerMeaning.id)]) ?? [] : []);
     case 'gesture-communication':
       return [];
     case 'natural-observation':
@@ -982,17 +982,17 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
           ...(mandate.scope === 'assign-recurring-duty' ? mandate.dutyCompletionEventIds : []),
         ]), collective.memberships.map((item) => item.personId), [mandate.holderId]) ?? []));
     case 'prediction':
-      return state.eraPredictions.flatMap((prediction) => episode(resolvedEvents(index, prediction.sourceEventIds), [prediction.predictorId, ...prediction.audienceIds]) ?? []);
+      return state.eraPredictions.flatMap((prediction) => episode(resolvedEvents(index, prediction.sourceEventIds), [prediction.predictorId, ...prediction.perceivedByPersonIds]) ?? []);
     case 'correct-prediction':
       return state.eraPredictions.filter((prediction) => prediction.status === 'correct')
-        .flatMap((prediction) => episode(resolvedEvents(index, prediction.sourceEventIds), [prediction.predictorId, ...prediction.audienceIds]) ?? []);
+        .flatMap((prediction) => episode(resolvedEvents(index, prediction.sourceEventIds), [prediction.predictorId, ...prediction.perceivedByPersonIds]) ?? []);
     case 'incorrect-prediction':
       return state.eraPredictions.filter((prediction) => prediction.status === 'incorrect')
-        .flatMap((prediction) => episode(resolvedEvents(index, prediction.sourceEventIds), [prediction.predictorId, ...prediction.audienceIds]) ?? []);
+        .flatMap((prediction) => episode(resolvedEvents(index, prediction.sourceEventIds), [prediction.predictorId, ...prediction.perceivedByPersonIds]) ?? []);
     case 'prediction-practice':
       return [...grouped(state.eraPredictions.filter((prediction) => prediction.status !== 'pending'), (prediction) => prediction.predictorId).values()]
         .flatMap((predictions) => predictions.length >= 2
-          ? episode(resolvedEvents(index, predictions.flatMap((prediction) => prediction.sourceEventIds)), unique(predictions.flatMap((prediction) => [prediction.predictorId, ...prediction.audienceIds]))) ?? [] : []);
+          ? episode(resolvedEvents(index, predictions.flatMap((prediction) => prediction.sourceEventIds)), unique(predictions.flatMap((prediction) => [prediction.predictorId, ...prediction.perceivedByPersonIds]))) ?? [] : []);
     case 'project':
       return state.projects.filter((project) => project.actionEventIds.length > 0 || project.completionEventIds.length > 0 || project.failureEventIds.length > 0)
         .flatMap((project) => episode(resolvedEvents(index, [...project.triggerFactIds, ...project.actionEventIds, ...project.completionEventIds, ...project.failureEventIds]), project.contributorIds, project.beneficiaryIds) ?? []);

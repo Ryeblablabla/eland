@@ -28,7 +28,8 @@ import { realizeLiveSpeechLines, retainDecisionSpeechLines } from '../live-speec
 import { hasExplicitModelRoute, modelEndpointStatus, readEvolutionMode, readSummaryMode } from '../model-config';
 import { realizeNewbornNames } from '../newborn-naming-service';
 import { logPerf, perfElapsed, perfNow } from '../perf';
-import { writeDialogueMemory } from '../../src/game/eland/infrastructure-api';
+import { writeLanguageMemory } from '../../src/game/eland/infrastructure-api';
+import { compactOneAgentMemoryArchive, type MemoryCompactionResult } from '../memory-compaction-service';
 
 const MAX_COMPLETED_STEP_RECEIPTS = 64;
 
@@ -147,6 +148,7 @@ export class SessionStepCoordinator {
   private lastNarrativeFallbackLogAt = 0;
   private lastNamingFallbackLogAt = 0;
   private lastSpeechFallbackLogAt = 0;
+  private lastMemoryCompactionFallbackLogAt = 0;
 
   constructor(private readonly host: SessionStepHost) {}
 
@@ -347,6 +349,25 @@ export class SessionStepCoordinator {
           }
         }
       }
+      let memoryCompaction: MemoryCompactionResult = {
+        usage: { inputTokens: 0, outputTokens: 0 } satisfies TokenUsage,
+        providerRequests: 0,
+        appliedCapsules: 0,
+      };
+      if (decisionEndpoint.configured && decisionEndpoint.endpointId) {
+        try {
+          memoryCompaction = await compactOneAgentMemoryArchive(
+            state,
+            decisionEndpoint.endpointId,
+          );
+        } catch (error) {
+          const now = Date.now();
+          if (now - this.lastMemoryCompactionFallbackLogAt >= 60_000) {
+            this.lastMemoryCompactionFallbackLogAt = now;
+            console.warn(`运行 ${this.host.runId} 的长期记忆压缩未应用，原记忆保持不变：${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
       const speechDrafts = projectLiveSpeechDrafts(state, state.lastStep);
       const retainedDecisionLines = retainDecisionSpeechLines(speechDrafts);
       const speechPromise = decisionEndpoint.configured && decisionEndpoint.endpointId && speechDrafts.length > 0
@@ -399,6 +420,24 @@ export class SessionStepCoordinator {
         }
       }
       const modelLedger = state.decisionBudget.ledgers.at(-1);
+      if (modelLedger?.atMonth === state.clock.elapsedMonths && memoryCompaction.providerRequests > 0) {
+        modelLedger.inputTokens += memoryCompaction.usage.inputTokens;
+        modelLedger.outputTokens += memoryCompaction.usage.outputTokens;
+        if (memoryCompaction.usage.cacheHitInputTokens !== undefined) {
+          modelLedger.cacheHitInputTokens = (modelLedger.cacheHitInputTokens ?? 0)
+            + memoryCompaction.usage.cacheHitInputTokens;
+        }
+        if (memoryCompaction.usage.cacheMissInputTokens !== undefined) {
+          modelLedger.cacheMissInputTokens = (modelLedger.cacheMissInputTokens ?? 0)
+            + memoryCompaction.usage.cacheMissInputTokens;
+        }
+        modelLedger.providerRequests = (modelLedger.providerRequests ?? 0)
+          + memoryCompaction.providerRequests;
+        modelLedger.memoryCompactionInputTokens = memoryCompaction.usage.inputTokens;
+        modelLedger.memoryCompactionOutputTokens = memoryCompaction.usage.outputTokens;
+        modelLedger.memoryCompactionProviderRequests = memoryCompaction.providerRequests;
+        modelLedger.memoryCompactionCapsules = memoryCompaction.appliedCapsules;
+      }
       if (modelLedger?.atMonth === state.clock.elapsedMonths && speechProviderRequests > 0) {
         modelLedger.inputTokens += speechUsage.inputTokens;
         modelLedger.outputTokens += speechUsage.outputTokens;
@@ -418,13 +457,13 @@ export class SessionStepCoordinator {
         const conversationRecord = conversation && typeof conversation === 'object' && !Array.isArray(conversation)
           ? conversation as Record<string, unknown>
           : undefined;
-        writeDialogueMemory(state, {
+        writeLanguageMemory(state, {
           speechLineId: line.id,
-          sourceActionEventId: line.sourceEventId,
+          sourceEventId: line.sourceEventId,
           sourceFactIds: line.sourceFactIds,
           atMonth: line.month,
           speakerId: line.speakerId,
-          audienceIds: line.audienceIds,
+          perceivedByPersonIds: line.perceivedByPersonIds,
           text: line.text,
           communicationKind: line.communicationKind,
           ...(typeof conversationRecord?.topic === 'string' ? { topic: conversationRecord.topic } : {}),

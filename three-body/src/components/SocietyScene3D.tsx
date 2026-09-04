@@ -1971,8 +1971,8 @@ export default function SocietyScene3D({
         {speechLinesInPlaybackOrder(speechLines ?? []).map((line) => (
           <span className="block" key={line.id}>
             {line.speakerName}
-            {line.audienceNames.length ? `对${line.audienceNames.join('、')}` : ''}
             说：{line.text}
+            {line.perceivedByPersonNames.length ? `；${line.perceivedByPersonNames.join('、')}感知到了` : ''}
           </span>
         ))}
       </div>

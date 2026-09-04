@@ -35,7 +35,7 @@ import {
   recordAgreementResponseSocialLearning,
 } from './social-learning';
 import { invalidateFulfilledAgreementRelationshipEvidence } from './relationship-outcome-evidence';
-import { languageBroadcastFromDiff } from './language-perception';
+import { languageInterpreterIds } from './language-perception';
 
 export type AgreementStatus = 'proposed' | 'active' | 'fulfilled' | 'rejected' | 'expired' | 'breached' | 'cancelled';
 
@@ -442,7 +442,7 @@ function verifiedStoredWaterAssistanceReceipt(
         || !Number.isSafeInteger(receipt.waterCellId)
         || !neighbors4(fact.cellId).includes(Number(receipt.waterCellId))) return undefined;
       if (fact.action.kind === 'talk'
-        && !((fact.diff.understoodByPersonIds as string[] | undefined) ?? []).includes(proposal.requesterId)) return undefined;
+        && !languageInterpreterIds(fact.diff, fact.action.speakerMeaning.id).includes(proposal.requesterId)) return undefined;
     } else if (fact.action.kind === 'attend' && fact.action.target.kind === 'voxel') {
       if (receipt.evidenceKind !== 'attended-voxel'
         || !sameVoxelPosition(receipt.targetPosition, fact.action.target.position)) return undefined;
@@ -485,7 +485,7 @@ function helperWaterAssistanceEvidenceReceipt(
   }
   const action = fact.action;
   if (action.kind === 'talk'
-    && !(languageBroadcastFromDiff(fact.diff)?.understoodByPersonIds ?? []).includes(proposal.requesterId)) return undefined;
+    && !languageInterpreterIds(fact.diff, action.speakerMeaning.id).includes(proposal.requesterId)) return undefined;
   if (action.kind === 'move' || action.kind === 'talk') {
     if (!allowCurrentWorldEvidence) return undefined;
     const water = neighbors4(fact.cellId)
@@ -722,9 +722,8 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
     const content = action.speakerMeaning;
     if ((content.kind === 'request' || content.kind === 'offer') && content.proposal && !agreementById(state, content.id)) {
       const pair = parties(content.proposal);
-      const reachedAudienceIds = languageBroadcastFromDiff(fact.diff)?.understoodByPersonIds ?? [];
-      if ((content.proposal.kind === 'membership' || content.proposal.kind === 'decision-rule' || content.proposal.kind === 'mandate')
-        && !pair.requiredResponderIds.every((id) => reachedAudienceIds.includes(id))) return;
+      const reachedAudienceIds = languageInterpreterIds(fact.diff, content.id);
+      if (!pair.requiredResponderIds.every((id) => reachedAudienceIds.includes(id))) return;
       const intentSources = fact.intentId ? intentById(state, fact.intentId)?.sourceFactIds ?? [] : [];
       const relationshipBasisSources = (content.proposal.kind === 'companion' || content.proposal.kind === 'reproduce')
         ? content.proposal.basis?.sourceFactIds ?? []
@@ -757,12 +756,14 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
     }
     if (content.kind === 'revoke-agreement') {
       const agreement = agreementById(state, content.referenceId);
+      const understoodBy = languageInterpreterIds(fact.diff, content.id);
       if (!agreement
         || agreement.status !== 'active'
         || (agreement.proposal.kind !== 'reproduce'
           && agreement.proposal.kind !== 'companion'
           && !(agreement.proposal.kind === 'assist' && agreement.proposal.need === 'company'))
-        || !agreement.partyIds.includes(fact.who)) return;
+        || !agreement.partyIds.includes(fact.who)
+        || !agreement.partyIds.some((personId) => personId !== fact.who && understoodBy.includes(personId))) return;
       agreement.status = 'cancelled';
       agreement.resolvedAtMonth = fact.atMonth;
       agreement.responseEventId = fact.id;
@@ -771,11 +772,13 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
     }
     if (content.kind !== 'accept' && content.kind !== 'reject') return;
     const agreement = agreementById(state, content.referenceId);
+    const understoodBy = languageInterpreterIds(fact.diff, content.id);
     if (!agreement || agreement.status !== 'proposed'
       || !agreement.requiredResponderIds.includes(fact.who)
       || agreement.acceptedByPersonIds.includes(fact.who)
       || agreement.rejectedByPersonIds.includes(fact.who)
-      || fact.atMonth > agreementResponseDeadline(agreement, fact.who)) return;
+      || fact.atMonth > agreementResponseDeadline(agreement, fact.who)
+      || !agreement.partyIds.some((personId) => personId !== fact.who && understoodBy.includes(personId))) return;
     agreement.responseEventId = fact.id;
     agreement.sourceEventIds = [...new Set([...agreement.sourceEventIds, fact.id])];
     if (content.kind === 'accept') {

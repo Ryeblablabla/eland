@@ -3,6 +3,7 @@ import type { SimulationState, WorldEvent } from '../simulation';
 import type { GroundedConversationRef, GroundedConversationTopic, HolderRef } from '../domain/action';
 import { animalSpecies, type AnimalSpeciesId } from '../domain/animal';
 import { Material, materialDefinition } from '../domain/material';
+import { languageInterpreterIds } from '../domain/language-perception';
 
 type ActionEvent = Extract<WorldEvent, { kind: 'action' }>;
 type DecisionEvent = Extract<WorldEvent, { kind: 'decision' }>;
@@ -481,46 +482,44 @@ const GROUNDED_CONVERSATION_HISTORY: Record<GroundedConversationTopic, {
 
 function groundedConversationHistoryText(
   actor: string,
-  audience: string,
+  interpreters: string,
   conversation: GroundedConversationRef,
 ): string {
   const wording = GROUNDED_CONVERSATION_HISTORY[conversation.topic];
-  if (conversation.turn === 'opening') return `${actor}与${audience}谈起了${wording.opening}`;
+  if (conversation.turn === 'opening') return `${actor}与${interpreters}谈起了${wording.opening}`;
   if (conversation.stance === 'guarded') {
-    return `${actor}听见了${audience}${wording.response}，但没有继续深谈`;
+    return `${actor}听见了${interpreters}${wording.response}，但没有继续深谈`;
   }
-  return `${actor}回应了${audience}${wording.response}`;
+  return `${actor}回应了${interpreters}${wording.response}`;
 }
 
 function dialogueText(state: SimulationState, event: ActionEvent, actor: string): string {
   if (event.action.kind !== 'talk') return event.result;
-  const audience = ((event.diff.understoodByPersonIds as string[] | undefined) ?? []).map((id) => personName(state, id)).join('、') || '身边的人';
+  const interpreters = languageInterpreterIds(event.diff, event.action.speakerMeaning.id)
+    .map((id) => personName(state, id)).join('、') || '身边的人';
   const content = event.action.speakerMeaning;
-  if (content.kind === 'accept') return `${actor}接受了${audience}的提议`;
-  if (content.kind === 'reject') return `${actor}拒绝了${audience}的提议`;
-  if (content.kind === 'revoke-agreement') return `${actor}向${audience}撤回了尚未执行的生殖同意`;
-  if (content.kind === 'withdraw') return `${actor}告诉${audience}，自己将退出共同体`;
-  if (content.kind === 'revoke') return `${actor}撤回了给${audience}的取用许可`;
+  if (content.kind === 'accept') return `${actor}说出的接受被${interpreters}理解`;
+  if (content.kind === 'reject') return `${actor}说出的拒绝被${interpreters}理解`;
+  if (content.kind === 'revoke-agreement') return `${actor}撤回生殖同意的意思被${interpreters}理解`;
+  if (content.kind === 'withdraw') return `${actor}退出共同体的意思被${interpreters}理解`;
+  if (content.kind === 'revoke') return `${actor}撤回取用许可的意思被${interpreters}理解`;
   if (content.kind === 'claim' && content.conversation) {
-    return groundedConversationHistoryText(actor, audience, content.conversation);
+    return groundedConversationHistoryText(actor, interpreters, content.conversation);
   }
-  if (content.kind === 'request') return `${actor}向${audience}提出请求：${concisePlayerText(content.summary)}`;
-  if (content.kind === 'offer') return `${actor}向${audience}提出建议：${concisePlayerText(content.summary)}`;
-  if (content.kind === 'prediction') return `${actor}向${audience}说出了自己的预判：${concisePlayerText(content.summary)}`;
-  return `${actor}告诉${audience}，${concisePlayerText(content.summary)}`;
+  if (content.kind === 'request') return `${actor}说出请求，${interpreters}理解为：${concisePlayerText(content.summary)}`;
+  if (content.kind === 'offer') return `${actor}说出建议，${interpreters}理解为：${concisePlayerText(content.summary)}`;
+  if (content.kind === 'prediction') return `${actor}说出预判，${interpreters}理解为：${concisePlayerText(content.summary)}`;
+  return `${actor}说出一项意思，${interpreters}理解为：${concisePlayerText(content.summary)}`;
 }
 
 function communicationHistoryDetail(event: ActionEvent): string {
   if (event.action.kind !== 'talk') return event.result;
-  const channel = event.action.channel === 'voice'
-    ? '当面交谈'
-    : event.action.channel === 'gesture' ? '手势' : '记录';
   const conversation = event.action.speakerMeaning.kind === 'claim'
     ? event.action.speakerMeaning.conversation
     : undefined;
-  if (!conversation) return `这次沟通已通过${channel}完成。`;
+  if (!conversation) return '这句话已经说出，并沿周围空间传播。';
   const turn = conversation.turn === 'opening' ? '开场' : '回应';
-  return `这次关于${GROUNDED_CONVERSATION_HISTORY[conversation.topic].opening}的${turn}已通过${channel}完成。`;
+  return `这次关于${GROUNDED_CONVERSATION_HISTORY[conversation.topic].opening}的${turn}已经说出。`;
 }
 
 function transferText(state: SimulationState, event: ActionEvent, actor: string): string {
@@ -675,6 +674,7 @@ function actionText(state: SimulationState, event: ActionEvent): string {
   if (event.action.kind === 'move') return event.status === 'completed' ? `${actor}抵达了目的地` : `${actor}正在赶往目的地`;
   if (event.action.kind === 'transfer') return transferText(state, event, actor);
   if (event.action.kind === 'attend') return attendText(state, event, actor);
+  if (event.action.kind === 'world-interact') return event.result.startsWith(actor) ? event.result : `${actor}${event.result}`;
   if (event.action.kind === 'talk') return dialogueText(state, event, actor);
   return actText(state, event, actor);
 }
@@ -729,6 +729,7 @@ function actionImportance(event: ActionEvent): number {
     return 80;
   }
   if (event.action.kind === 'attend') return 74;
+  if (event.action.kind === 'world-interact') return 78;
   if (event.action.kind === 'transfer') return 70;
   return event.status === 'completed' ? 46 : 24;
 }

@@ -550,8 +550,8 @@ export class SqliteRunStore implements RunStore {
         + `当前为 revision ${encodedAgainst.meta.revision} / ${encodedAgainst.stateHash}`,
       );
     }
-    if (Number((stateInput as { schemaVersion?: number }).schemaVersion) !== 17) {
-      throw new Error("保存的运行状态必须是 schemaVersion 17");
+    if (Number((stateInput as { schemaVersion?: number }).schemaVersion) !== 19) {
+      throw new Error("保存的运行状态必须是 schemaVersion 19");
     }
     const previousMetadata = this.runStateRootMetadata(encodedAgainst.stateHash);
     const snapshot = await encodeSegmentedRunState(

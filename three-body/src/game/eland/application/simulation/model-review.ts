@@ -206,8 +206,21 @@ export function validateModelDecision(
           ...(proposed.characterAgendaUpdate
             ? { characterAgendaUpdate: structuredClone(proposed.characterAgendaUpdate) }
             : {}),
+          ...(proposed.executionProbe
+            ? { executionProbe: structuredClone(proposed.executionProbe) }
+            : {}),
           ...(proposed.mentalAct ? { mentalAct: structuredClone(proposed.mentalAct) } : {}),
         };
+  }
+  if (proposed.kind === 'suspend' || proposed.kind === 'abandon') {
+    if (required.length || fulfillment.length) return null;
+    if (!context.activeIntent || proposed.intentId !== context.activeIntent.id) return null;
+    return {
+      kind: proposed.kind,
+      intentId: proposed.intentId,
+      reason: proposed.reason,
+      ...(proposed.mentalAct ? { mentalAct: structuredClone(proposed.mentalAct) } : {}),
+    };
   }
   if (proposed.kind !== 'start' && proposed.kind !== 'revise') return null;
   const selected = context.options.find((option) => option.id === proposed.optionId);
@@ -221,7 +234,7 @@ export function validateModelDecision(
     : selected.completionAction?.kind === 'talk'
       ? selected.completionAction
       : null;
-  const proposedUtterance = proposed.utterance?.trim();
+  const proposedUtterance = proposed.mentalAct?.utterance.trim();
   const proposedGrounding = proposed.groundingSourceFactIds;
   const compiledOpenConversation = selected.openConversationGrounding
     ? compileOpenConversationOption(context.state, context.person, selected, proposedGrounding ?? [])

@@ -144,6 +144,12 @@ function targetForAction(
     return z === undefined ? undefined : standingTarget(action.toCellId, z);
   }
   if (action.kind === 'attend') return targetForWorldRef(state, action.target);
+  if (action.kind === 'world-interact') {
+    return action.adjudication.targets.flatMap((target) => {
+      const projected = targetForWorldRef(state, target);
+      return projected ? [projected] : [];
+    })[0];
+  }
   if (action.kind === 'act') {
     return action.targets.flatMap((target) => {
       const projected = targetForWorldRef(state, target);
@@ -151,6 +157,7 @@ function targetForAction(
     })[0];
   }
   if (action.kind === 'talk' || action.kind === 'inscribe') return undefined;
+  if (action.kind !== 'transfer') return undefined;
   const holder = action.to.kind === 'person'
     ? targetForWorldRef(state, { kind: 'person', personId: action.to.personId })
     : action.to.kind === 'container'
@@ -190,6 +197,7 @@ function categoryForChoice(
   if (action.kind === 'move') return 'move';
   if (action.kind === 'transfer') return 'transfer';
   if (action.kind === 'attend') return 'attend';
+  if (action.kind === 'world-interact') return 'project';
   if (action.kind === 'talk') return 'talk';
   if (action.kind === 'inscribe') return 'project';
   if (action.operation === 'ingest'

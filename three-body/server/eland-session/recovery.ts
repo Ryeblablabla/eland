@@ -220,7 +220,7 @@ export function validateRecoverySnapshot(snapshot: ElandSessionRecoverySnapshot)
   const frame = snapshot.latestFrame;
   const timeline = snapshot.branches instanceof Map ? snapshot.branches.get(snapshot.activeBranchId) : undefined;
   const head = timeline?.history.at(-1);
-  if (state.schemaVersion !== 17
+  if (state.schemaVersion !== 19
     || state.civilization.number !== snapshot.civilizationId
     || frame.civilizationId !== snapshot.civilizationId
     || state.branchId !== snapshot.activeBranchId

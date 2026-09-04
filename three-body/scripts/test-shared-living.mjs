@@ -45,15 +45,15 @@ try {
   second.position = structuredClone(first.position);
 
   const proposal = buildDecisionContext(state, first, 1).options.find((option) => option.id.startsWith('offer-companion:'));
-  assert.equal(proposal?.nextAction.kind, 'communicate', '关系证据充足且同地时应能提出结伴');
-  assert.deepEqual(proposal.nextAction.content.proposal?.sharedLivingAnchor, {
+  assert.equal(proposal?.nextAction.kind, 'talk', '关系证据充足且同地时应能提出结伴');
+  assert.deepEqual(proposal.nextAction.speakerMeaning.proposal?.sharedLivingAnchor, {
     version: 'shared-living-anchor-v1',
     cellId: first.position.cellId,
     z: first.position.z,
     radius: 2,
   }, '结伴提议必须保存稳定生活地点，而不是只保存另一个人的 id');
 
-  const anchor = proposal.nextAction.content.proposal.sharedLivingAnchor;
+  const anchor = proposal.nextAction.speakerMeaning.proposal.sharedLivingAnchor;
   const nearby = cellsInRadius(anchor.cellId, anchor.radius)
     .filter((cellId) => cellId !== anchor.cellId)
     .flatMap((cellId) => standingPositions(state.world.grid, cellId))

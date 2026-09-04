@@ -1,7 +1,6 @@
 import { buildDecisionRequestContext } from "../src/game/eland/application/model-decision/decision-context";
 import type { BatchDecider, Decision, DecisionContext, TokenUsage } from "../src/game/eland/simulation";
 import type { SpeechLineView } from '../src/game/societyContract';
-import { followUpSemanticallyMatches } from '../src/game/eland/domain/intent-follow-up';
 import { isModelOwnedVoluntarySocialOption } from '../src/game/eland/domain/action-option-semantics';
 import { intentReviewAtMonth } from '../src/game/eland/domain/intent';
 import {
@@ -123,13 +122,8 @@ export function decisionFromPlayerInteraction(
 export function isLiveModelDecisionContext(context: DecisionContext, atMonth: number): boolean {
   if (isPlayerInteractionEmergencyContext(context)) return false;
   const required = context.options.filter(isRequiredSocialOption);
-  if (required.length) {
-    if (required.length > 1) return true;
-    const only = required[0];
-    return Boolean(only.requiresFollowUp && context.followUpOptions
-      .filter((option) => followUpSemanticallyMatches(only, option)).length > 1);
-  }
-  if (hasFulfillmentOpportunity(context)) return false;
+  if (required.length) return true;
+  if (hasFulfillmentOpportunity(context)) return true;
   const hasDialogueChoice = context.options.some((option) => option.nextAction.kind === 'talk'
     || option.completionAction?.kind === 'talk');
   const active = context.activeIntent;

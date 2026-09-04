@@ -24,8 +24,9 @@ import {
   openProjectKnowledgeRequestsFor,
   projectKnowledgeRequestHasAuthoritativeSource,
 } from '../../domain/project-knowledge-request';
-import { positionsWithinVoiceRange } from '../../domain/social-space';
+import { positionsCanShareLanguage } from '../../domain/social-space';
 import { techniqueOutputMaterialId } from '../../domain/technique-demonstration';
+import { languageInterpreterIds } from '../../domain/language-perception';
 import {
   cellX,
   cellY,
@@ -498,7 +499,9 @@ export function deriveProjectProposals(
   if (!adaptation && locallyUnsheltered && (capacityShortfall || needsImmediateShelter)) proposals.push(compileProposal('shelter-capacity', {
     kind: 'construction', desiredFunction: 'weather-shelter',
     summary: capacityShortfall
-      ? '为自己和眼前同伴补足能进入并遮蔽天气的住所位置'
+      ? localShelterCapacity.unshelteredPersonIds.some((id) => id !== person.id)
+        ? '为自己和眼前同伴补足能进入并遮蔽天气的住所位置'
+        : '为自己补足一处能进入并遮蔽天气的住所'
       : '把同一处材料连接成能进入并遮蔽天气的住所',
     beneficiaryIds: [person.id, ...localShelterCapacity.unshelteredPersonIds.filter((id) => id !== person.id)],
     site: { cellId: person.position.cellId, z: person.position.z },
@@ -509,8 +512,8 @@ export function deriveProjectProposals(
     .flatMap(({ project, request, requester }) => {
       if (!project.site || !projectKnowledgeRequestHasAuthoritativeSource(state, project, request)) return [];
       const requestEvent = worldEventById(state, request.requestEventId);
-      const heardAudience = requestEvent?.kind === 'action' && Array.isArray(requestEvent.diff.audience)
-        ? requestEvent.diff.audience
+      const heardAudience = requestEvent?.kind === 'action' && requestEvent.action.kind === 'talk'
+        ? languageInterpreterIds(requestEvent.diff, requestEvent.action.speakerMeaning.id)
         : [];
       if (!heardAudience.includes(person.id)) return [];
       const knowledge = person.knowledge
@@ -520,7 +523,7 @@ export function deriveProjectProposals(
           && !authoredRecords.some((record) => record.knowledgeId === fact.id))
         .sort((left, right) => right.confidence - left.confidence || left.id.localeCompare(right.id))[0];
       if (!knowledge) return [];
-      const canTeachDirectly = positionsWithinVoiceRange(person.position, requester.position)
+      const canTeachDirectly = positionsCanShareLanguage(person.position, requester.position)
         && ageMonths(requester, proposalMonth) >= MIN_TEACHING_AGE_MONTHS;
       return canTeachDirectly ? [] : [{ project, request, requester, knowledge }];
     })

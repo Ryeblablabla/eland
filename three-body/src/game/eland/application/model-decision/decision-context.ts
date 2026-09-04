@@ -10,8 +10,11 @@ import type { DecisionContext } from '../../simulation';
 import { CONTAINER_CAPACITY } from '../../domain/container';
 import { assessSocialRepetition } from '../../domain/social-repetition';
 import { buildPersonExperienceLayer, buildPersonSoul } from '../../domain/person-soul';
-import { cognitionStateOf, outcomeBeliefSuccess } from '../../domain/cognition';
-import { buildCognitiveFrame } from '../cognition/option-appraisal';
+import {
+  cognitiveOutcomeBasisKey,
+  goalOutcomeBeliefFor,
+  outcomeBeliefFor,
+} from '../../domain/cognition';
 import { speechActFromRepresentation } from '../../projection/speech-act';
 import type {
   SpeechActView,
@@ -24,12 +27,16 @@ import { followUpSemanticallyMatches } from '../../domain/intent-follow-up';
 import { projectMaterialPlanProvenance } from '../projects/project-material-provenance';
 import type { CharacterAgendaItem } from '../../domain/character-agenda';
 import type { MentalAct } from '../../domain/mental-act';
+import type { RepresentationInput } from '../../domain/action';
 import { cellX, cellY, surfaceMaterial, topPosition } from '../../world/grid';
+import { shelterGeometryAt } from '../../domain/structure';
 import {
   decisionCounterpartIds,
   recentDialogueForDecision,
   type RecentDialogueContextLine,
 } from './recent-dialogue';
+import { mbtiTypeForPersonality, type MbtiType } from '../../mbti-persona-presets';
+import { animalBondTrust } from '../../domain/animal-bonds';
 
 function perceivedProperties(profile: PerceivedMaterialProfile): string[] {
   return [...new Set([
@@ -39,6 +46,29 @@ function perceivedProperties(profile: PerceivedMaterialProfile): string[] {
     ...(profile.loadBand ? [profile.loadBand] : []),
     ...(profile.rigidity ? [profile.rigidity] : []),
   ])];
+}
+
+function openWorldFactCurrentCell(
+  state: DecisionContext['state'],
+  fact: NonNullable<DecisionContext['state']['world']['openFacts']>[number],
+): number | undefined {
+  const target = fact.targetRef;
+  if (!target) return fact.cellId;
+  if (target.kind === 'voxel') return target.position.x + target.position.y * state.world.grid.width;
+  if (target.kind === 'drop') return state.world.drops.find((drop) => drop.id === target.dropId)?.cellId;
+  if (target.kind === 'person') return state.people.find((person) => person.id === target.personId)?.position.cellId;
+  if (target.kind === 'animal') return state.world.animals.find((animal) => animal.id === target.animalId)?.position.cellId;
+  if (target.kind === 'container') {
+    const container = state.containers.find((candidate) => candidate.id === target.containerId);
+    return container ? container.position.x + container.position.y * state.world.grid.width : undefined;
+  }
+  if (target.kind === 'inventory-stack') {
+    const owner = state.people.find((person) => person.id === target.personId
+      && person.inventory.some((stack) => stack.id === target.stackId));
+    return owner?.position.cellId;
+  }
+  const remains = state.world.remains?.find((candidate) => candidate.id === target.remainsId);
+  return remains?.position.cellId;
 }
 
 export interface DecisionRequestContext {
@@ -53,6 +83,7 @@ export interface DecisionRequestContext {
     capacities: DecisionContext['person']['baselineCapacities'];
     traits: Array<{ id: string; name: string; description: string }>;
     personality: ReturnType<typeof effectivePersonality>;
+    personalityType: MbtiType;
     motiveSensitivity: DecisionContext['person']['motiveSensitivity'];
     soul: ReturnType<typeof buildPersonSoul>;
     experience: ReturnType<typeof buildPersonExperienceLayer>;
@@ -67,7 +98,6 @@ export interface DecisionRequestContext {
     memories: RecalledMemory[];
     /** Persisted subjective turns, not claims that their assumptions were true. */
     recentMentalActs: Array<MentalAct & { atMonth: number }>;
-    cognition: ReturnType<typeof buildDecisionCognitionProjection>;
     characterAgenda: CharacterAgendaSummary[];
     kinship: {
       parents: Array<{ id: string; name: string; sex: DecisionContext['person']['sex']; relation: 'mother' | 'father' }>;
@@ -82,6 +112,7 @@ export interface DecisionRequestContext {
   climate: DecisionContext['state']['civilization']['climate'];
   epoch: DecisionContext['state']['civilization']['epoch'];
   weather: DecisionContext['state']['civilization']['weather'];
+  sheltered: boolean;
   activePressures: Array<{ kind: string; stage: number; consequences: string[] }>;
   /**
    * Verified persisted model utterances personally spoken or heard. They are
@@ -138,18 +169,36 @@ export interface DecisionRequestContext {
     characterAgendaItemId?: string;
     /** Server-only linkage used to associate a project step with an existing agenda. */
     projectId?: string;
+    /** Server-only project scope used to keep a selected project step aligned with the stated intention. */
+    executionProjectFunction?: DecisionContext['state']['projects'][number]['desiredFunction'];
     communicationKind?: 'claim' | 'prediction' | 'request' | 'offer' | 'accept' | 'reject' | 'revoke-agreement' | 'revoke' | 'withdraw';
+    /** Server-only canonical meaning used to verify that spoken words actually express the selected speech act. */
+    communicationMeaning?: RepresentationInput;
     speechAct?: SpeechActView;
-    communicatesFactId?: string;
+    expressesFactId?: string;
     /** Server-only allow-list; model transports receive request-scoped handles instead. */
     openConversationGrounding?: NonNullable<DecisionContext['options'][number]['openConversationGrounding']>;
-    socialRepetition?: {
-      score: number;
+    socialHistory?: {
       rememberedBefore: boolean;
       hasNewEvidence: boolean;
-      reasons: string[];
       outcome?: string;
-      previousCommunicationEventId?: string;
+    };
+    /** Person-local counts from committed outcomes of semantically similar actions and goals. */
+    experiencedOutcomes?: {
+      similarAction?: {
+        attempts: number;
+        completed: number;
+        progressed: number;
+        blocked: number;
+        failed: number;
+        lastUpdatedAtMonth: number;
+      };
+      intendedGoal?: {
+        attempts: number;
+        achieved: number;
+        attemptedUnmet: number;
+        lastUpdatedAtMonth: number;
+      };
     };
     semantics: ReturnType<typeof actionOptionSemantics>;
   }>;
@@ -166,11 +215,35 @@ export interface DecisionRequestContext {
     cellId: number; z: number; trust: number; bond: number; fear: number;
   }>;
   visibleDrops: Array<{ id: string; name: string; properties: string[]; perception: PerceivedMaterialProfile; quantity: number; cellId: number; z: number }>;
-  visibleAnimals: Array<{ id: string; speciesId: string; cellId: number; z: number; health: number; hunger: number }>;
+  visibleAnimals: Array<{
+    id: string;
+    speciesId: string;
+    cellId: number;
+    z: number;
+    health: number;
+    hunger: number;
+    bondTrust: number;
+  }>;
   visibleContainers: Array<{
     id: string; position: { x: number; y: number; z: number };
     capacity: number; usedCapacity: number;
     contents: Array<{ name: string; quantity: number }>;
+  }>;
+  /** Durable nearby state asserted by completed open-ended world interactions. */
+  visibleOpenWorldFacts?: Array<{
+    summary: string;
+    atMonth: number;
+    stateKey?: string;
+    stateValue?: string;
+    targetKind?: string;
+  }>;
+  /** Nearby person-built composite entities (works) with their builders and state. */
+  visibleWorks?: Array<{
+    summary: string;
+    arrangement: string;
+    condition: string;
+    builders: string[];
+    components: Array<{ name: string; quantity: number }>;
   }>;
   /** Bounded, currently visible surfaces for proposal probes; no material ids leave this projection. */
   visibleVoxels: Array<{
@@ -199,47 +272,6 @@ export interface CharacterAgendaSummary {
     latestOutcome?: CharacterAgendaItem['approaches'][number]['latestOutcome'];
     evaluationCount: number;
   }>;
-}
-
-export function buildDecisionCognitionProjection(context: DecisionContext) {
-  const planningMonth = context.state.clock.elapsedMonths + 1;
-  const frame = buildCognitiveFrame(context, context.options, { atMonth: planningMonth, planningTick: 1 });
-  const appraisalByOption = new Map(frame.appraisals.map((appraisal) => [appraisal.option.id, appraisal]));
-  return {
-    architecture: frame.architecture,
-    planningMonth,
-    needs: frame.needs.slice(0, 6).map((need) => ({
-      kind: need.kind,
-      urgency: Math.round(need.urgency * 100) / 100,
-      reasons: need.reasons.slice(0, 2),
-      sourceFactIds: need.sourceFactIds.slice(-6),
-    })),
-    outcomeBeliefs: cognitionStateOf(context.person).outcomeBeliefs
-      .slice()
-      .sort((left, right) => right.lastUpdatedAtMonth - left.lastUpdatedAtMonth || right.attempts - left.attempts)
-      .slice(0, 8)
-      .map((belief) => ({
-        basisKey: belief.basisKey,
-        attempts: belief.attempts,
-        expectedSuccess: Math.round(outcomeBeliefSuccess(belief) * 100) / 100,
-        expectedEffort: Math.round(belief.expectedEffort * 100) / 100,
-        expectedHarm: Math.round(belief.expectedHarm * 100) / 100,
-        sourceFactIds: belief.sourceEventIds.slice(-6),
-      })),
-    optionAppraisals: context.options.map((option) => {
-      const appraisal = appraisalByOption.get(option.id);
-      return {
-        optionId: option.id,
-        addressedNeeds: appraisal?.addressedNeeds.map((need) => need.kind) ?? [],
-        motivation: Math.round((appraisal?.motivation ?? 0) * 100) / 100,
-        aspiration: Math.round((appraisal?.aspiration ?? 0) * 100) / 100,
-        expectedSuccess: Math.round((appraisal?.expectedSuccess ?? 0.5) * 100) / 100,
-        uncertainty: Math.round((appraisal?.uncertainty ?? 1) * 100) / 100,
-        reasons: appraisal?.reasons.slice(0, 3) ?? [],
-        sourceFactIds: appraisal?.sourceFactIds.slice(-8) ?? option.sourceFactIds.slice(-8),
-      };
-    }),
-  };
 }
 
 function pressureConsequences(kind: string, stage: number): string[] {
@@ -365,22 +397,22 @@ export function buildDecisionRequestContext(
     .filter((candidate, index, all) => all.findIndex((other) => other.materialId === candidate.materialId) === index)
     .slice(0, 12)
     .map(({ position, name, properties }) => ({ position, name, properties }));
-  const communicatedKnowledgeIds = new Set(context.options.flatMap((option) => (
+  const expressedKnowledgeIds = new Set(context.options.flatMap((option) => (
     option.nextAction.kind === 'talk'
       && option.nextAction.speakerMeaning.kind === 'claim'
       && option.nextAction.speakerMeaning.factId
       ? [option.nextAction.speakerMeaning.factId]
       : []
   )));
-  const communicatedKnowledge = person.knowledge
-    .filter((item) => communicatedKnowledgeIds.has(item.id))
+  const expressedKnowledge = person.knowledge
+    .filter((item) => expressedKnowledgeIds.has(item.id))
     .sort((left, right) => right.confidence - left.confidence || left.id.localeCompare(right.id));
   const projectedKnowledge = [
-    ...communicatedKnowledge,
+    ...expressedKnowledge,
     ...person.knowledge
-      .filter((item) => !communicatedKnowledgeIds.has(item.id))
+      .filter((item) => !expressedKnowledgeIds.has(item.id))
       .sort((left, right) => right.confidence - left.confidence || left.id.localeCompare(right.id))
-      .slice(0, Math.max(0, 6 - communicatedKnowledge.length)),
+      .slice(0, Math.max(0, 6 - expressedKnowledge.length)),
   ];
   const activeProject = context.activeIntent?.projectId
     ? state.projects.find((project) => project.id === context.activeIntent?.projectId)
@@ -389,7 +421,7 @@ export function buildDecisionRequestContext(
     ? projectMaterialPlanProvenance(state, person, activeProject)
     : null;
   const recalledMemories = context.mind
-    ? [...context.mind.episodes, ...context.mind.beliefs].slice(0, 10)
+    ? [...context.mind.episodes, ...context.mind.beliefs, ...context.mind.related].slice(0, 20)
     : retrieveAgentMemories(state, person, {
         atMonth: state.clock.elapsedMonths + 1,
         personIds: [...decisionCounterpartIds(context)],
@@ -422,6 +454,7 @@ export function buildDecisionRequestContext(
         return { id: definition.id, name: definition.name, description: definition.description };
       }),
       personality: effectivePersonality(person),
+      personalityType: mbtiTypeForPersonality(person.personality.baseline),
       motiveSensitivity: person.motiveSensitivity,
       soul: buildPersonSoul(person),
       experience: buildPersonExperienceLayer(person, recalledMemories, counterpartIds),
@@ -447,7 +480,6 @@ export function buildDecisionRequestContext(
       mindMarkdown: context.mind?.markdown ?? person.mindMarkdown ?? '',
       memories: recalledMemories,
       recentMentalActs,
-      cognition: buildDecisionCognitionProjection(context),
       characterAgenda: characterAgendaSummary(person.characterAgenda?.items),
       kinship: immediateKinship(state, person),
     },
@@ -458,6 +490,7 @@ export function buildDecisionRequestContext(
     climate: state.civilization.climate,
     epoch: state.civilization.epoch,
     weather: state.civilization.weather,
+    sheltered: Boolean(shelterGeometryAt(state.world.grid, person.position)),
     activePressures: person.conditions.map((condition) => ({
       kind: condition.kind,
       stage: condition.stage,
@@ -544,43 +577,65 @@ export function buildDecisionRequestContext(
       .map(({ id, grantorId, granteeId, materialId, validUntilMonth, status }) => ({ id, grantorId, granteeId, materialId, validUntilMonth, status })),
     options: context.options.map((option) => {
       const { id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp, nextAction, completionAction } = option;
+      const actionBelief = outcomeBeliefFor(person, cognitiveOutcomeBasisKey(nextAction, option.goal));
+      const goalBelief = goalOutcomeBeliefFor(
+        person,
+        cognitiveOutcomeBasisKey(completionAction ?? nextAction, option.goal),
+      );
+      const experiencedOutcomes = actionBelief || goalBelief ? {
+        ...(actionBelief ? { similarAction: {
+          attempts: actionBelief.attempts,
+          completed: actionBelief.completed,
+          progressed: actionBelief.progressed,
+          blocked: actionBelief.blocked,
+          failed: actionBelief.failed,
+          lastUpdatedAtMonth: actionBelief.lastUpdatedAtMonth,
+        } } : {}),
+        ...(goalBelief ? { intendedGoal: {
+          attempts: goalBelief.attempts,
+          achieved: goalBelief.achieved,
+          attemptedUnmet: goalBelief.attemptedUnmet,
+          lastUpdatedAtMonth: goalBelief.lastUpdatedAtMonth,
+        } } : {}),
+      } : undefined;
       // Open conversation is only grounded after the model chooses its actual
       // sources. A repetition score computed from the placeholder fallback
       // would describe a different utterance and can wrongly suppress it.
       const repetition = option.openConversationGrounding
         ? undefined
         : assessSocialRepetition(state, person, option);
+      const executionProjectFunction = option.projectProposal?.desiredFunction
+        ?? (option.projectId ? state.projects.find((project) => project.id === option.projectId)?.desiredFunction : undefined);
       return {
         id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp: Boolean(requiresFollowUp),
         ...(option.characterAgendaItemId ? { characterAgendaItemId: option.characterAgendaItemId } : {}),
         ...(option.projectId ? { projectId: option.projectId } : {}),
+        ...(executionProjectFunction ? { executionProjectFunction } : {}),
         ...(option.openConversationGrounding
           ? { openConversationGrounding: structuredClone(option.openConversationGrounding) }
           : {}),
         semantics: structuredClone(actionOptionSemantics(option)),
+        ...(experiencedOutcomes ? { experiencedOutcomes } : {}),
         ...(nextAction.kind === 'talk'
           ? {
               communicationKind: nextAction.speakerMeaning.kind,
+              communicationMeaning: structuredClone(nextAction.speakerMeaning),
               speechAct: speechActFromRepresentation(nextAction.speakerMeaning),
             }
           : completionAction?.kind === 'talk'
             ? {
                 communicationKind: completionAction.speakerMeaning.kind,
+                communicationMeaning: structuredClone(completionAction.speakerMeaning),
                 speechAct: speechActFromRepresentation(completionAction.speakerMeaning),
               }
             : {}),
         ...(nextAction.kind === 'talk' && nextAction.speakerMeaning.kind === 'claim' && nextAction.speakerMeaning.factId
-          ? { communicatesFactId: nextAction.speakerMeaning.factId }
+          ? { expressesFactId: nextAction.speakerMeaning.factId }
           : {}),
-        ...(repetition?.subjectKey ? { socialRepetition: {
-          score: repetition.score,
+        ...(repetition?.subjectKey ? { socialHistory: {
           rememberedBefore: Boolean(repetition.previousCommunicationEventId),
           hasNewEvidence: Boolean(repetition.previousCommunicationEventId && repetition.newEvidenceEventIds.length),
-          reasons: repetition.reasons.slice(0, 3),
           ...(repetition.outcome ? { outcome: repetition.outcome } : {}),
-          ...(repetition.previousCommunicationEventId
-            ? { previousCommunicationEventId: repetition.previousCommunicationEventId }
-            : {}),
         } } : {}),
       };
     }),
@@ -630,6 +685,7 @@ export function buildDecisionRequestContext(
       z: animal.position.z,
       health: animal.health,
       hunger: animal.hunger,
+      bondTrust: animalBondTrust(state.world, animal.id, person.id),
     })),
     visibleContainers: state.containers
       .filter((container) => context.visibleCells.includes(container.position.x + container.position.y * state.world.grid.width))
@@ -642,6 +698,37 @@ export function buildDecisionRequestContext(
         contents: container.inventory.slice(0, 6).map((stack) => ({
           name: materialDefinition(stack.materialId).name,
           quantity: stack.quantity,
+        })),
+      })),
+    visibleOpenWorldFacts: (state.world.openFacts ?? [])
+      .filter((fact) => {
+        const currentCell = openWorldFactCurrentCell(state, fact);
+        return currentCell !== undefined
+          && Math.abs(cellX(currentCell) - cellX(person.position.cellId))
+            + Math.abs(cellY(currentCell) - cellY(person.position.cellId)) <= 7;
+      })
+      .slice(-6)
+      .map((fact) => ({
+        summary: fact.summary,
+        atMonth: fact.atMonth,
+        ...(fact.stateKey ? { stateKey: fact.stateKey } : {}),
+        ...(fact.stateValue ? { stateValue: fact.stateValue } : {}),
+        ...(fact.targetRef ? { targetKind: fact.targetRef.kind } : {}),
+      })),
+    visibleWorks: (state.world.works ?? [])
+      .filter((work) => Math.abs(work.position.x - cellX(person.position.cellId))
+        + Math.abs(work.position.y - cellY(person.position.cellId)) <= 7)
+      .slice(-6)
+      .map((work) => ({
+        summary: work.summary,
+        arrangement: work.arrangement,
+        condition: work.condition >= 75 ? '结实' : work.condition >= 40 ? '开始老旧' : '摇摇欲坠',
+        builders: work.builderIds
+          .map((id) => state.people.find((person) => person.id === id)?.name ?? id)
+          .slice(0, 3),
+        components: work.components.slice(0, 6).map((component) => ({
+          name: materialDefinition(component.materialId).name,
+          quantity: component.quantity,
         })),
       })),
     visibleVoxels,

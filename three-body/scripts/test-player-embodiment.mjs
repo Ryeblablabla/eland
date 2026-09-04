@@ -196,10 +196,11 @@ try {
   const socialExecution = executeProjectedDecision(intentExecution, socialState, socialActor, 1, socialResolution);
   assert.ok(socialExecution.actionFact?.kind === 'action'
     && socialExecution.actionFact.status === 'completed'
-    && socialExecution.actionFact.action.kind === 'communicate',
+    && socialExecution.actionFact.action.kind === 'talk',
     'person target 决策必须通过普通意图执行器提交真实沟通事实');
-  assert.ok(socialExecution.actionFact.action.audience.includes(socialTarget.id),
-    '沟通事实的真实受众必须与投影 person target 一致');
+  assert.ok(socialExecution.actionFact.diff.listenerInterpretations?.some(
+    (interpretation) => interpretation.listenerId === socialTarget.id,
+  ), '结伴邀请只有在对方实际听懂后才能形成语义解释');
   assert.equal(socialState.agreements.length, agreementCountBefore + 1,
     '玩家发出的结伴邀请必须改变权威 agreement 状态');
   const proposedAgreement = socialState.agreements.find((agreement) => agreement.proposerId === socialActor.id

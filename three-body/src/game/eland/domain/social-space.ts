@@ -1,35 +1,31 @@
 import type { DecisionAuthorityState, SimulationState } from './model';
 import { isAlive, type PersonState } from './person';
 import {
-  cellX,
-  cellY,
   cellsInRadius,
   findStandingPath,
+  isCellId,
   standingPositions,
   type StandingPosition,
 } from '../world/grid';
 
-/** Ordinary speech can cross one horizontal cell and one standing level. */
-export const VOICE_HORIZONTAL_RANGE = 1;
-export const VOICE_VERTICAL_RANGE = 1;
-
 /** More than two people on one exact standing position creates a soft pressure to spread out. */
 export const SOFT_STANDING_CAPACITY = 2;
 
-export function positionsWithinVoiceRange(
+/** Every finite position can receive a non-zero signal; execution decides how much survives. */
+export function positionsCanShareLanguage(
   first: StandingPosition,
   second: StandingPosition,
 ): boolean {
-  const horizontal = Math.abs(cellX(first.cellId) - cellX(second.cellId))
-    + Math.abs(cellY(first.cellId) - cellY(second.cellId));
-  return horizontal <= VOICE_HORIZONTAL_RANGE
-    && Math.abs(first.z - second.z) <= VOICE_VERTICAL_RANGE;
+  return isCellId(first.cellId)
+    && isCellId(second.cellId)
+    && Number.isFinite(first.z)
+    && Number.isFinite(second.z);
 }
 
-export function peopleWithinVoiceRange(person: PersonState, people: PersonState[]): PersonState[] {
+export function visibleLanguageCandidates(person: PersonState, people: PersonState[]): PersonState[] {
   return people.filter((other) => other.id !== person.id
     && isAlive(other)
-    && positionsWithinVoiceRange(person.position, other.position));
+    && positionsCanShareLanguage(person.position, other.position));
 }
 
 export function standingOccupancy(
@@ -50,40 +46,20 @@ export interface SocialRendezvous {
 }
 
 /**
- * Find a reachable, low-occupancy standing position from which the listener can
- * hear ordinary speech. The listener's exact position is legal but deliberately
- * loses ties to an equally occupied adjacent position.
+ * Language no longer forces a rendezvous. A person speaks from their current
+ * position and material-aware propagation decides what reaches everybody.
  */
 export function conversationalRendezvous(
   state: SimulationState,
   mover: PersonState,
   listener: PersonState,
 ): SocialRendezvous | null {
-  if (positionsWithinVoiceRange(mover.position, listener.position)) {
-    return {
-      position: { cellId: mover.position.cellId, z: mover.position.z },
-      path: [{ cellId: mover.position.cellId, z: mover.position.z }],
-      occupancy: standingOccupancy(state, mover.position, mover.id),
-    };
-  }
-  const candidates = cellsInRadius(listener.position.cellId, VOICE_HORIZONTAL_RANGE)
-    .flatMap((cellId) => standingPositions(state.world.grid, cellId))
-    .filter((position) => positionsWithinVoiceRange(position, listener.position))
-    .flatMap((position) => {
-      const path = findStandingPath(state.world.grid, mover.position, position);
-      return path.length ? [{
-        position,
-        path,
-        occupancy: standingOccupancy(state, position, mover.id),
-      }] : [];
-    })
-    .sort((left, right) => left.occupancy - right.occupancy
-      || Number(left.position.cellId === listener.position.cellId && left.position.z === listener.position.z)
-        - Number(right.position.cellId === listener.position.cellId && right.position.z === listener.position.z)
-      || left.path.length - right.path.length
-      || left.position.cellId - right.position.cellId
-      || left.position.z - right.position.z);
-  return candidates[0] ?? null;
+  void listener;
+  return {
+    position: { cellId: mover.position.cellId, z: mover.position.z },
+    path: [{ cellId: mover.position.cellId, z: mover.position.z }],
+    occupancy: standingOccupancy(state, mover.position, mover.id),
+  };
 }
 
 export function crowdingUrgency(

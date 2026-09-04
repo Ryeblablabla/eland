@@ -19,6 +19,7 @@ import { requestModelText, type ModelMessage } from './model-client';
 import { resolveModelEndpoint, type ResolvedModelEndpoint } from './model-config';
 import { communicationProfile, selectContextualMemories } from './persona-context';
 import { SPEECH_SYSTEM_PROMPT_V2 } from './agent-prompt-templates';
+import { languageInterpreterIds } from '../src/game/eland/domain/language-perception';
 
 type ActionEvent = Extract<WorldEvent, { kind: 'action' }>;
 
@@ -108,6 +109,15 @@ function cleanText(value: unknown): string {
     .replace(/^(?:["'“”‘’]+)|(?:["'“”‘’]+)$/gu, '')
     .replace(/\s+/gu, ' ')
     .slice(0, 120)
+    .trim();
+}
+
+function cleanSpokenText(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .trim()
+    .replace(/^(?:["'“”‘’]+)|(?:["'“”‘’]+)$/gu, '')
+    .replace(/\s+/gu, ' ')
     .trim();
 }
 
@@ -258,10 +268,10 @@ function predictionMeaningPreserved(
 }
 
 export function speechLineMatchesAct(
-  line: Pick<SpeechLineDraft, 'communicationKind' | 'audienceNames' | 'month' | 'speechAct'>,
+  line: Pick<SpeechLineDraft, 'communicationKind' | 'perceivedByPersonNames' | 'month' | 'speechAct'>,
   candidate: string,
 ): boolean {
-  if (cleanText(candidate).length < 2) return false;
+  if (cleanSpokenText(candidate).length < 2) return false;
   if (line.communicationKind !== line.speechAct.kind) return false;
   if (!stancePreserved(line.communicationKind, candidate)) return false;
   if (line.communicationKind === 'prediction') return predictionMeaningPreserved(line, candidate);
@@ -333,8 +343,7 @@ function repeatedPressureEvidence(
       && candidate.status === 'completed'
       && candidate.who === listenerId
       && candidate.action.kind === 'talk'
-      && candidate.action.channel === 'voice'
-      && candidate.action.audience.includes(speakerId)
+      && languageInterpreterIds(candidate.diff, candidate.action.speakerMeaning.id).includes(speakerId)
       && (candidate.action.speakerMeaning.kind === 'request' || candidate.action.speakerMeaning.kind === 'offer')
   ));
   if (recentIncoming.length < 2) return [];
@@ -348,8 +357,7 @@ function repeatedPressureEvidence(
       && candidate.status === 'completed'
       && candidate.who === speakerId
       && candidate.action.kind === 'talk'
-      && candidate.action.channel === 'voice'
-      && candidate.action.audience.includes(listenerId)
+      && languageInterpreterIds(candidate.diff, candidate.action.speakerMeaning.id).includes(listenerId)
       && candidate.action.speakerMeaning.kind === 'reject'
       && incomingIds.has(candidate.action.speakerMeaning.referenceId)
   ));
@@ -532,8 +540,8 @@ function speechFacetId(
 }
 
 /**
- * Resolve only a verified, earlier model utterance addressed between the same
- * participants. A rule summary is never accepted as a substitute parent.
+ * Resolve only a verified earlier line mutually perceived by the two people.
+ * A rule summary is never accepted as a substitute parent.
  */
 export function replySpeechLineFor(
   state: SimulationState,
@@ -548,8 +556,8 @@ export function replySpeechLineFor(
   const parent = verifiedSpeechLinesBySourceEventId(availableSpeechLines, eventsById)
     .get(line.replyToSourceEventId);
   if (!parent
-    || !parent.audienceIds.includes(line.speakerId)
-    || !line.audienceIds.includes(parent.speakerId)) return undefined;
+    || !parent.perceivedByPersonIds.includes(line.speakerId)
+    || !line.perceivedByPersonIds.includes(parent.speakerId)) return undefined;
   return parent;
 }
 
@@ -580,7 +588,7 @@ export function buildSpeechRequestItem(
     ...contextualSourceIds,
     ...(explicitFact?.sourceEventIds ?? []),
   ]);
-  const listeners = line.audienceIds.flatMap((listenerId) => {
+  const listeners = line.perceivedByPersonIds.flatMap((listenerId) => {
     const listener = state.people.find((person) => person.id === listenerId);
     if (!listener) return [];
     const relation = speaker.relations.find((candidate) => candidate.personId === listenerId);
@@ -611,7 +619,7 @@ export function buildSpeechRequestItem(
   const speechCue = JSON.stringify(line.speechAct);
   const selectedSpeechMemories = selectContextualMemories(eligibleMemories, {
     query: speechCue,
-    participantIds: line.audienceIds,
+    participantIds: line.perceivedByPersonIds,
     maximum: 4,
   });
   const recentMemories = selectedSpeechMemories.map((memory) => ({
@@ -636,11 +644,11 @@ export function buildSpeechRequestItem(
     topicKeys: memory.causal?.basisKey ? [`action:${memory.causal.basisKey}`] : [],
     sourceEventIds: memory.sourceEventIds,
     ...(memory.causal?.outcome ? { causalOutcome: memory.causal.outcome } : {}),
-  })), line.audienceIds);
-  const relationalFrame = deriveRelationalSpeechFrame(state, event, speaker, line.audienceIds);
+  })), line.perceivedByPersonIds);
+  const relationalFrame = deriveRelationalSpeechFrame(state, event, speaker, line.perceivedByPersonIds);
   const characterNote = buildCharacterTurnNote(soul, experience, speechFacetId(line, speaker));
   const nameById = new Map(state.people.map((person) => [person.id, person.name]));
-  const listenerIds = new Set(line.audienceIds);
+  const listenerIds = new Set(line.perceivedByPersonIds);
   const recentDialogue = (state.memoryStore?.items ?? [])
     .filter((memory) => memory.ownerId === speaker.id
       && memory.lane === 'dialogue'
@@ -655,7 +663,7 @@ export function buildSpeechRequestItem(
     .map((memory) => ({
       month: memory.lastExperiencedAtMonth,
       speaker: nameById.get(memory.dialogueSpeakerId!) ?? '未知人物',
-      listeners: (memory.dialogueAudienceIds ?? []).slice(0, 4)
+      listeners: (memory.dialoguePerceivedByPersonIds ?? []).slice(0, 4)
         .map((personId) => nameById.get(personId) ?? '未知人物'),
       text: memory.exactUtterance!.slice(0, 180),
     }));
@@ -695,8 +703,8 @@ export function buildSpeechRequestItem(
     communication: {
       speechAct: line.speechAct,
       relationalFrame,
-      ...(!line.requiresParentSpeech && cleanText(line.modelText)
-        ? { proposedText: cleanText(line.modelText) }
+      ...(!line.requiresParentSpeech && cleanSpokenText(line.modelText)
+        ? { proposedText: cleanSpokenText(line.modelText) }
         : {}),
       ...(replyTo ? {
         replyTo: {
@@ -754,7 +762,7 @@ export function normalizeSpeechResponse(
   for (const raw of rawLines) {
     if (!raw || typeof raw !== 'object') continue;
     const sourceEventId = cleanText((raw as Record<string, unknown>).sourceEventId);
-    const text = cleanText((raw as Record<string, unknown>).text);
+    const text = cleanSpokenText((raw as Record<string, unknown>).text);
     const dialogueMove = cleanText((raw as Record<string, unknown>).dialogueMove) as DialogueMove;
     const disposition = cleanText((raw as Record<string, unknown>).disposition) as DialogueDisposition;
     const line = requested.get(sourceEventId);
@@ -823,17 +831,8 @@ async function realizeBatch(
 }
 
 function retainedDecisionLine(line: SpeechLineDraft): SpeechLineView | null {
-  // A decision-time utterance was generated without the preceding visible
-  // model line. Reusing it as a reply would recreate the orphan-response bug.
-  if (line.requiresParentSpeech || line.replyToSourceEventId) return null;
-  const conversation = line.speechAct.details?.conversation;
-  if (conversation
-    && typeof conversation === 'object'
-    && !Array.isArray(conversation)
-    && (conversation as Record<string, unknown>).topic === 'open'
-    && (conversation as Record<string, unknown>).turn === 'opening') return null;
-  const text = cleanText(line.modelText);
-  if (!text || !speechLineMatchesAct(line, text)) return null;
+  const text = cleanSpokenText(line.modelText);
+  if (!text) return null;
   const {
     modelText: _modelText,
     replyToSourceEventId: _replyToSourceEventId,
@@ -852,10 +851,8 @@ function retainedDecisionLine(line: SpeechLineDraft): SpeechLineView | null {
 }
 
 /**
- * A validated decision-time utterance is already the person's chosen wording;
- * observer-only dialogue metadata is optional and does not justify a second
- * model call. Exact-parent replies remain excluded until the visible parent
- * line can be supplied to the expression sidecar.
+ * A decision-time utterance is the language wave that already propagated in
+ * the world. The observer layer may not paraphrase it after the fact.
  */
 export function retainDecisionSpeechLines(lines: SpeechLineDraft[]): SpeechLineView[] {
   return lines.flatMap((line) => {
@@ -876,10 +873,28 @@ export async function realizeLiveSpeechLines(
   endpointId?: string,
   priorSpeechLines: readonly SpeechLineView[] = [],
 ): Promise<LiveSpeechResult> {
-  // Decision-time text is a proposed thought. The expression pass sees the
-  // actual relationship, prior visible line and voice profile, so it owns all
-  // player-visible wording when a model endpoint exists.
-  const retained = new Map<string, SpeechLineView>();
+  const eventsById = new Map(state.world.past.map((event) => [event.id, event]));
+  // A decision already produced the person's only language wave and must not
+  // be paraphrased by a second expression request. Rule-authored talk drafts
+  // may still use the expression pass.
+  const retained = new Map(retainDecisionSpeechLines(sourceLines)
+    .map((line) => [line.sourceEventId, line]));
+  const draftBySourceEventId = new Map(sourceLines.map((line) => [line.sourceEventId, line]));
+  const visibleBySourceEventId = new Map([
+    ...[...verifiedSpeechLinesBySourceEventId(priorSpeechLines, eventsById).values()]
+      .map((line) => [line.sourceEventId, line] as const),
+    ...[...retained.values()].map((line) => [line.sourceEventId, line] as const),
+  ]);
+  for (const [sourceEventId, line] of retained) {
+    const replyToSourceEventId = draftBySourceEventId.get(sourceEventId)?.replyToSourceEventId;
+    const parent = replyToSourceEventId
+      ? visibleBySourceEventId.get(replyToSourceEventId)
+      : undefined;
+    if (!parent
+      || !parent.perceivedByPersonIds.includes(line.speakerId)
+      || !line.perceivedByPersonIds.includes(parent.speakerId)) continue;
+    retained.set(sourceEventId, { ...line, replyToSpeechLineId: parent.id });
+  }
   const pending = new Map(sourceLines
     .filter((line) => !retained.has(line.sourceEventId))
     .map((line) => [line.sourceEventId, line]));
@@ -894,7 +909,6 @@ export async function realizeLiveSpeechLines(
   let providerRequests = 0;
   const deadline = Date.now() + speechTotalTimeout();
 
-  const eventsById = new Map(state.world.past.map((event) => [event.id, event]));
   const knownSpeech = verifiedSpeechLinesBySourceEventId(priorSpeechLines, eventsById);
   for (const line of retained.values()) knownSpeech.set(line.sourceEventId, line);
 

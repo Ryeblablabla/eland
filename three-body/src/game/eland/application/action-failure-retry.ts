@@ -47,31 +47,31 @@ function semanticGoal(goal: ActionOption['goal']): unknown {
 function semanticAction(action: PrimitiveAction): unknown {
   if (action.kind !== 'talk') return structuredClone(action);
   const normalized = structuredClone(action) as unknown as Record<string, unknown>;
-  const content = normalized.content as Record<string, unknown>;
-  delete content.id;
-  delete content.summary;
-  const proposal = content.proposal as Record<string, unknown> | undefined;
+  const speakerMeaning = normalized.speakerMeaning as Record<string, unknown>;
+  delete speakerMeaning.id;
+  delete speakerMeaning.summary;
+  const proposal = speakerMeaning.proposal as Record<string, unknown> | undefined;
   if (proposal) {
     delete proposal.expiresAtMonth;
     delete proposal.validUntilMonth;
     delete proposal.basis;
   }
-  const prediction = content.prediction as Record<string, unknown> | undefined;
+  const prediction = speakerMeaning.prediction as Record<string, unknown> | undefined;
   if (prediction) {
     delete prediction.predictedStartMonth;
     delete prediction.expiresAtMonth;
   }
-  const conversation = content.conversation as Record<string, unknown> | undefined;
+  const conversation = speakerMeaning.conversation as Record<string, unknown> | undefined;
   if (conversation) {
     delete conversation.basisKey;
     delete conversation.referenceEventId;
     delete conversation.sourceFactIds;
   }
-  const techniqueDemonstration = content.techniqueDemonstration as Record<string, unknown> | undefined;
+  const techniqueDemonstration = speakerMeaning.techniqueDemonstration as Record<string, unknown> | undefined;
   if (techniqueDemonstration) delete techniqueDemonstration.expiresAtMonth;
-  const projectContribution = content.projectMaterialContribution as Record<string, unknown> | undefined;
+  const projectContribution = speakerMeaning.projectMaterialContribution as Record<string, unknown> | undefined;
   if (projectContribution) delete projectContribution.expiresAtMonth;
-  const projectKnowledgeRequest = content.projectKnowledgeRequest as Record<string, unknown> | undefined;
+  const projectKnowledgeRequest = speakerMeaning.projectKnowledgeRequest as Record<string, unknown> | undefined;
   if (projectKnowledgeRequest) delete projectKnowledgeRequest.expiresAtMonth;
   return normalized;
 }

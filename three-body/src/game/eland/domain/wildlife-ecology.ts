@@ -1,4 +1,5 @@
 import { Material } from './material';
+import { animalIsTameToward } from './animal-bonds';
 import type { SimulationState } from './model';
 import { inventoryQuantity, type PersonState } from './person';
 import type { AnimalSpeciesId, AnimalState } from './animal';
@@ -477,7 +478,8 @@ function wolfIntent(
   };
   const reachable = reachableWildlifeCells(state.world.grid, { cellId: wolf.cellId, z: wolf.z }, WOLF_PERCEPTION_RADIUS, territory);
   const visiblePeople = people.filter((person) => !person.sheltered
-    && standingSnapshotIsReachable(state.world.grid, reachable, person));
+    && standingSnapshotIsReachable(state.world.grid, reachable, person)
+    && !animalIsTameToward(state.world, wolf.id, person.id));
   const defendedCells = armedGroupCells(visiblePeople).filter((cellId) => reachable.has(cellId));
   if (wolf.health <= WOLF_LOW_HEALTH && defendedCells.length) return {
     animalId: wolf.id,
@@ -532,10 +534,12 @@ function herbivoreIntent(
     && standingSnapshotIsReachable(state.world.grid, reachable, candidate));
   const localPeople = people.filter((person) => !person.sheltered
     && standingSnapshotIsReachable(state.world.grid, reachable, person));
-  const armedPeople = localPeople.filter((person) => person.armed);
+  const armedPeople = localPeople.filter((person) => person.armed
+    && !animalIsTameToward(state.world, animal.id, person.id));
   const coLocatedPeople = localPeople.filter((person) => !person.sheltered
     && person.cellId === animal.cellId
-    && person.z === animal.z);
+    && person.z === animal.z
+    && !animalIsTameToward(state.world, animal.id, person.id));
   if (animal.speciesId === 'boar' && animal.hunger >= 78 && coLocatedPeople.length && !wolves.length) {
     const target = selectStableHumanTarget(coLocatedPeople, localPeople);
     if (target) return {

@@ -159,9 +159,7 @@ function survivalUrgency(
     return 0;
   }
   if (content.kind !== 'claim' || !content.conversation) return 0;
-  const subject = content.conversation.topic === 'care'
-    ? personById(state, content.conversation.listenerId)
-    : content.conversation.topic === 'hardship'
+  const subject = content.conversation.topic === 'hardship'
       ? person
       : undefined;
   return subject ? acuteBodyUrgency(subject) : 0;

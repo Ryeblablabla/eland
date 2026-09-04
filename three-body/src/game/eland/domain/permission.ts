@@ -7,6 +7,7 @@ import { materialHas } from './material';
 import type { PersonId, PersonState } from './person';
 import { inventoryQuantity, isAlive } from './person';
 import { personById } from './state-index';
+import { languageInterpreterIds } from './language-perception';
 
 export type ResourcePermissionStatus = 'active' | 'revoked' | 'expired' | 'ended';
 
@@ -269,7 +270,10 @@ export function recordPermissionAction(state: SimulationState, fact: ActionFact)
   }
   if (action.kind === 'talk' && action.speakerMeaning.kind === 'revoke') {
     const permission = permissionById(state, action.speakerMeaning.permissionId);
-    if (!permission || permission.status !== 'active' || permission.grantorId !== fact.who) return;
+    if (!permission
+      || permission.status !== 'active'
+      || permission.grantorId !== fact.who
+      || !languageInterpreterIds(fact.diff, action.speakerMeaning.id).includes(permission.granteeId)) return;
     permission.status = 'revoked';
     permission.endedAtMonth = fact.atMonth;
     permission.sourceEventIds = [...new Set([...permission.sourceEventIds, fact.id])];

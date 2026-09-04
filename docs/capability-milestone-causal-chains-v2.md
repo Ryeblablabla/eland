@@ -162,7 +162,7 @@
 | `21 创造语言` | `capability:21:emergence:guarded:v2` | `ambivalent* · emergence*` | `guarded`：结构化沟通证明一次表达，不证明语言系统被创造。 |
 | `24 讲述并传承往事` | `capability:24:emergence:guarded:v2` | `ambivalent* · emergence*` | `guarded`：记忆或沟通尚不能证明内容是往事且完成传承。 |
 | `51 创造文字` | `capability:51:emergence:writing:v2` | `constructive · emergence` | `strict · writing（操作性口径）`：知识写入带 `recordPayloadId` 的实体载体，且另一人物取得并读懂同一 payload。 |
-| `201 用手势传达意图` | `capability:201:practice:gesture-communication:v2` | `constructive · practice` | `strict · gesture-communication`：`talk` 明确使用手势渠道，并有至少一名不同人物处于实际 audience。 |
+| `201 用手势传达意图` | `capability:201:practice:gesture-communication:v2` | `constructive · practice` | `guarded`：旧手势声道已经删除；当前 talk 只产生无收件人的空间语言广播，不能冒充手势能力。 |
 | `239 让知识在代际传递中改变` | `capability:239:emergence:guarded:v2` | `ambivalent* · emergence*` | `guarded`：跨代共同持有知识仍不足以证明内容发生了变化。 |
 | `240 在学校或知识体系崩解后恢复教学` | `capability:240:emergence:guarded:v2` | `ambivalent* · emergence*` | `guarded`：缺少学校/知识体系先崩解、教学后恢复的同一历史链。 |
 | `241 记住个人经历` | `capability:241:practice:memory:v2` | `ambivalent · practice` | `strict · memory`：人物记忆保存可解析 `sourceEventIds`，来源是亲历、对话、承诺或失败事实。 |
@@ -261,7 +261,7 @@
 
 | world-specific 标签 | 当前定义 ID | 效价 · 阶段/分支 | 当前 strict 证据口径 |
 | --- | --- | --- | --- |
-| `人物提出恒乱纪元预言` | `world:era-prediction:emergence:prediction:v2` | `ambivalent · emergence` | `prediction`：向真实 audience 作出带时间窗的纪元预言，状态保存预测者、目标纪元和来源。 |
+| `人物提出恒乱纪元预言` | `world:era-prediction:emergence:prediction:v2` | `ambivalent · emergence` | `prediction`：说出带时间窗的纪元预言并被至少一人实际解释，状态保存预测者、解释者、目标纪元和来源。 |
 | `恒乱纪元预言应验` | `world:correct-era-prediction:response:correct-prediction:v2` | `constructive · response` | `correct-prediction`：预言先于纪元变化提出，结算保存 `correct=true` 与误差月份。 |
 | `恒乱纪元预言未应验` | `world:incorrect-era-prediction:decline:incorrect-prediction:v2` | `ambivalent · decline` | `incorrect-prediction`：预言先于截止月提出，结算保存 `correct=false` 与误差月份。 |
 | `人物跨次检验恒乱纪元预言` | `world:era-prediction-practice:stable:prediction-practice:v2` | `constructive · stable` | `prediction-practice`：同一预测者至少两次预言已经结算，每次都有独立来源和正确/错误后果；再过跨月门槛。 |

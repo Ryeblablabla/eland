@@ -2,8 +2,9 @@ import type { PrimitiveAction } from '../action';
 import { materialHas } from '../material';
 import type { SimulationState } from '../model';
 import { isAlive, type PersonState } from '../person';
-import { broadcastLanguage } from '../language-perception';
+import { broadcastLanguage, type LanguageBroadcast } from '../language-perception';
 import { addInventory } from './inventory';
+import { personById, projectById } from '../state-index';
 
 function clamp(value: number, minimum = 0, maximum = 100): number {
   return Math.max(minimum, Math.min(maximum, Number.isFinite(value) ? value : minimum));
@@ -17,28 +18,163 @@ export function executeTalk(
   state: SimulationState,
   person: PersonState,
   action: Extract<PrimitiveAction, { kind: 'talk' }>,
-  _atMonth: number,
+  atMonth: number,
   eventId: string,
+  sourceBroadcast?: LanguageBroadcast,
 ) {
-  const languageBroadcast = broadcastLanguage({
+  const languageBroadcast = sourceBroadcast ?? broadcastLanguage({
     seed: state.seed,
     sourceFactId: eventId,
     speakerId: person.id,
-    mode: 'talk',
-    text: action.speakerMeaning.kind === 'claim'
-      ? action.speakerMeaning.summary
-      : action.speakerMeaning.kind,
+    intensity: action.delivery === 'whisper' ? 0.35 : action.delivery === 'call' ? 1.8 : 1,
+    text: action.speakerMeaning.summary ?? action.speakerMeaning.kind,
+    world: state.world.grid,
     speakerPosition: person.position,
     listeners: state.people.filter(isAlive).map((listener) => ({
       id: listener.id,
       position: listener.position,
     })),
   });
+  const understoodPeople = languageBroadcast.decodedByPersonIds.flatMap((personId) => {
+    const listener = personById(state, personId);
+    return listener && isAlive(listener) ? [listener] : [];
+  });
+  const meaning = action.speakerMeaning;
+  const interpretationDiff: Record<string, unknown> = {};
+
+  if (meaning.kind === 'claim' && meaning.factId) {
+    const source = person.knowledge.find((knowledge) => knowledge.id === meaning.factId);
+    if (source) {
+      for (const listener of understoodPeople) {
+        const existing = listener.knowledge.find((knowledge) => knowledge.id === source.id);
+        const learnedConfidence = Math.max(55, Math.min(90, Math.round(source.confidence * 0.82)));
+        if (existing) {
+          existing.confidence = Math.max(existing.confidence, learnedConfidence);
+          existing.sourceEventIds = [...new Set([...existing.sourceEventIds, ...source.sourceEventIds, eventId])].slice(-24);
+        } else listener.knowledge.push({
+          ...structuredClone(source),
+          confidence: learnedConfidence,
+          learnedAtMonth: atMonth,
+          sourceEventIds: [...new Set([...source.sourceEventIds, eventId])].slice(-24),
+        });
+      }
+      interpretationDiff.assertedFactSourceEventIds = [...source.sourceEventIds];
+      interpretationDiff.interpretedFactId = source.id;
+      interpretationDiff.interpretedByPersonIds = understoodPeople.map((listener) => listener.id);
+    }
+  }
+
+  if (meaning.kind === 'prediction' && !state.eraPredictions.some((prediction) => prediction.id === meaning.id)) {
+    state.eraPredictions.push({
+      id: meaning.id,
+      predictorId: person.id,
+      perceivedByPersonIds: understoodPeople.map((listener) => listener.id),
+      madeAtMonth: atMonth,
+      targetEpoch: meaning.prediction.targetEpoch,
+      predictedStartMonth: meaning.prediction.predictedStartMonth,
+      toleranceMonths: meaning.prediction.toleranceMonths,
+      expiresAtMonth: meaning.prediction.expiresAtMonth,
+      status: 'pending',
+      sourceEventIds: [eventId],
+    });
+    interpretationDiff.predictionId = meaning.id;
+  }
+
+  if (meaning.kind === 'request') {
+    const understoodIds = understoodPeople.map((listener) => listener.id);
+    if (meaning.techniqueDemonstration) {
+      const request = meaning.techniqueDemonstration;
+      const project = projectById(state, request.projectId);
+      if (project?.status === 'active' && request.requesterId === person.id && understoodIds.length) {
+        project.techniqueDemonstrationRequests ??= [];
+        project.techniqueDemonstrationRequests.push({
+          version: 'project-technique-demonstration-request-v1',
+          requestEventId: eventId,
+          projectId: project.id,
+          requesterId: person.id,
+          teacherIds: understoodIds,
+          desiredFunction: request.desiredFunction,
+          expiresAtMonth: request.expiresAtMonth,
+          atMonth,
+        });
+        interpretationDiff.techniqueDemonstrationRequest = true;
+      }
+    }
+    if (meaning.projectMaterialContribution) {
+      const request = meaning.projectMaterialContribution;
+      const project = projectById(state, request.projectId);
+      if (project?.status === 'active' && request.requesterId === person.id && understoodIds.length) {
+        project.materialContributionRequests ??= [];
+        project.materialContributionRequests.push({
+          version: 'project-material-contribution-request-v1',
+          requestEventId: eventId,
+          projectId: project.id,
+          requesterId: person.id,
+          contributorIds: understoodIds,
+          materialId: request.materialId,
+          requestedQuantity: request.quantity,
+          site: structuredClone(request.site),
+          expiresAtMonth: request.expiresAtMonth,
+          atMonth,
+        });
+        interpretationDiff.projectMaterialContributionRequest = true;
+      }
+    }
+    if (meaning.projectKnowledgeRequest) {
+      const request = meaning.projectKnowledgeRequest;
+      const project = projectById(state, request.projectId);
+      if (project?.status === 'active' && request.requesterId === person.id && understoodIds.length) {
+        project.knowledgeRequests ??= [];
+        project.knowledgeRequests.push({
+          version: 'project-knowledge-request-v1',
+          requestEventId: eventId,
+          projectId: project.id,
+          requesterId: person.id,
+          listenerIds: understoodIds,
+          outputMaterialId: request.outputMaterialId,
+          expiresAtMonth: request.expiresAtMonth,
+          atMonth,
+        });
+        interpretationDiff.projectKnowledgeRequest = true;
+      }
+    }
+  }
+
+  if (meaning.kind === 'claim' && meaning.projectKnowledgeResponse) {
+    const response = meaning.projectKnowledgeResponse;
+    const project = projectById(state, response.projectId);
+    const request = project?.knowledgeRequests?.find((candidate) => candidate.requestEventId === response.requestEventId);
+    const requesterUnderstood = languageBroadcast.decodedByPersonIds.includes(response.requesterId);
+    if (project && request && requesterUnderstood && meaning.factId) {
+      request.responseEventId = eventId;
+      request.responderId = person.id;
+      request.techniqueId = meaning.factId;
+      interpretationDiff.projectKnowledgeResponse = true;
+      interpretationDiff.projectKnowledgeProjectId = project.id;
+      interpretationDiff.projectKnowledgeRequestEventId = request.requestEventId;
+      interpretationDiff.projectKnowledgeOutputMaterialId = request.outputMaterialId;
+      interpretationDiff.projectKnowledgeTechniqueId = meaning.factId;
+    }
+  }
+
+  if (meaning.kind === 'claim' && meaning.conversation && understoodPeople.length) {
+    interpretationDiff.groundedConversationBasisKey = meaning.conversation.basisKey;
+  }
   return {
     status: 'completed' as const,
     result: `${person.name}把一句话说出了声`,
     diff: {
       languageBroadcast,
+      ...(languageBroadcast.sourceEventId !== eventId
+        ? { languageSourceEventId: languageBroadcast.sourceEventId }
+        : {}),
+      listenerInterpretations: understoodPeople.map((listener) => ({
+        version: 'listener-language-interpretation-v1' as const,
+        listenerId: listener.id,
+        sourceRepresentationId: meaning.id,
+        kind: meaning.kind,
+      })),
+      ...interpretationDiff,
     },
   };
 }

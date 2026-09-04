@@ -1,9 +1,10 @@
 import type { WorldEvent } from '../simulation';
 import type { NarrativeEntryView, SpeechLineView } from '../../societyContract';
+import { languageBroadcastFromDiff } from '../domain/language-perception';
 
 export type SpeechHistoryEventLookup = Pick<ReadonlyMap<string, WorldEvent>, 'get'>;
 
-type CommunicationEvent = Extract<WorldEvent, { kind: 'action' }>;
+type LanguageEvent = Extract<WorldEvent, { kind: 'action' | 'decision' }>;
 
 function sameIds(left: string[], right: string[]): boolean {
   if (left.length !== right.length) return false;
@@ -14,25 +15,30 @@ function sameIds(left: string[], right: string[]): boolean {
 function isVerifiedModelSpeechLine(
   line: SpeechLineView,
   event: WorldEvent | undefined,
-): event is CommunicationEvent {
-  return Boolean(
-    event
-      && event.kind === 'action'
-      && event.status === 'completed'
-      && event.action.kind === 'talk'
-      && event.action.channel === 'voice'
-      && (line.source === 'decision-model' || line.source === 'speech-model')
-      && line.authority === 'projection-only'
-      && line.channel === 'voice'
-      && line.text.trim().length > 0
-      && line.sourceEventId === event.id
-      && line.month === event.atMonth
-      && line.planningTick === (event.planningTick ?? event.actionTick)
-      && line.speakerId === event.who
-      && sameIds(line.audienceIds, ((event.diff.understoodByPersonIds as string[] | undefined) ?? []))
-      && line.communicationKind === event.action.speakerMeaning.kind
-      && line.speechAct?.kind === event.action.speakerMeaning.kind,
-  );
+): event is LanguageEvent {
+  if (!event
+    || (line.source !== 'decision-model' && line.source !== 'speech-model')
+    || line.authority !== 'projection-only'
+    || !line.text.trim()
+    || line.sourceEventId !== event.id
+    || line.month !== event.atMonth
+    || line.speakerId !== ('who' in event ? event.who : undefined)) return false;
+  if (event.kind === 'decision') {
+    const mentalAct = 'mentalAct' in event.decision ? event.decision.mentalAct : undefined;
+    return line.source === 'decision-model'
+      && line.planningTick === (event.planningTick ?? 0)
+      && line.communicationKind === 'talk'
+      && line.speechAct.kind === 'talk'
+      && line.text.trim() === mentalAct?.utterance.trim()
+      && sameIds(line.perceivedByPersonIds, event.languageBroadcast?.perceivedByPersonIds ?? []);
+  }
+  if (event.kind !== 'action') return false;
+  return event.status === 'completed'
+    && event.action.kind === 'talk'
+    && line.planningTick === (event.planningTick ?? event.actionTick)
+    && sameIds(line.perceivedByPersonIds, languageBroadcastFromDiff(event.diff)?.perceivedByPersonIds ?? [])
+    && line.communicationKind === event.action.speakerMeaning.kind
+    && line.speechAct?.kind === event.action.speakerMeaning.kind;
 }
 
 /**
@@ -67,11 +73,11 @@ export function speechHistoryTextForEvent(
   const line = speechLinesBySourceEventId.get(event.id);
   if (!line || !isVerifiedModelSpeechLine(line, event)) return null;
   const speaker = line.speakerName.trim();
-  const audience = line.audienceNames.map((name) => name.trim()).filter(Boolean).join('、');
-  if (!speaker || !audience) return null;
+  const perceivedBy = line.perceivedByPersonNames.map((name) => name.trim()).filter(Boolean).join('、');
+  if (!speaker) return null;
   const utterance = line.text.trim();
   const punctuated = /[。！？!?…]$/u.test(utterance) ? utterance : `${utterance}。`;
-  return `${speaker}对${audience}说：“${punctuated}”`;
+  return `${speaker}说：“${punctuated}”${perceivedBy ? `，被${perceivedBy}感知` : ''}`;
 }
 
 /** Only an exact, single-source communication entry may display a quotation. */
@@ -80,11 +86,11 @@ export function projectSpeechHistoryEntry(
   speechLinesBySourceEventId: ReadonlyMap<string, SpeechLineView>,
   events: SpeechHistoryEventLookup,
 ): NarrativeEntryView {
-  if (entry.kind !== 'action' || entry.sourceEventIds.length !== 1) return entry;
+  if ((entry.kind !== 'action' && entry.kind !== 'decision') || entry.sourceEventIds.length !== 1) return entry;
   const sourceEventId = entry.sourceEventIds[0];
   if (entry.id !== `narrative:${sourceEventId}`) return entry;
   const event = events.get(sourceEventId);
-  if (!event || event.kind !== 'action' || event.action.kind !== 'talk') return entry;
+  if (!event || (event.kind === 'action' ? event.action.kind !== 'talk' : event.kind !== 'decision')) return entry;
   const text = speechHistoryTextForEvent(event, speechLinesBySourceEventId);
   return text ? { ...entry, text } : entry;
 }

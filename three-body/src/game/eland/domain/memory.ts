@@ -4,6 +4,12 @@ import { causalMemoryTraceForAction, isMeaningfulCognitiveOutcome } from './cogn
 import { memoryCapacityMultiplier, memoryDurationMultiplier } from './trait';
 import { personById } from './state-index';
 import { rememberGroundedConversationBasis } from './agent-memory';
+import {
+  languageBroadcastFromDiff,
+  languageReceptionFor,
+  perceivedLanguageText,
+} from './language-perception';
+import { animalSpecies, type AnimalSpeciesId } from './animal';
 
 const MAX_MEMORIES = 24;
 const MAX_PROJECTED_MEMORIES = 8;
@@ -368,11 +374,23 @@ export function projectMemories(person: PersonState, atMonth: number): Array<Pic
 export function rememberAction(state: SimulationState, fact: ActionFact): void {
   const actor = personById(state, fact.who);
   if (!actor) return;
+  const animalSpeciesId = fact.action.kind === 'act'
+    && fact.action.operation === 'hunt'
+    && typeof fact.diff.animalSpeciesId === 'string'
+    ? fact.diff.animalSpeciesId as AnimalSpeciesId
+    : undefined;
+  const witnessedAnimalDeath = Boolean(animalSpeciesId && fact.diff.killed === true);
+  const witnessedAnimalInjury = Boolean(animalSpeciesId
+    && fact.diff.success === true
+    && Number(fact.diff.damage) > 0
+    && !witnessedAnimalDeath);
+  const animalName = animalSpeciesId ? animalSpecies(animalSpeciesId).name : undefined;
   const causal = isMeaningfulCognitiveOutcome(fact)
     ? causalMemoryTraceForAction(state, fact)
     : undefined;
+  const languageBroadcast = fact.action.kind === 'talk' ? languageBroadcastFromDiff(fact.diff) : undefined;
   const participantIds = fact.action.kind === 'talk'
-    ? ((fact.diff.understoodByPersonIds as string[] | undefined) ?? [])
+    ? languageBroadcast?.perceivedByPersonIds ?? []
     : fact.action.kind === 'transfer'
       ? [
           ...(fact.action.from.kind === 'person' ? [fact.action.from.personId] : []),
@@ -380,6 +398,8 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
         ]
       : fact.action.kind === 'act'
         ? fact.action.targets.flatMap((target) => target.kind === 'person' ? [target.personId] : [])
+        : fact.action.kind === 'world-interact'
+          ? fact.action.adjudication.targets.flatMap((target) => target.kind === 'person' ? [target.personId] : [])
         : fact.action.kind === 'attend' && fact.action.target.kind === 'person'
           ? [fact.action.target.personId]
           : [];
@@ -404,8 +424,20 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
   remember(actor, {
     id: `memory:${fact.id}:${actor.id}`,
     kind: failed ? 'failure' : fact.action.kind === 'talk' && ['request', 'offer', 'accept'].includes(fact.action.speakerMeaning.kind) ? 'commitment' : fact.action.kind === 'talk' ? 'dialogue' : 'episode',
-    summary: fact.result,
-    importance: failed ? 72 : groundedCommunication ? 62 : structuredCommunication ? 64 : fact.action.kind === 'talk' ? 42 : 38,
+    summary: witnessedAnimalDeath
+      ? `自己杀死了${animalName}，这只${animalName}已经死亡`
+      : witnessedAnimalInjury
+        ? `自己击伤了${animalName}，它仍然存活`
+        : fact.action.kind === 'world-interact' && fact.action.adjudication.feedback
+          ? `${fact.result}。修正：${fact.action.adjudication.feedback.correction}；下次：${fact.action.adjudication.feedback.adjustment}`
+          : fact.result,
+    importance: failed
+      ? 72
+      : witnessedAnimalDeath
+        ? 92
+        : witnessedAnimalInjury
+          ? 74
+          : groundedCommunication ? 62 : structuredCommunication ? 64 : fact.action.kind === 'talk' ? 42 : 38,
     createdAtMonth: fact.atMonth,
     lastRecalledAtMonth: fact.atMonth,
     personIds: others.map((person) => person.id),
@@ -418,6 +450,27 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
   });
   if (groundedCommunication && fact.status === 'completed') {
     rememberGroundedConversationBasis(state, fact);
+  }
+  if (animalName && (witnessedAnimalDeath || witnessedAnimalInjury)) {
+    const observerIds = Array.isArray(fact.diff.witnessedBy)
+      ? fact.diff.witnessedBy.filter((id): id is string => typeof id === 'string')
+      : [];
+    for (const observerId of new Set(observerIds)) {
+      const observer = personById(state, observerId);
+      if (!observer || observer.id === actor.id) continue;
+      remember(observer, {
+        id: `memory:${fact.id}:${observer.id}`,
+        kind: 'episode',
+        summary: witnessedAnimalDeath
+          ? `亲眼看见${actor.name}杀死了${animalName}，这只${animalName}已经死亡`
+          : `亲眼看见${actor.name}击伤了${animalName}，它仍然存活`,
+        importance: witnessedAnimalDeath ? 88 : 72,
+        createdAtMonth: fact.atMonth,
+        lastRecalledAtMonth: fact.atMonth,
+        personIds: [actor.id],
+        sourceEventIds: [fact.id],
+      });
+    }
   }
   if (fact.action.kind === 'act' && fact.action.operation === 'exert' && typeof fact.diff.victimId === 'string') {
     const victimId = fact.diff.victimId;
@@ -503,11 +556,19 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
   const content = fact.action.speakerMeaning;
   const commitment = content.kind === 'request' || content.kind === 'offer' || content.kind === 'accept';
   for (const listener of others) {
+    const reception = languageReceptionFor(languageBroadcast, listener.id);
+    const perceivedText = languageBroadcast ? perceivedLanguageText({
+      broadcast: languageBroadcast,
+      observerId: listener.id,
+      speakerId: actor.id,
+      seed: state.seed,
+    }) : '';
+    if (!perceivedText) continue;
     remember(listener, {
       id: `memory:${fact.id}:${listener.id}`,
-      kind: commitment ? 'commitment' : 'dialogue',
-      summary: fact.result,
-      importance: commitment ? 82 : content.kind === 'claim' && content.factId ? 66 : 40,
+      kind: commitment && reception?.decoded ? 'commitment' : 'dialogue',
+      summary: `听见${actor.name}：“${perceivedText}”`,
+      importance: commitment && reception?.decoded ? 82 : content.kind === 'claim' && content.factId ? 66 : 40,
       createdAtMonth: fact.atMonth,
       lastRecalledAtMonth: fact.atMonth,
       personIds: [actor.id],

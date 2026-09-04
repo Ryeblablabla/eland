@@ -1,6 +1,7 @@
 import type { SimulationState, WorldEvent } from '../src/game/eland/simulation';
 import { committedHistoryView } from '../src/game/eland/domain/history';
 import { Material, materialHas } from '../src/game/eland/domain/material';
+import { languageInterpreterIds } from '../src/game/eland/domain/language-perception';
 import { hypothesisMetrics } from './evolution-artifacts/hypothesis-metrics';
 import { inquiryOpportunityMetrics } from './evolution-artifacts/inquiry-opportunity-metrics';
 import { objectRecord } from './evolution-artifacts/object-record';
@@ -851,7 +852,12 @@ function groundedConversationMetrics(state: SimulationState) {
   const responses = grounded.filter((entry) => entry.conversation.turn === 'response');
   const groundedById = new Map(grounded.map((entry) => [entry.event.id, entry]));
   const topicIds = new Set(grounded.map((entry) => entry.conversation.topic));
-  const participantIds = new Set(grounded.flatMap((entry) => [entry.conversation.speakerId, entry.conversation.listenerId]));
+  const participantIds = new Set(grounded.flatMap((entry) => [
+    entry.event.who,
+    ...languageInterpreterIds(entry.event.diff, entry.event.action.kind === 'talk'
+      ? entry.event.action.speakerMeaning.id
+      : undefined),
+  ]));
   const generationGtZeroParticipants = state.people.filter((person) => participantIds.has(person.id) && person.generation > 0).length;
   const sourcedOpenings = openings.filter((entry) => entry.conversation.sourceFactIds.length > 0
     && entry.conversation.sourceFactIds.every((sourceId) => eventIds.has(sourceId))).length;
@@ -860,12 +866,8 @@ function groundedConversationMetrics(state: SimulationState) {
   const basisCounts = new Map<string, number>();
   for (const entry of openings) basisCounts.set(entry.conversation.basisKey, (basisCounts.get(entry.conversation.basisKey) ?? 0) + 1);
   const duplicateBases = [...basisCounts.values()].reduce((sum, count) => sum + Math.max(0, count - 1), 0);
-  const participantMismatches = grounded.filter((entry) => entry.event.who !== entry.conversation.speakerId
-    || entry.event.action.kind !== 'talk'
-    || ((entry.event.diff.languageBroadcast as { understoodByPersonIds?: string[] } | undefined)
-      ?.understoodByPersonIds ?? []).length !== 1
-    || ((entry.event.diff.languageBroadcast as { understoodByPersonIds?: string[] } | undefined)
-      ?.understoodByPersonIds ?? [])[0] !== entry.conversation.listenerId).length;
+  const participantMismatches = grounded.filter((entry) => entry.event.action.kind !== 'talk'
+    || languageInterpreterIds(entry.event.diff, entry.event.action.speakerMeaning.id).length === 0).length;
   const responseMatchesOpening = (entry: typeof responses[number]) => {
     const referenceId = entry.conversation.referenceEventId;
     const previous = referenceId ? groundedById.get(referenceId) : undefined;
@@ -876,11 +878,14 @@ function groundedConversationMetrics(state: SimulationState) {
     ));
     return Boolean(previous
       && previousPrecedesResponse
-      && previous.conversation.speakerId === entry.conversation.listenerId
-      && previous.conversation.listenerId === entry.conversation.speakerId
+      && languageInterpreterIds(previous.event.diff, previous.event.action.kind === 'talk'
+        ? previous.event.action.speakerMeaning.id
+        : undefined).includes(entry.event.who)
+      && languageInterpreterIds(entry.event.diff, entry.event.action.kind === 'talk'
+        ? entry.event.action.speakerMeaning.id
+        : undefined).includes(previous.event.who)
       && previous.conversation.topic === entry.conversation.topic
       && previous.conversation.basisKey === entry.conversation.basisKey
-      && previous.conversation.episodeId === entry.conversation.episodeId
       && [...new Set(previous.conversation.sourceFactIds)].sort().join(',')
         === [...new Set(entry.conversation.sourceFactIds)].sort().join(','));
   };
@@ -930,7 +935,16 @@ function groundedConversationMetrics(state: SimulationState) {
     : '')).length;
   const episodes = new Map<string, typeof grounded>();
   for (const entry of grounded) {
-    const episodeId = entry.conversation.episodeId ?? entry.event.id;
+    let episodeId = entry.event.id;
+    let cursor = entry;
+    const visited = new Set<string>();
+    while (cursor.conversation.referenceEventId && !visited.has(cursor.conversation.referenceEventId)) {
+      visited.add(cursor.conversation.referenceEventId);
+      const previous = groundedById.get(cursor.conversation.referenceEventId);
+      if (!previous) break;
+      episodeId = previous.event.id;
+      cursor = previous;
+    }
     const turns = episodes.get(episodeId) ?? [];
     turns.push(entry);
     episodes.set(episodeId, turns);
@@ -940,8 +954,11 @@ function groundedConversationMetrics(state: SimulationState) {
     const months = entries.map((entry) => entry.event.atMonth);
     return Math.max(...months) - Math.min(...months);
   });
-  const closedEpisodes = (state.memoryStore?.conversations ?? [])
-    .filter((episode) => episode.status === 'closed').length;
+  const closedEpisodes = [...episodes.values()].filter((entries) => {
+    const last = entries.at(-1)?.conversation;
+    return last?.turn === 'response'
+      && !['question', 'challenge', 'share-fact', 'commit'].includes(last.move ?? 'acknowledge');
+  }).length;
   return {
     groundedConversationOpenings: openings.length,
     groundedConversationResponses: responses.length,

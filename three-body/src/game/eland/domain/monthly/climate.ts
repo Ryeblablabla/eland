@@ -2,7 +2,6 @@ import type { ActionFact, EnvironmentFact, EraSchedule, SimulationState, Weather
 import type { PersonState } from '../person';
 import { remember } from '../memory';
 import { applyRelationEvidence } from '../relation';
-import { worldEventById } from '../event-index';
 import { seededFraction } from '../../world/generator';
 import { personById } from '../state-index';
 
@@ -338,7 +337,7 @@ export function advanceEraPredictions(
         known.sourceEventIds = [...new Set([...known.sourceEventIds, fact.id])].slice(-24);
       }
     }
-    for (const listener of state.people.filter((person) => prediction.audienceIds.includes(person.id))) {
+    for (const listener of state.people.filter((person) => prediction.perceivedByPersonIds.includes(person.id))) {
       applyRelationEvidence(listener, prediction.predictorId, fact.id, { trust: correct ? 11 : -6, bond: correct ? 2 : 0 });
       remember(listener, {
         id: `memory:era-prediction:${prediction.id}:${listener.id}`,

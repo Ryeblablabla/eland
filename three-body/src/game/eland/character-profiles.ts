@@ -99,6 +99,7 @@ function archiveToProfile(entry: ArchiveCharacter): CharacterProfile {
 /**
  * 引擎抽人池（101 位）：档案自然语言只编译创世 temperament / motive prior，
  * 不授予能力或经历。身体缺口、状态、关系与局部事实仍产生动态动机；后代只走
- * 父母人格继承和自身经历。每局按种子抽取 5–12 位，或显式指定至多 12 位。
+ * 父母人格继承和自身经历。每局按种子抽取 3 位；显式名单不足 3 位时
+ * 仍按同一种子补足，超过时只取前三位。
  */
 export const CHARACTER_PROFILES: CharacterProfile[] = CHARACTERS.map(archiveToProfile);

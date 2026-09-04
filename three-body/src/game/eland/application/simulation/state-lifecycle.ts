@@ -82,8 +82,7 @@ import {
 
 export const MAX_SIMULATION_YEARS = 1_000;
 export const MAX_SIMULATION_MONTHS = MAX_SIMULATION_YEARS * MONTHS_PER_YEAR;
-const MIN_FOUNDER_COUNT = 5;
-const MAX_FOUNDER_COUNT = 12;
+const FOUNDER_COUNT = 3;
 
 function normalizeStoredTechniqueLanguage(state: SimulationState): void {
   const replacements = new Map<string, string>();
@@ -151,17 +150,20 @@ function refreshStructureCompatibilityMirror(
 }
 
 function chooseProfiles(seed: number, civilizationNo: number, characterIds?: string[]): CharacterProfile[] {
+  const ranked = [...CHARACTER_PROFILES]
+    .sort((a, b) => deterministicFraction(seed + civilizationNo * 991, `profile:${a.id}`) - deterministicFraction(seed + civilizationNo * 991, `profile:${b.id}`));
   if (characterIds?.length) {
-    const wanted = new Set(characterIds);
-    const chosen = CHARACTER_PROFILES.filter((profile) => wanted.has(profile.id));
-    if (chosen.length) return chosen.slice(0, MAX_FOUNDER_COUNT);
+    const profilesById = new Map(CHARACTER_PROFILES.map((profile) => [profile.id, profile] as const));
+    const chosen = [...new Set(characterIds)].flatMap((id) => {
+      const profile = profilesById.get(id);
+      return profile ? [profile] : [];
+    });
+    if (chosen.length) {
+      const chosenIds = new Set(chosen.map((profile) => profile.id));
+      return [...chosen, ...ranked.filter((profile) => !chosenIds.has(profile.id))].slice(0, FOUNDER_COUNT);
+    }
   }
-  return [...CHARACTER_PROFILES]
-    .sort((a, b) => deterministicFraction(seed + civilizationNo * 991, `profile:${a.id}`) - deterministicFraction(seed + civilizationNo * 991, `profile:${b.id}`))
-    .slice(0, MIN_FOUNDER_COUNT + Math.floor(
-      deterministicFraction(seed, `population:${civilizationNo}`)
-      * (MAX_FOUNDER_COUNT - MIN_FOUNDER_COUNT + 1),
-    ));
+  return ranked.slice(0, FOUNDER_COUNT);
 }
 
 function ensureNamingMetadata(people: PersonState[]): void {
@@ -188,7 +190,7 @@ export function createDefaultSimulationConfig(overrides: Partial<SimulationConfi
         ? Math.max(1, Math.round(overrides.endpoint.value))
         : Math.min(MAX_SIMULATION_MONTHS, Math.max(1, Math.round(overrides.endpoint?.value ?? MAX_SIMULATION_MONTHS))),
     },
-    ...(overrides.characterIds?.length ? { characterIds: [...new Set(overrides.characterIds)].slice(0, MAX_FOUNDER_COUNT) } : {}),
+    ...(overrides.characterIds?.length ? { characterIds: [...new Set(overrides.characterIds)].slice(0, FOUNDER_COUNT) } : {}),
   };
 }
 
@@ -297,7 +299,7 @@ export function createInitialState(
     },
   };
   const state: SimulationState = {
-    schemaVersion: 17,
+    schemaVersion: 19,
     seed,
     branchId: `root-${seed}-${config.civilizationNo}`,
     identityCounters: { intentOrdinal: 0 },
@@ -306,6 +308,7 @@ export function createInitialState(
       grid: generated.world,
       drops: generated.drops,
       animals: createInitialAnimals(seed, generated.world, generated.spawnCells.slice(0, people.length)),
+      openFacts: [],
       remains: [],
       memorials: [],
       past: [foundingFact],
@@ -363,9 +366,9 @@ export function adoptSimulationState(
   input: SimulationState,
 ): SimulationState {
   const version = Number((input as { schemaVersion?: number }).schemaVersion);
-  if (version !== 17) throw new Error('当前开发版本只接受 schemaVersion 17；请新建文明运行');
+  if (version !== 19) throw new Error('当前开发版本只接受 schemaVersion 19；请新建文明运行');
   const state = input;
-  state.schemaVersion = 17;
+  state.schemaVersion = 19;
   if (state.civilization.conditions.endpoint.kind === 'months') {
     state.civilization.conditions.endpoint.value = Math.min(
       MAX_SIMULATION_MONTHS,
@@ -373,6 +376,7 @@ export function adoptSimulationState(
     );
   }
   state.world.animals ??= [];
+  state.world.openFacts ??= [];
   state.world.remains ??= [];
   state.world.memorials ??= [];
   normalizeAnimalEcologies(state.world.animals);
@@ -547,7 +551,7 @@ export function resetSimulation(
 
 export function buildEvolutionReport(finalState: SimulationState, checkpoints: SimulationState[] = []): EvolutionReport {
   return {
-    schemaVersion: 17,
+    schemaVersion: 19,
     exportedAt: new Date().toISOString(),
     civilization: structuredClone(finalState.civilization),
     finalState: copyState(finalState),

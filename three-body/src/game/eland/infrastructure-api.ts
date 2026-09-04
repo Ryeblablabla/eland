@@ -45,8 +45,12 @@ export {
   stepOwnedSimulation as stepOwnedSimulationWithObservationProjector,
 } from './application/simulation/tick-executor';
 export {
-  writeDialogueMemory,
+  applyAgentMemoryCompaction,
+  nextAgentMemoryCompactionBatch,
+  writeLanguageMemory,
   writePlayerInteractionMemory,
-  type DialogueMemoryInput,
+  type AgentMemoryCompactionBatch,
+  type AgentMemoryCompactionCapsuleInput,
+  type LanguageMemoryInput,
   type PlayerInteractionMemoryInput,
 } from './domain/agent-memory';

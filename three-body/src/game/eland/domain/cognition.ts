@@ -106,6 +106,8 @@ function actionFamilyKey(action: PrimitiveAction): string {
     }
     case 'attend':
       return `attend:${action.target.kind}${action.verification ? ':verification' : ''}`;
+    case 'world-interact':
+      return `world-interact:${action.adjudication.request}`;
     case 'talk': {
       const content = action.speakerMeaning;
       const topic = (content.kind === 'request' || content.kind === 'offer') && content.proposal

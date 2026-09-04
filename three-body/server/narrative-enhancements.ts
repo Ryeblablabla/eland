@@ -5,6 +5,7 @@ import type { NarrativeEntryView } from '../src/game/societyContract';
 import { loadServerEnvValue } from './env';
 import { requestModelText } from './model-client';
 import { resolveModelEndpoint, type ModelProtocol, type ResolvedModelEndpoint } from './model-config';
+import { languageInterpreterIds } from '../src/game/eland/domain/language-perception';
 
 export const NARRATIVE_ENHANCEMENT_KINDS = ['dialogue', 'memory', 'history'] as const;
 
@@ -101,7 +102,7 @@ function eventPersonIds(event: WorldEvent): string[] {
   const ids: string[] = [];
   if ('who' in event && event.who) ids.push(event.who);
   if ('partyIds' in event) ids.push(...event.partyIds);
-  if (event.kind === 'action' && event.action.kind === 'talk') ids.push(...((event.diff.understoodByPersonIds as string[] | undefined) ?? []));
+  if (event.kind === 'action' && event.action.kind === 'talk') ids.push(...languageInterpreterIds(event.diff, event.action.speakerMeaning.id));
   if (event.kind === 'environment') {
     if (typeof event.diff.personId === 'string') ids.push(event.diff.personId);
     if (typeof event.diff.bornPersonId === 'string') ids.push(event.diff.bornPersonId);
@@ -181,7 +182,7 @@ function dialogueCandidates(state: SimulationState, eventMap: Map<string, WorldE
       subjectIds: eventPersonIds(event),
       label: `第 ${event.atMonth} 月的关键对话`,
       summary: narrativeSourceResult(event),
-      details: { channel: event.action.channel, content },
+      details: { content },
     }];
   }).sort((first, second) => second.importance - first.importance || second.atMonth - first.atMonth || first.stableKey.localeCompare(second.stableKey));
 }

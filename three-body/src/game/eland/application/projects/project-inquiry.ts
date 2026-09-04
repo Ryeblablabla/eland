@@ -390,7 +390,7 @@ export function hypothesisStep(
     const refs = refsForPair(person, candidate, groundedDropSourceKeys);
     if (refs) return {
       key: `hypothesis-${candidate.key}`,
-      summary: `为${purpose}试验${combineCandidateDescription(candidate)}`,
+      summary: `试验${combineCandidateDescription(candidate)}，观察它是否能为“${purpose}”提供证据`,
       reason: candidate.questionKind === 'assemble-balanced-suspension'
         ? '比较困境使人物尝试两件相同的刚性构件和一个柔性悬挂件；它们是否真的组成可用装置仍由世界响应决定'
         : candidate.questionKind === 'shape-repeatable-reference'
@@ -408,7 +408,7 @@ export function hypothesisStep(
     const exert = refsForExertCandidate(person, candidate, groundedDropSourceKeys);
     if (exert) return {
       key: `hypothesis-${candidate.key}`,
-      summary: `为${purpose}尝试用${materialDefinition(candidate.toolMaterialId ?? pair[0]).name}向${materialDefinition(candidate.inputMaterialId ?? pair[1]).name}施力`,
+      summary: `尝试用${materialDefinition(candidate.toolMaterialId ?? pair[0]).name}向${materialDefinition(candidate.inputMaterialId ?? pair[1]).name}施力，观察它是否能为“${purpose}”提供证据`,
       reason: '已持有的硬物、可触及材料和眼前受支撑的空位形成局部施力假设；结果仍由真实物质响应裁决',
       action: {
         kind: 'act',
@@ -433,7 +433,7 @@ export function hypothesisStep(
     }], groundedDropSourceKeys)?.[0];
     if (input) return {
       key: `hypothesis-${candidate.key}`,
-      summary: `为${purpose}让${materialDefinition(inputMaterialId).name}接触眼前的${materialDefinition(candidate.targetMaterialId ?? pair[1]).name}`,
+      summary: `让${materialDefinition(inputMaterialId).name}接触眼前的${materialDefinition(candidate.targetMaterialId ?? pair[1]).name}，观察它是否能为“${purpose}”提供证据`,
       reason: '这个热源已经真实存在于近旁；人物只试验手中物质与它接触后的可观察变化，不预知产物',
       action: {
         kind: 'act',

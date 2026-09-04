@@ -158,7 +158,7 @@ export function buildMaterialSeparationOptions(
     const atWorkingPosition = person.position.cellId === candidate.position.cellId && person.position.z === candidate.position.z;
     options.push({
       id: `separate-material:${rule.id}:${candidate.target.x}:${candidate.target.y}:${candidate.target.z}`,
-      summary: known ? `尝试复现“${known.summary}”` : separationTechniqueSummary(rule),
+      summary: known ? `尝试复现“${separationTechniqueSummary(rule)}”` : separationTechniqueSummary(rule),
       reason: known ? '自己已有这项物质分离经验' : `${materialDefinition(rule.inputMaterialId).name}是眼前可接触的真实物质`,
       goal: { kind: 'inventory-at-least', materialId: output.materialId, quantity: inventoryQuantity(person, output.materialId) + output.quantity },
       nextAction: atWorkingPosition

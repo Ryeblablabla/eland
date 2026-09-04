@@ -9,6 +9,34 @@ const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'threebody-capability
 const simulationBundlePath = path.join(temporaryDirectory, 'simulation.mjs');
 const observerBundlePath = path.join(temporaryDirectory, 'capability-milestones.mjs');
 
+const normalizeFixtureLanguage = (rawAction, rawDiff = {}) => {
+  const { interpreters: actionInterpreters = [], ...actionWithoutInterpreters } = rawAction;
+  const { interpreters: diffInterpreters = [], ...diffWithoutInterpreters } = rawDiff;
+  if (actionWithoutInterpreters.kind === 'talk' && 'carrierStackId' in actionWithoutInterpreters) {
+    const { carrierStackId, speakerMeaning } = actionWithoutInterpreters;
+    return {
+      action: { kind: 'inscribe', carrierStackId, inscriptionMeaning: speakerMeaning },
+      diff: diffWithoutInterpreters,
+    };
+  }
+  if (actionWithoutInterpreters.kind !== 'talk') {
+    return { action: actionWithoutInterpreters, diff: diffWithoutInterpreters };
+  }
+  const interpreterIds = [...new Set([...actionInterpreters, ...diffInterpreters])];
+  return {
+    action: actionWithoutInterpreters,
+    diff: {
+      ...diffWithoutInterpreters,
+      listenerInterpretations: interpreterIds.map((listenerId) => ({
+        version: 'listener-language-interpretation-v1',
+        listenerId,
+        sourceRepresentationId: actionWithoutInterpreters.speakerMeaning.id,
+        kind: actionWithoutInterpreters.speakerMeaning.kind,
+      })),
+    },
+  };
+};
+
 try {
   for (const [entryPoint, outputPath] of [
     ['src/game/eland/simulation.ts', simulationBundlePath],
@@ -85,30 +113,33 @@ try {
   state.derived.structures = [];
   let orderInMonth = 0;
   const actionFact = ({
-    id, atMonth, who, status = 'completed', action, diff, intentId,
+    id, atMonth, who, status = 'completed', action: rawAction, diff: rawDiff, intentId,
     fromCellId = 0, toCellId = fromCellId, pathSegment = [fromCellId],
-  }) => ({
-    id,
-    kind: 'action',
-    atMonth,
-    orderInMonth: orderInMonth++,
-    planningTick: 1,
-    orderInTick: orderInMonth,
-    actionTick: 1,
-    cellId: toCellId,
-    who,
-    ...(intentId ? { intentId } : {}),
-    cause: 'intent',
-    action,
-    fromCellId,
-    toCellId,
-    fromZ: 1,
-    toZ: 1,
-    pathSegment,
-    status,
-    result: id,
-    diff,
-  });
+  }) => {
+    const { action, diff } = normalizeFixtureLanguage(rawAction, rawDiff);
+    return {
+      id,
+      kind: 'action',
+      atMonth,
+      orderInMonth: orderInMonth++,
+      planningTick: 1,
+      orderInTick: orderInMonth,
+      actionTick: 1,
+      cellId: toCellId,
+      who,
+      ...(intentId ? { intentId } : {}),
+      cause: 'intent',
+      action,
+      fromCellId,
+      toCellId,
+      fromZ: 1,
+      toZ: 1,
+      pathSegment,
+      status,
+      result: id,
+      diff,
+    };
+  };
   const transfer = (from, to) => ({ kind: 'transfer', materialId: 21, quantity: 1, from, to });
   const exert = (personId) => ({ kind: 'act', operation: 'exert', targets: [{ kind: 'person', personId }] });
 
@@ -138,21 +169,21 @@ try {
   const breachProposal = actionFact({
     id: 'breach-proposal', atMonth: 1, who: actor.id,
     action: {
-      kind: 'communicate', channel: 'voice', audience: [victim.id],
-      content: {
+      kind: 'talk', interpreters: [victim.id],
+      speakerMeaning: {
         id: 'agreement:breached', kind: 'request', summary: 'fixture request',
         proposal: { kind: 'assist', requesterId: actor.id, helperId: victim.id, need: 'food', expiresAtMonth: 4 },
       },
     },
-    diff: { audience: [victim.id] },
+    diff: { interpreters: [victim.id] },
   });
   const breachAcceptance = actionFact({
     id: 'breach-acceptance', atMonth: 2, who: victim.id,
     action: {
-      kind: 'communicate', channel: 'voice', audience: [actor.id],
-      content: { id: 'accept-breached', kind: 'accept', referenceId: 'agreement:breached' },
+      kind: 'talk', interpreters: [actor.id],
+      speakerMeaning: { id: 'accept-breached', kind: 'accept', referenceId: 'agreement:breached' },
     },
-    diff: { audience: [actor.id] },
+    diff: { interpreters: [actor.id] },
   });
   const ordinaryDeath = {
     id: 'death-ordinary', kind: 'environment', change: 'death', atMonth: 4, orderInMonth: orderInMonth++, cellId: 0,
@@ -302,8 +333,8 @@ try {
   const recordWrite = actionFact({
     id: 'record-write', atMonth: 1, who: recordAuthor.id,
     action: {
-      kind: 'communicate', channel: 'record', audience: [], carrierStackId: 'record-stack',
-      content: { id: 'record-content', kind: 'claim', summary: 'record fixture', factId: 'knowledge:record-fixture' },
+      kind: 'talk', interpreters: [], carrierStackId: 'record-stack',
+      speakerMeaning: { id: 'record-content', kind: 'claim', summary: 'record fixture', factId: 'knowledge:record-fixture' },
     },
     diff: { recordPayloadId, carrierStackId: 'record-stack', knowledgeId: 'knowledge:record-fixture', version: 1 },
   });
@@ -365,8 +396,8 @@ try {
   const preservationWrite = actionFact({
     id: 'preservation-write', atMonth: 1, who: preservationAuthor.id,
     action: {
-      kind: 'communicate', channel: 'record', audience: [], carrierStackId: 'preserved-stack',
-      content: { id: 'preserved-content', kind: 'claim', summary: 'preservation fixture', factId: 'knowledge:preserved' },
+      kind: 'talk', interpreters: [], carrierStackId: 'preserved-stack',
+      speakerMeaning: { id: 'preserved-content', kind: 'claim', summary: 'preservation fixture', factId: 'knowledge:preserved' },
     },
     diff: { recordPayloadId: preservedPayloadId, carrierStackId: 'preserved-stack', knowledgeId: 'knowledge:preserved', version: 1 },
   });
@@ -509,8 +540,8 @@ try {
     const candidateRequest = actionFact({
       id: `membership-request-${seed}`, atMonth: 1, who: candidate.id,
       action: {
-        kind: 'communicate', channel: 'voice', audience: [member.id],
-        content: {
+        kind: 'talk', interpreters: [member.id],
+        speakerMeaning: {
           id: `candidate-request-${seed}`, kind: 'request', summary: 'I want to belong',
           proposal: {
             kind: 'membership', proposerId: candidate.id, partnerId: member.id,
@@ -518,13 +549,13 @@ try {
           },
         },
       },
-      diff: { audience: [member.id] },
+      diff: { interpreters: [member.id] },
     });
     const admissionOffer = actionFact({
       id: `membership-offer-${seed}`, atMonth: 2, who: member.id,
       action: {
-        kind: 'communicate', channel: 'voice', audience: requiredApproverIds,
-        content: {
+        kind: 'talk', interpreters: requiredApproverIds,
+        speakerMeaning: {
           id: admissionId, kind: 'offer', summary: 'welcome the candidate',
           proposal: {
             kind: 'membership', proposerId: member.id, partnerId: candidate.id,
@@ -532,23 +563,23 @@ try {
           },
         },
       },
-      diff: { audience: requiredApproverIds },
+      diff: { interpreters: requiredApproverIds },
     });
     const candidateAcceptance = actionFact({
       id: `membership-candidate-accept-${seed}`, atMonth: 2, who: candidate.id,
       action: {
-        kind: 'communicate', channel: 'voice', audience: [member.id],
-        content: { id: `candidate-accept-${seed}`, kind: 'accept', referenceId: admissionId },
+        kind: 'talk', interpreters: [member.id],
+        speakerMeaning: { id: `candidate-accept-${seed}`, kind: 'accept', referenceId: admissionId },
       },
-      diff: { audience: [member.id] },
+      diff: { interpreters: [member.id] },
     });
     const memberAcceptance = actionFact({
       id: `membership-member-accept-${seed}`, atMonth: 3, who: approver.id,
       action: {
-        kind: 'communicate', channel: 'voice', audience: [member.id],
-        content: { id: `member-accept-${seed}`, kind: 'accept', referenceId: admissionId },
+        kind: 'talk', interpreters: [member.id],
+        speakerMeaning: { id: `member-accept-${seed}`, kind: 'accept', referenceId: admissionId },
       },
-      diff: { audience: [member.id] },
+      diff: { interpreters: [member.id] },
     });
     const sourceEventIds = [
       ...(candidateRequested ? [candidateRequest.id] : []),
@@ -561,7 +592,7 @@ try {
     ];
     membershipState.agreements = [{
       id: admissionId,
-      proposal: admissionOffer.action.content.proposal,
+      proposal: admissionOffer.action.speakerMeaning.proposal,
       proposerId: member.id,
       responderId: candidate.id,
       partyIds: [member.id, ...requiredApproverIds],

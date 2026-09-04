@@ -334,7 +334,7 @@ export function techniqueLearningMetrics(state: SimulationState) {
     action: Record<string, unknown>;
     content: Record<string, unknown>;
     request: Record<string, unknown> | null;
-    audienceIds: string[];
+    perceivedByPersonIds: string[];
   }> = [];
   for (const entry of events) {
     const action = actionRecord(entry.value);
@@ -348,7 +348,9 @@ export function techniqueLearningMetrics(state: SimulationState) {
       action,
       content,
       request: requestPayload(content),
-      audienceIds: stringKeys(action.audience),
+      perceivedByPersonIds: records(objectRecord(entry.value.diff)?.listenerInterpretations)
+        .filter((interpretation) => interpretation.sourceRepresentationId === content.id)
+        .flatMap((interpretation) => stringKeys([interpretation.listenerId])),
     });
   }
   const requestByEventId = new Map(requestAttempts.flatMap((request) => {
@@ -360,17 +362,17 @@ export function techniqueLearningMetrics(state: SimulationState) {
   const requestFunctionMismatches = new Set<string>();
   const requestPairCounts = new Map<string, number>();
   for (const requestEntry of requestAttempts) {
-    const { entry, request, audienceIds } = requestEntry;
+    const { entry, request, perceivedByPersonIds } = requestEntry;
     const requesterId = stringValue(request?.requesterId);
     const projectId = stringValue(request?.projectId);
     const desiredFunction = stringValue(request?.desiredFunction);
     const requestKey = entry.key;
     const projectMatches = projectId ? projectEntriesById.get(projectId) ?? [] : [];
     const project = projectMatches.length === 1 ? projectMatches[0].value : null;
-    const uniqueAudienceIds = [...new Set(audienceIds)];
+    const uniqueInterpreterIds = [...new Set(perceivedByPersonIds)];
     if (!requesterId || requesterId !== entry.value.who || !personById.has(requesterId)
-      || !audienceIds.length || uniqueAudienceIds.length !== audienceIds.length
-      || audienceIds.some((audienceId) => audienceId === requesterId || !personById.has(audienceId))) {
+      || !perceivedByPersonIds.length || uniqueInterpreterIds.length !== perceivedByPersonIds.length
+      || perceivedByPersonIds.some((interpreterId) => interpreterId === requesterId || !personById.has(interpreterId))) {
       requestPersonMismatches.add(requestKey);
     }
     const createdAtMonth = integerValue(project?.createdAtMonth);
@@ -384,8 +386,8 @@ export function techniqueLearningMetrics(state: SimulationState) {
       requestFunctionMismatches.add(requestKey);
     }
     if (projectId) {
-      for (const audienceId of uniqueAudienceIds) {
-        const pairKey = `${projectId}\u0000${audienceId}`;
+      for (const interpreterId of uniqueInterpreterIds) {
+        const pairKey = `${projectId}\u0000${interpreterId}`;
         requestPairCounts.set(pairKey, (requestPairCounts.get(pairKey) ?? 0) + 1);
       }
     }
@@ -477,7 +479,7 @@ export function techniqueLearningMetrics(state: SimulationState) {
       const demonstratorMatches = Boolean(demonstratorId
         && demonstratorId !== learnerId
         && personById.has(demonstratorId)
-        && requestEntry?.audienceIds.includes(demonstratorId)
+        && requestEntry?.perceivedByPersonIds.includes(demonstratorId)
         && demonstrationEvent?.who === demonstratorId
         && demonstrationRef?.requestEventId === requestEventId
         && demonstrationDiff.techniqueRequestEventId === requestEventId
@@ -814,7 +816,7 @@ export function techniqueLearningMetrics(state: SimulationState) {
     const teacherConfidence = finiteValue(diff.teachingTeacherConfidence);
     if (teacherConfidence === null || teacherConfidence < 55) techniqueTeachingUnreliableTeacherViolations += 1;
     const atMonth = integerValue(event.atMonth) ?? 0;
-    for (const learnerId of stringKeys(diff.taughtAudienceIds)) {
+    for (const learnerId of stringKeys(diff.taughtInterpreterIds)) {
       techniqueTeachingLearnerIds.add(learnerId);
       const learner = personById.get(learnerId);
       const bornAtMonth = integerValue(learner?.bornAtMonth);

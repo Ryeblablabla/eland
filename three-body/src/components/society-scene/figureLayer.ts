@@ -275,7 +275,11 @@ export function createFigureLayer({
       const speechKey = speechLine ? `${speechLine.id}|${speechLine.text}` : '';
       if (speechKey !== f.speechKey) {
         if (speechLine) {
-          setSpeechBubbleTexture(f, speechLine.text, 'center');
+          setSpeechBubbleTexture(
+            f,
+            speechLine.text,
+            'center',
+          );
           f.speechBubble.center.y = 0;
         } else {
           f.speechTexture?.dispose();

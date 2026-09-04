@@ -1,3 +1,4 @@
+import type { WorldAdjudicatedInteraction } from './action';
 import type { PersonState } from './person';
 
 export const CHARACTER_AGENDA_VERSION = 'character-agenda-v1' as const;
@@ -56,9 +57,11 @@ export type CharacterAgendaObservationTargetRef =
 
 export type CharacterAgendaProbe =
   | { kind: 'observe'; target: CharacterAgendaObservationTargetRef }
+  | { kind: 'world-interaction'; adjudication: WorldAdjudicatedInteraction }
   | { kind: 'combine'; ownStackIds: [string, string] | [string, string, string] }
   | { kind: 'expose'; inputStackId: string; target: CharacterAgendaVoxelRef }
-  | { kind: 'exert'; toolStackId: string; inputStackId: string; target: CharacterAgendaVoxelRef };
+  | { kind: 'exert'; toolStackId: string; inputStackId: string; target: CharacterAgendaVoxelRef }
+  | { kind: 'move'; target: CharacterAgendaVoxelRef };
 
 export interface CharacterAgendaApproachProposal {
   /** Stable semantic identity supplied by a local compiler when possible. */
@@ -555,9 +558,45 @@ function evictableApproach(approaches: CharacterAgendaApproach[]): CharacterAgen
       || left.id.localeCompare(right.id))[0];
 }
 
+function normalizeAimText(text: string): string {
+  return text.replace(/[\s，。、；：？！""''（）《》〈〉—…·,.;:?!'"()[\]<>-]/gu, '');
+}
+
+function aimBigrams(text: string): Set<string> {
+  const normalized = normalizeAimText(text);
+  const grams = new Set<string>();
+  if (normalized.length === 1) grams.add(normalized);
+  for (let index = 0; index < normalized.length - 1; index += 1) {
+    grams.add(normalized.slice(index, index + 2));
+  }
+  return grams;
+}
+
+const AIM_NEAR_DUPLICATE_MIN_LENGTH = 8;
+const AIM_NEAR_DUPLICATE_CONTAINMENT = 0.6;
+
+/**
+ * Character-bigram containment between two aim phrasings. Long, mostly
+ * overlapping paraphrases ("把松散的土石固定起来，避免后续滑落风险" vs
+ * "把脚下松散的土石固定起来以应对雾气加重带来的滑落风险") score high;
+ * short or object-swapped aims stay distinct.
+ */
+export function aimTextNearDuplicate(left: string, right: string): boolean {
+  const normalizedLeft = normalizeAimText(left);
+  const normalizedRight = normalizeAimText(right);
+  if (normalizedLeft.length < AIM_NEAR_DUPLICATE_MIN_LENGTH
+    || normalizedRight.length < AIM_NEAR_DUPLICATE_MIN_LENGTH) return false;
+  if (normalizedLeft === normalizedRight) return true;
+  const leftGrams = aimBigrams(normalizedLeft);
+  const rightGrams = aimBigrams(normalizedRight);
+  if (!leftGrams.size || !rightGrams.size) return false;
+  let shared = 0;
+  for (const gram of leftGrams) if (rightGrams.has(gram)) shared += 1;
+  return shared / Math.min(leftGrams.size, rightGrams.size) >= AIM_NEAR_DUPLICATE_CONTAINMENT;
+}
+
 function allApproachEvidence(approach: CharacterAgendaApproach): string[] {
-  return mergeFactIds(
-    approach.sourceFactIds,
+  return mergeFactIds(    approach.sourceFactIds,
     ...approach.evaluations.flatMap((evaluation) => [evaluation.basisFactIds, evaluation.evidenceFactIds]),
   );
 }
@@ -598,7 +637,16 @@ export function upsertCharacterAgenda(
   if (sourceFactIds.length === 0) return resultWithCurrent(state, 'ungrounded-proposal', false);
 
   const basisKey = characterAgendaBasisKey({ basisKey: proposal.basisKey, theme, aim });
-  const existing = state.items.find((item) => item.basisKey === basisKey);
+  // The model rephrases the same durable aim month over month; an exact
+  // basisKey match alone lets near-identical concerns pile up. Merge a
+  // clearly paraphrased aim into the live item so the agenda stays a set of
+  // distinct concerns, not a log of phrasings. Short aims are excluded:
+  // "取得足够的石" and "取得足够的食物" must never collapse into one.
+  const existing = state.items.find((item) => item.basisKey === basisKey)
+    ?? state.items.find((item) => item.status !== 'fulfilled'
+      && item.status !== 'abandoned'
+      && item.theme === theme
+      && aimTextNearDuplicate(item.aim, aim));
   const approachBasis = characterAgendaApproachBasisKey(basisKey, proposal.approach);
   if (!existing) {
     let evictedItemId: string | undefined;

@@ -36,7 +36,7 @@
                                              ├─ 本地 BDI
                                              ├─ CharacterAgenda review
                                              ├─ 模型 decision / interaction
-                                             └─ ConversationEpisode
+                                             └─ 逐人语言感知与解释
 ```
 
 `WorldEvent` 仍是已经发生之事的权威；`KnownFact` 仍决定人物是否可靠掌握技术；`Relation` 仍是当前关系余额；`CharacterAgenda` 仍是长期主观关切；`Intent` 仍是唯一当前执行焦点。MemoryStore 只能说明“这个人现在还能怎样回忆或概括这些来源”。
@@ -75,13 +75,12 @@ interface RecalledMemory {
 
 只有本人行动、本人受到的直接后果、真实见证或真实沟通才能写入 owner-scoped 记忆。全局事件、观察器阶段和他人私有事实不能进入。
 
-### 4.2 真实对话
+### 4.2 统一语言波
 
-模型台词只有在对应 `completed voice talk` ActionFact 已存在且参与者可核验后，才写入双方的 dialogue memory：
+每个模型 MentalAct 的 `utterance` 都是一次真实外发语言。普通物理决定直接绑定 DecisionFact；社会性 talk 的 ActionFact 复用同一条广播，不生成第二句话。说话者保存原文，其他人物只保存其最低材质路径和随机混淆共同决定的个人版本。检测到残片不等于解码成功，解码成功也只会创建本人的 `listenerInterpretation`，不会让信号本身拥有语义对象。
 
-- 说话者记得“我说过什么”；
-- 听者记得“我亲耳听见什么”；
-- exact text 只是“有人说过这句话”的主观事实，不自动成为知识、同意、履约或关系增长；
+- 同一条语言对不同人物可能留下不同残片；
+- exact text 只证明本人确实说过或听见，不自动成为知识、同意、履约或关系增长；
 - blocked / failed 动作、孤儿 reply 或分支不匹配的台词不写入；
 - 玩家与人物的真实回复也可走同一 lane，但必须绑定该分支的交互记录，不能成为世界客观事实。
 
@@ -186,37 +185,15 @@ MemoryStore 可以产生有源 `AgendaSignal`，但不能自动替人物写长�
 
 signal 只触发已有 decision 请求中的 agenda review，并携带当次临时记忆句柄。模型可以 create / revise / pause / abandon；本地继续重验来源、可供性和 probe。没有边沿 signal 时不增加模型调用。
 
-## 9. ConversationEpisode
+## 9. 解释驱动的回应
 
-正在发生的对话是 MemoryStore 管理的共享协调状态，不是从行动历史临时猜出的候选。
+旧 `ConversationEpisode`、预留听者和共享回合状态已经删除。opening 只是一次无收件人的 talk；任何实际解码并形成 `listenerInterpretation` 的人物，都可以在有界时间内依据该 ActionFact 产生自己的 response 候选。
 
-```ts
-interface ConversationEpisode {
-  id: string;
-  initiatorId: string;
-  listenerId: string;
-  status: 'reserved' | 'awaiting-response' | 'response-reserved' | 'closed' | 'expired' | 'cancelled';
-  openingIntentId: string;
-  responseIntentId?: string;
-  openingActionEventId?: string;
-  responseActionEventId?: string;
-  lastActionEventId?: string;
-  nextSpeakerId?: string;
-  turnCount: number;
-  openingTurnMemoryIds: string[];
-  responseTurnMemoryIds: string[];
-  createdAtMonth: number;
-  replyByMonth: number;
-}
-```
-
-- 同一人物同一时刻最多参与一个 live episode；同批 A→B / B→A / C→B 只有一个 reservation 成功；
-- 同月批量决策使用月初上下文，但落地前必须用当前 `ConversationEpisode` 状态重编译。已经被较早人物预留、关闭或取消的 opening 不得以同一 episode ID 再生成；本地选择失效时在最新合法候选中只重规划一次，模型选择失效时只做非自愿社交的本地回退并把提交事实标为 `usedModel=false`，不能写一条没有 Intent 的“有效决定”吞掉人物整月行动额度；
-- 开场动作 completed 后才提交原话并进入 awaiting-response；失败则 cancelled；
-- response 只能由当前 `nextSpeakerId`、在期限内、针对精确上一句执行；模型返回 `continue` 时 `nextSpeakerId` 交给另一方，允许跨月多轮接力，返回 `close / rupture`、明确选择别的事或期限到达才 closed / expired；
-- 等待回应不占 active Intent；独立 open / response 作为可恢复的短子中断，说完恢复原生产 Intent；
-- 模型拥有说什么、回应 / 回避 / 转题 / 收束，规则只拥有参与者、顺序、期限、来源与合法性；
-- 对话内容不自动增加 trust / bond，也不自动生成制度。
+- response 只引用精确 `referenceEventId`，不会凭名字或文本相似度寻找上一句；
+- 一个人是否回应属于其下一次决策，不由说话者提前占用或预留；
+- 同一 opening 可被多个真实解释者分别回应；每条 response 再独立传播，原说话者也可能因遮挡和噪声没有听清；
+- 回复记忆写入时会把对应父记忆标为已处理，不需要共享 episode 状态；
+- 对话内容不自动增加 trust / bond，也不自动生成制度。正式知识、协议与授权只读取逐人解释结果。
 
 ## 10. 行动历史
 

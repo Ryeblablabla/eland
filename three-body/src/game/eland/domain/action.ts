@@ -18,7 +18,7 @@ import type { MortuaryPhase } from './mortuary';
 import type { SourcedMassMeasurementAction } from './measurement';
 import type { ActionOptionSemanticsV1 } from './action-option-semantics';
 import type { ProjectLeadershipSuccessionActionBasis } from './project-leadership';
-import type { CharacterAgendaProposal, CharacterAgendaUpdate } from './character-agenda';
+import type { CharacterAgendaProbe, CharacterAgendaProposal, CharacterAgendaUpdate } from './character-agenda';
 import type { MentalAct } from './mental-act';
 
 export interface VoxelPosition { x: number; y: number; z: number }
@@ -62,6 +62,76 @@ export type WorldRef =
   | { kind: 'animal'; animalId: string }
   | { kind: 'remains'; remainsId: string }
   | { kind: 'person'; personId: PersonId };
+
+/** Generic state mutations available to the Plan Agent after its target refs are resolved locally. */
+export type WorldInteractionEffect =
+  | { kind: 'knowledge'; summary: string }
+  | { kind: 'consume'; target: WorldRef; quantity: number }
+  | { kind: 'produce'; materialId: MaterialId; quantity: number; destination: 'inventory' | 'ground' }
+  | {
+      kind: 'relocate';
+      target: Extract<WorldRef, { kind: 'drop' | 'inventory-stack' }>;
+      destination: Extract<WorldRef, { kind: 'voxel' }>;
+      quantity: number;
+    }
+  | { kind: 'replace-voxel'; target: Extract<WorldRef, { kind: 'voxel' }>; materialId: MaterialId }
+  | { kind: 'move-self'; target: Extract<WorldRef, { kind: 'voxel' }> }
+  | { kind: 'body'; target?: Extract<WorldRef, { kind: 'person' }>; field: 'health' | 'hydration' | 'nutrition'; delta: number }
+  | { kind: 'relation'; target: Extract<WorldRef, { kind: 'person' }>; field: 'trust' | 'bond' | 'fear'; delta: number }
+  | {
+      /**
+       * Bind the verdict's consumed materials into a persistent composite
+       * entity at a real anchor voxel. The arrangement is a physical
+       * primitive, never an artefact type; the world computes all properties.
+       */
+      kind: 'assemble';
+      target: Extract<WorldRef, { kind: 'voxel' }>;
+      arrangement: 'support' | 'pile' | 'lash' | 'form';
+      summary: string;
+    }
+  | {
+      /** Add this verdict's consumed materials to the work anchored at target. */
+      kind: 'modify-structure';
+      target: Extract<WorldRef, { kind: 'voxel' }>;
+      arrangement?: 'support' | 'pile' | 'lash' | 'form';
+      summary?: string;
+    }
+  | {
+      /**
+       * A real contact with a named animal (feed, calm, groom). The world —
+       * never the model — derives the bond delta from what was actually done.
+       */
+      kind: 'bond-animal';
+      target: Extract<WorldRef, { kind: 'animal' }>;
+      summary: string;
+    }
+  | {
+      kind: 'world-state';
+      summary: string;
+      /**
+       * Open state is still extensible, but it is attached to one authoritative
+       * entity/property instead of existing as an unscoped narrative sentence.
+       * Older schema-19 events may omit these fields and remain replayable.
+       */
+      target?: WorldRef;
+      stateKey?: string;
+      stateValue?: string;
+    };
+
+/** Authoritative verdict returned by the Plan Agent for one otherwise unknown interaction. */
+export interface WorldAdjudicatedInteraction {
+  version: 'world-adjudicated-interaction-v1';
+  request: string;
+  expectedResult?: string;
+  targets: WorldRef[];
+  status: 'completed' | 'blocked' | 'failed';
+  result: string;
+  feedback?: {
+    correction: string;
+    adjustment: string;
+  };
+  effects: WorldInteractionEffect[];
+}
 
 export type HolderRef =
   | { kind: 'ground'; cellId: number; z?: number }
@@ -205,13 +275,9 @@ export type GroundedConversationMove =
 /** A social utterance grounded in replayable life history rather than generic flavor text. */
 export interface GroundedConversationRef {
   version: 'grounded-conversation-v1';
-  /** Shared live coordination owned by the unified memory store. */
-  episodeId?: string;
   basisKey: string;
   topic: GroundedConversationTopic;
   turn: 'opening' | 'response';
-  speakerId: PersonId;
-  listenerId: PersonId;
   sourceFactIds: string[];
   /** Present only after an open option has been rebound through a validated model decision. */
   openGroundingCompiled?: true;
@@ -233,7 +299,6 @@ export interface OpenConversationGroundingFact {
 /** Ephemeral option envelope. It is never itself an authoritative claim. */
 export interface OpenConversationGroundingEnvelope {
   version: 'open-conversation-grounding-v1';
-  listenerId: PersonId;
   fallbackSourceFactIds: string[];
   facts: OpenConversationGroundingFact[];
 }
@@ -393,12 +458,19 @@ export type PrimitiveAction =
       };
     }
   | {
+      /** Any locally grounded interaction that lacked a built-in rule and was resolved by the Plan Agent. */
+      kind: 'world-interact';
+      adjudication: WorldAdjudicatedInteraction;
+    }
+  | {
       /** Physical vocalization. Meaning is the speaker's private reading, not a property of the sound. */
       kind: 'talk';
       speakerMeaning: RepresentationInput;
+      /** Acoustic energy only; it never selects a receiver. */
+      delivery?: 'whisper' | 'normal' | 'call';
     }
   | {
-      /** Material inscription is not airborne speech and therefore has no acoustic audience. */
+      /** Material inscription is not airborne speech and therefore has no spatial reception. */
       kind: 'inscribe';
       inscriptionMeaning: Extract<RepresentationInput, { kind: 'claim' }>;
       carrierStackId: string;
@@ -683,7 +755,7 @@ export interface ActionOption {
 export type IntentDecision =
   | {
       kind: 'start'; optionId: string; followUpOptionId?: string; reason: string;
-      utterance?: string; lifeReview?: LifeReviewEvidence;
+      lifeReview?: LifeReviewEvidence;
       /** Resolved server-side source ids selected through request-scoped handles. */
       groundingSourceFactIds?: string[];
       /** Optional imaginative concern/approach; local rules ground it before persistence. */
@@ -697,7 +769,7 @@ export type IntentDecision =
     }
   | {
       kind: 'revise'; intentId: string; optionId: string; followUpOptionId?: string;
-      reason: string; utterance?: string; lifeReview?: LifeReviewEvidence;
+      reason: string; lifeReview?: LifeReviewEvidence;
       /** Resolved server-side source ids selected through request-scoped handles. */
       groundingSourceFactIds?: string[];
       mode?: 'replace' | 'interrupt'; interruptionKind?: IntentInterruptionKind;
@@ -709,12 +781,14 @@ export type IntentDecision =
       /** Server-owned link to a player conversation that requested this model review. */
       sourceInteractionId?: string;
     }
-  | { kind: 'suspend'; intentId: string; reason: string }
-  | { kind: 'resume'; intentId: string; reason: string }
-  | { kind: 'abandon'; intentId: string; reason: string }
+  | { kind: 'suspend'; intentId: string; reason: string; mentalAct?: MentalAct }
+  | { kind: 'resume'; intentId: string; reason: string; mentalAct?: MentalAct }
+  | { kind: 'abandon'; intentId: string; reason: string; mentalAct?: MentalAct }
   | {
       kind: 'idle'; reason: string;
       /** Allows reflection to change a durable concern without inventing an executable option. */
       characterAgendaUpdate?: CharacterAgendaUpdate;
+      /** Server-grounded one-turn physical probe; applyDecision compiles it into an ordinary Intent. */
+      executionProbe?: CharacterAgendaProbe;
       mentalAct?: MentalAct;
     };

@@ -322,6 +322,15 @@ function actionVisual(
         : {}),
     };
   }
+  if (action.kind === 'world-interact') {
+    const target = action.adjudication.targets[0];
+    return {
+      actionKind: 'world-interact',
+      ...factLocation,
+      ...targetIdentity(target),
+      ...worldRefLocation(state, lookup, target),
+    };
+  }
   if (action.kind === 'inscribe') {
     const toolMaterialId = lookup.inventoryByPersonId.get(person.id)?.get(action.carrierStackId)?.materialId;
     return {
@@ -418,6 +427,11 @@ function actionHistoryDetail(state: SimulationState, lookup: StateLookup, event:
     return `${to} · 对象 ${targets}${tool ? ` · 使用 ${materialDefinition(tool.materialId).name}` : ''}`;
   }
   if (event.action.kind === 'attend') return `${to} · 观察 ${historyWorldRefLabel(state, lookup, event.action.target)}`;
+  if (event.action.kind === 'world-interact') {
+    const targets = event.action.adjudication.targets
+      .map((target) => historyWorldRefLabel(state, lookup, target)).join('、') || '无明确对象';
+    return `${to} · ${event.action.adjudication.request} · 对象 ${targets}`;
+  }
   if (event.action.kind === 'inscribe') return `${to} · 在记录载体上留下刻痕`;
   const perceived = languageBroadcastFromDiff(event.diff)?.perceivedByPersonIds
     .map((id) => lookup.peopleById.get(id)?.name ?? '未知人物').join('、') || '无人明确感知';
@@ -787,10 +801,11 @@ export function toAgentHistory(
         || evidence.outcome === 'paused'
         || evidence.outcome === 'abandoned'
       ));
-      if (event.decision.kind === 'idle' && !meaningfulAgendaReflection) return [];
+      if (event.decision.kind === 'idle' && !meaningfulAgendaReflection && !event.languageBroadcast) return [];
       const summary = playerTextForEvent(state, event);
       if (!summary) return [];
-      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'decision', label: event.decision.kind === 'idle' ? '长期想法变化' : '作出选择', summary, detail: historyCellLabel(state, event.cellId), ...(event.intentId ? { intentId: event.intentId } : {}), usedModel: event.usedModel }];
+      const utterance = 'mentalAct' in event.decision ? event.decision.mentalAct?.utterance.trim() : undefined;
+      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'decision', label: event.decision.kind === 'idle' ? '开口表达' : '作出选择', summary, detail: utterance ? `说：“${utterance}” · ${historyCellLabel(state, event.cellId)}` : historyCellLabel(state, event.cellId), ...(event.intentId ? { intentId: event.intentId } : {}), usedModel: event.usedModel }];
     }
     if (event.kind === 'action') {
       if (event.who !== agentId) return [];

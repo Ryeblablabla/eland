@@ -12,6 +12,7 @@ import {
   projectEventHasEventTimeLead,
 } from './project-leadership';
 import { techniqueOutputMaterialId } from './technique-demonstration';
+import { languageInterpreterIds } from './language-perception';
 import {
   isCompletedPersonalProductionLaborEvent,
   isProductionToolMaterial,
@@ -152,7 +153,7 @@ export function projectKnowledgeRequestHasAuthoritativeSource(
     && projectEventHasEventTimeLead(project, event)
     && project.actionEventIds.includes(request.requestEventId)
     && request.listenerIds.length > 0
-    && samePersonIds(request.listenerIds, ((event.diff.understoodByPersonIds as string[] | undefined) ?? []))
+    && samePersonIds(request.listenerIds, languageInterpreterIds(event.diff, event.action.speakerMeaning.id))
     && payload.version === request.version
     && payload.projectId === request.projectId
     && payload.requesterId === request.requesterId

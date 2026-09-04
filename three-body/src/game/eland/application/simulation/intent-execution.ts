@@ -4,13 +4,12 @@ import {
   executePrimitiveAction,
   goalSatisfied,
 } from '../../domain/action-executor';
-import type { ActionOption } from '../../domain/action';
+import type { ActionOption, PrimitiveAction } from '../../domain/action';
 import { agreementById, agreementsForPerson } from '../../domain/agreement';
 import { recordIntentGoalOutcome } from '../../domain/cognition';
 import {
   clearPlanningEventOverlay,
   registerPlanningEventOverlay,
-  worldEventById,
 } from '../../domain/event-index';
 import {
   composeIntentChoice,
@@ -20,8 +19,9 @@ import {
 } from '../../domain/intent';
 import { lifePlanningStage } from '../../domain/life-stage';
 import { remember } from '../../domain/memory';
-import { broadcastLanguage } from '../../domain/language-perception';
+import { broadcastLanguage, type LanguageBroadcast } from '../../domain/language-perception';
 import { materialHas } from '../../domain/material';
+import { spokenTextSupportsMeaning } from '../../domain/spoken-meaning';
 import type {
   ActionFact,
   Decision,
@@ -62,17 +62,14 @@ import { isFulfillmentOption, isRequiredSocialOption, isStateAchievementGoal, Ru
 import { clamp } from './state-utils';
 import { actionOptionSemantics, isEdgeActionOption } from '../../domain/action-option-semantics';
 import {
-  bindConversationEpisodeIntent,
-  cancelConversationReservation,
-  reserveConversationEpisode,
-  pendingConversationEpisodeForListener,
-  closeConversationWithoutResponse,
+  rememberDecisionLanguage,
 } from '../../domain/agent-memory';
 import {
   acceptCharacterAgendaProposal,
   acceptCharacterAgendaUpdate,
   bindAcceptedAgendaToIntent,
   bindExistingAgendaIntent,
+  buildImmediateCharacterProbeOption,
   type AcceptedCharacterAgendaProposal,
 } from '../character-agenda';
 
@@ -436,6 +433,26 @@ export function activeIntent(state: SimulationState, person: PersonState): Inten
   if (!person.activeIntentId) return undefined;
   const intent = intentById(state, person.activeIntentId);
   return intent?.status === 'active' ? intent : undefined;
+}
+
+function decisionLanguageForImmediateTalk(
+  state: SimulationState,
+  intent: Intent,
+  action: PrimitiveAction,
+  atMonth: number,
+  currentMonthEvents: readonly WorldEvent[],
+): LanguageBroadcast | undefined {
+  if (action.kind !== 'talk' || !intent.sourceDecisionEventId) return undefined;
+  const source = [...currentMonthEvents, ...state.world.past].find((event) => (
+    event.id === intent.sourceDecisionEventId
+  ));
+  if (!source
+    || source.kind !== 'decision'
+    || source.atMonth !== atMonth
+    || !source.usedModel
+    || !source.languageBroadcast
+    || source.languageBroadcast.text !== action.speakerMeaning.summary) return undefined;
+  return source.languageBroadcast;
 }
 
 /**
@@ -805,6 +822,29 @@ export function applyDecision(
   planningChannel: NonNullable<DecisionFact['planningChannel']> = 'ordinary',
   selectedOptionAtDecision?: ActionOption,
 ): DecisionFact {
+  if (decision.kind === 'idle' && decision.executionProbe) {
+    const option = buildImmediateCharacterProbeOption(
+      context,
+      decision.executionProbe,
+      `agent-probe:${person.id}:${atMonth}:${planningTick}`,
+    );
+    if (option) {
+      context = { ...context, options: [option, ...context.options] };
+      selectedOptionAtDecision = option;
+      decision = context.activeIntent ? {
+        kind: 'revise',
+        intentId: context.activeIntent.id,
+        optionId: option.id,
+        reason: decision.reason,
+        ...(decision.mentalAct ? { mentalAct: decision.mentalAct } : {}),
+      } : {
+        kind: 'start',
+        optionId: option.id,
+        reason: decision.reason,
+        ...(decision.mentalAct ? { mentalAct: decision.mentalAct } : {}),
+      };
+    }
+  }
   ({ decision, usedModel } = revalidateDecisionAtCommit(
     context,
     decision,
@@ -815,13 +855,14 @@ export function applyDecision(
   ));
   const id = `e-${atMonth}-decision-${person.id}-${planningTick}-${orderInMonth}`;
   const mentalAct = 'mentalAct' in decision ? decision.mentalAct : undefined;
-  const thoughtBroadcast = usedModel && mentalAct?.thoughtLine.trim()
+  const languageBroadcast = usedModel && mentalAct?.utterance.trim()
     ? broadcastLanguage({
         seed: state.seed,
         sourceFactId: id,
         speakerId: person.id,
-        mode: 'transparent-thought',
-        text: mentalAct.thoughtLine,
+        text: mentalAct.utterance,
+        intensity: mentalAct.delivery === 'whisper' ? 0.35 : mentalAct.delivery === 'call' ? 1.8 : 1,
+        world: state.world.grid,
         speakerPosition: person.position,
         listeners: state.people.filter(isAlive).map((listener) => ({
           id: listener.id,
@@ -840,10 +881,10 @@ export function applyDecision(
   const compiledOpenOption = requestedOption?.openConversationGrounding
     && (decision.kind === 'start' || decision.kind === 'revise')
     && decision.groundingSourceFactIds !== undefined
-    && Boolean(decision.utterance?.trim())
+    && Boolean(mentalAct?.utterance.trim())
     ? compileOpenConversationOption(state, person, requestedOption, decision.groundingSourceFactIds)
     : undefined;
-  const decisionContext = requestedOption?.openConversationGrounding
+  let decisionContext = requestedOption?.openConversationGrounding
     ? {
         ...context,
         options: compiledOpenOption
@@ -851,16 +892,36 @@ export function applyDecision(
           : context.options.filter((option) => option.id !== requestedOption.id),
       }
     : context;
+  const utterance = usedModel ? mentalAct?.utterance.trim() : undefined;
+  const delivery = usedModel ? mentalAct?.delivery : undefined;
+  const deliveryOptionId = (decision.kind === 'start' || decision.kind === 'revise') ? decision.optionId : undefined;
+  const modelTalkAction = (action: PrimitiveAction): PrimitiveAction => action.kind === 'talk'
+    ? (() => {
+        const expressed = !utterance || spokenTextSupportsMeaning(utterance, action.speakerMeaning);
+        return {
+          ...action,
+          ...(delivery ? { delivery } : {}),
+          ...(utterance ? {
+            speakerMeaning: expressed
+              ? { ...action.speakerMeaning, summary: utterance }
+              : { id: action.speakerMeaning.id, kind: 'claim' as const, summary: utterance },
+          } : {}),
+        };
+      })()
+    : action;
+  if (utterance || delivery) decisionContext = {
+    ...decisionContext,
+    options: decisionContext.options.map((option) => option.id !== deliveryOptionId ? option : {
+      ...option,
+      nextAction: modelTalkAction(option.nextAction),
+      ...(option.completionAction ? {
+        completionAction: modelTalkAction(option.completionAction),
+      } : {}),
+    }),
+  };
   const selectedOption = decision.kind === 'start' || decision.kind === 'revise'
     ? decisionContext.options.find((option) => option.id === decision.optionId)
     : undefined;
-  const selectedConversation = groundedConversationForOption(selectedOption);
-  const pendingResponse = usedModel
-    ? pendingConversationEpisodeForListener(state, person.id, atMonth)
-    : undefined;
-  if (pendingResponse && selectedConversation?.episodeId !== pendingResponse.id) {
-    closeConversationWithoutResponse(state, person.id, atMonth, '本人把注意力留给了别的事，没有继续这轮对话');
-  }
   const selectedReproductionOption = selectedOption
     && actionOptionSemantics(selectedOption).reproduction
     ? selectedOption
@@ -955,38 +1016,16 @@ export function applyDecision(
     return null;
   };
   if (decision.kind === 'start') {
-    const conversation = groundedConversationForOption(selectedOption);
-    const reservation = conversation
-      ? reserveConversationEpisode(state, conversation, id, atMonth)
-      : undefined;
-    const started = conversation && !reservation
-      ? null
-      : startIntent(state, person, decisionContext, decision.optionId, decision.followUpOptionId, id, atMonth);
-    if (conversation?.episodeId && started) {
-      bindConversationEpisodeIntent(state, conversation.episodeId, conversation.turn, started.id);
-    } else if (conversation?.episodeId && reservation) {
-      cancelConversationReservation(state, conversation.episodeId, conversation.turn, '没有建立可执行对话意图');
-    }
+    const started = startIntent(state, person, decisionContext, decision.optionId, decision.followUpOptionId, id, atMonth);
     attachLifeReview(started);
     attachCharacterAgenda(started);
     intentId = started?.id;
     domain = started?.domain;
     result = started ? `${person.name}决定：${started.summary}` : `${person.name}没有找到该行动机会`;
   } else if (decision.kind === 'revise') {
-    const conversation = groundedConversationForOption(selectedOption);
-    const reservation = conversation
-      ? reserveConversationEpisode(state, conversation, id, atMonth)
-      : undefined;
-    const started = conversation && !reservation
-      ? null
-      : decision.mode === 'interrupt' && decision.interruptionKind
+    const started = decision.mode === 'interrupt' && decision.interruptionKind
         ? startInterruptIntent(state, person, decisionContext, decision.optionId, id, atMonth, decision.interruptionKind)
         : startIntent(state, person, decisionContext, decision.optionId, decision.followUpOptionId, id, atMonth);
-    if (conversation?.episodeId && started) {
-      bindConversationEpisodeIntent(state, conversation.episodeId, conversation.turn, started.id);
-    } else if (conversation?.episodeId && reservation) {
-      cancelConversationReservation(state, conversation.episodeId, conversation.turn, '没有建立可执行对话意图');
-    }
     attachLifeReview(started);
     attachCharacterAgenda(started);
     intentId = started?.id;
@@ -1051,7 +1090,7 @@ export function applyDecision(
     }
   }
   person.lastDecisionText = result;
-  return {
+  const decisionFact: DecisionFact = {
     id,
     kind: 'decision',
     atMonth,
@@ -1111,10 +1150,25 @@ export function applyDecision(
       },
     } : {}),
     ...(characterAgendaEvidence.length ? { characterAgendaEvidence } : {}),
-    ...(thoughtBroadcast ? { thoughtBroadcast } : {}),
+    ...(languageBroadcast ? { languageBroadcast } : {}),
     usedModel,
     result,
   };
+  const immediateTalkConsumesDecisionLanguage = Boolean(
+    languageBroadcast && intentId && selectedOption?.nextAction.kind === 'talk',
+  );
+  if (mentalAct?.planFeedback) {
+    person.knowledge.push({
+      id: `plan-feedback:${id}`,
+      kind: 'claim',
+      summary: `${mentalAct.planFeedback.correction}；本次调整：${mentalAct.planFeedback.adjustment}`,
+      confidence: 60,
+      learnedAtMonth: atMonth,
+      sourceEventIds: [...new Set([...mentalAct.planFeedback.sourceEventIds, id])].slice(-24),
+    });
+  }
+  if (!immediateTalkConsumesDecisionLanguage) rememberDecisionLanguage(state, decisionFact);
+  return decisionFact;
 }
 
 /** Classify the chosen decision, not the observer metric that happened to wake the planner. */
@@ -1228,13 +1282,25 @@ export function executeActiveIntent(
   const alreadyAttemptedReproductionThisMonth = intent.lastReproductionAttemptAtMonth === atMonth;
   if (alreadyAttemptedReproductionThisMonth || (!intent.projectId && intent.lastProcessAttemptAtMonth === atMonth)) return null;
   if (intent.openingAction && !intent.openingActionCompleted) {
+    const decisionLanguage = decisionLanguageForImmediateTalk(
+      state,
+      intent,
+      intent.openingAction,
+      atMonth,
+      currentMonthEvents,
+    );
     const fact = executeWithCurrentEvidence(() => executePrimitiveAction(
       state,
       person,
       intent.openingAction!,
       atMonth,
       orderInMonth,
-      { intentId: intent.id, cause: 'intent', actionTick },
+      {
+        intentId: intent.id,
+        cause: 'intent',
+        actionTick,
+        ...(decisionLanguage ? { languageBroadcast: decisionLanguage } : {}),
+      },
     ));
     intent.actionEventIds.push(fact.id);
     person.currentActionText = fact.result;
@@ -1418,7 +1484,22 @@ export function executeActiveIntent(
   const recordUseConfidenceBefore = intent.recordUseBasis
     ? person.knowledge.find((knowledge) => knowledge.id === intent.recordUseBasis?.knowledgeId)?.confidence
     : undefined;
-  const fact = executeWithCurrentEvidence(() => executeIntentAction(state, person, intent, atMonth, orderInMonth, actionTick));
+  const decisionLanguage = decisionLanguageForImmediateTalk(
+    state,
+    intent,
+    intent.nextAction,
+    atMonth,
+    currentMonthEvents,
+  );
+  const fact = executeWithCurrentEvidence(() => executeIntentAction(
+    state,
+    person,
+    intent,
+    atMonth,
+    orderInMonth,
+    actionTick,
+    decisionLanguage,
+  ));
   let recordReplicationReceiptCompleted = false;
   let recordReplicationReceiptCandidate = false;
   if (intent.recordUseBasis && intent.recordUseStage) {
@@ -1600,8 +1681,9 @@ export function executeActiveIntent(
       && fact.status === 'completed';
     const reproductionAttempted = fact.action.kind === 'act' && fact.action.operation === 'reproduce';
     const processAttemptCompleted = fact.status === 'completed'
-      && fact.action.kind === 'act'
-      && (reproductionAttempted || fact.action.operation === 'combine' || fact.action.operation === 'exert' || fact.action.operation === 'expose');
+      && (fact.action.kind === 'world-interact'
+        || fact.action.kind === 'act'
+        && (reproductionAttempted || fact.action.operation === 'combine' || fact.action.operation === 'exert' || fact.action.operation === 'expose'));
     if (processAttemptCompleted) intent.lastProcessAttemptAtMonth = atMonth;
     const acceptedAgreementId = fact.status === 'completed'
       && fact.action.kind === 'talk'

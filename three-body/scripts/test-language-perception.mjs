@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'eland-auditory-perception-'));
-const bundlePath = path.join(temporaryDirectory, 'auditory-perception.mjs');
+const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'eland-language-perception-'));
+const bundlePath = path.join(temporaryDirectory, 'language-perception.mjs');
 
 try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
@@ -55,7 +55,43 @@ try {
     'talk-2',
   ), '');
 
-  console.log('auditory perception tests passed');
+  const world = (fill = 0) => ({
+    version: 2,
+    width: 84,
+    depth: 52,
+    levels: 12,
+    generator: { version: 'material-world-v4-regional-geology', seed: 1 },
+    palette: [],
+    voxels: new Uint16Array(84 * 52 * 12).fill(fill),
+  });
+  const source = { cellId: 10 * 84 + 1, z: 1 };
+  const listener = { id: 'listener', position: { cellId: 10 * 84 + 3, z: 1 } };
+  const openWorld = world();
+  const openCost = auditory.minimumLanguagePathCosts(openWorld, source, [listener]).get('listener');
+  const singleStoneWorld = world();
+  singleStoneWorld.voxels[2 * 84 * 52 + 10 * 84 + 2] = 1;
+  const aroundStoneCost = auditory.minimumLanguagePathCosts(singleStoneWorld, source, [listener]).get('listener');
+  const leafyWorld = world();
+  const stoneWorld = world();
+  for (let y = 0; y < 52; y += 1) {
+    for (let z = 0; z < 12; z += 1) {
+      leafyWorld.voxels[z * 84 * 52 + y * 84 + 2] = 14;
+      stoneWorld.voxels[z * 84 * 52 + y * 84 + 2] = 1;
+    }
+  }
+  const leafyCost = auditory.minimumLanguagePathCosts(leafyWorld, source, [listener]).get('listener');
+  const stoneCost = auditory.minimumLanguagePathCosts(stoneWorld, source, [listener]).get('listener');
+  assert(openCost < leafyCost && leafyCost < stoneCost,
+    'the minimum path must make foliage resist more than air and stone resist more than foliage');
+  assert(openCost < aroundStoneCost && aroundStoneCost < stoneCost,
+    'a local obstacle must be routed around when that is cheaper than crossing a sealed wall');
+
+  const nearOutsideOpen = auditory.languageIntelligibility(17, 'open', 'speaker', 'listener', openCost);
+  const nearOutsideStone = auditory.languageIntelligibility(17, 'stone', 'speaker', 'listener', stoneCost, 0.35);
+  assert(nearOutsideOpen > nearOutsideStone,
+    'a nearby listener across a wall should hear a whisper less clearly than across open air');
+
+  console.log('language perception tests passed');
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });
 }

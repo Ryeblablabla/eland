@@ -16,19 +16,14 @@ interface ObserverLease {
 interface RunnerControl {
   status: 'waiting' | 'stepping';
   promise: Promise<void>;
+  cancelled: boolean;
+  wake?: () => void;
 }
 
 export interface LiveObserverRunnerView {
   status: 'paused' | 'waiting' | 'stepping';
   activeObservers: number;
   leaseTtlMs: number;
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, milliseconds);
-    timer.unref?.();
-  });
 }
 
 function boundedPlaybackInterval(value: number): number {
@@ -69,7 +64,16 @@ export class LiveObserverRunner {
     return this.view(runId, now);
   }
 
-  forget(runId: string): void {
+  async stop(runId: string): Promise<void> {
+    this.observers.delete(runId);
+    const runner = this.runners.get(runId);
+    if (!runner) return;
+    runner.cancelled = true;
+    runner.wake?.();
+    await runner.promise;
+    // An observe request already in flight may have renewed the old lease
+    // while the current month was finishing. It belongs to the authority that
+    // is about to be replaced, so do not let it start the new civilization.
     this.observers.delete(runId);
   }
 
@@ -110,6 +114,7 @@ export class LiveObserverRunner {
     const control: RunnerControl = {
       status: 'waiting',
       promise: Promise.resolve(),
+      cancelled: false,
     };
     control.promise = this.run(runId, control).finally(() => {
       if (this.runners.get(runId) === control) this.runners.delete(runId);
@@ -121,7 +126,7 @@ export class LiveObserverRunner {
     let lastSession: ElandSession | null = null;
     let committedSincePersistence = false;
     try {
-      while (this.activeLeases(runId).length) {
+      while (!control.cancelled && this.activeLeases(runId).length) {
         const session = elandSessions.get(runId, 'step');
         lastSession = session;
         const previous = session?.latest() ?? null;
@@ -129,7 +134,7 @@ export class LiveObserverRunner {
         if (!previous.cosmosSnapshot || previous.cosmosSnapshot.pendingCollapse) return;
         if (session.isBusy()) {
           control.status = 'waiting';
-          await delay(BUSY_RETRY_MS);
+          await this.wait(control, BUSY_RETRY_MS);
           continue;
         }
 
@@ -156,9 +161,10 @@ export class LiveObserverRunner {
         }
         control.status = 'waiting';
         if (!frame || frame.civilizationEnd || frame.cosmosSnapshot?.pendingCollapse) return;
+        if (control.cancelled) return;
         if (!this.activeLeases(runId).length) return;
         const remainingMs = intervalMs - (Date.now() - startedAt);
-        if (remainingMs > 0) await delay(remainingMs);
+        if (remainingMs > 0) await this.wait(control, remainingMs);
       }
     } catch (error) {
       console.warn(`运行 ${runId} 的在线观察推进已暂停：${error instanceof Error ? error.message : String(error)}`);
@@ -171,6 +177,21 @@ export class LiveObserverRunner {
         }
       }
     }
+  }
+
+  private wait(control: RunnerControl, milliseconds: number): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        control.wake = undefined;
+        resolve();
+      }, milliseconds);
+      timer.unref?.();
+      control.wake = () => {
+        clearTimeout(timer);
+        control.wake = undefined;
+        resolve();
+      };
+    });
   }
 }
 

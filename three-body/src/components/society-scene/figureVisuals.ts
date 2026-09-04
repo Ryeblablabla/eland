@@ -6,7 +6,6 @@ export const FIGURE_SCALE = 0.5; // 比当前版本放大一倍；仍保留半�
 export const SPEECH_FONT_PX = 32;
 
 const SPEECH_MAX_LINE_WIDTH_PX = 400;
-const SPEECH_MAX_LINES = 3;
 
 export type SpeechBubblePlacement = 'body-left' | 'center' | 'body-right';
 
@@ -59,7 +58,6 @@ function speechLinesForCanvas(
   const glyphs = Array.from(text.trim().replace(/\s+/gu, ' '));
   const lines: string[] = [];
   let current = '';
-  let truncated = false;
   for (const glyph of glyphs) {
     const candidate = `${current}${glyph}`;
     if (!current || context.measureText(candidate).width <= SPEECH_MAX_LINE_WIDTH_PX) {
@@ -68,19 +66,8 @@ function speechLinesForCanvas(
     }
     lines.push(current);
     current = glyph;
-    if (lines.length >= SPEECH_MAX_LINES) {
-      truncated = true;
-      break;
-    }
   }
-  if (!truncated && current && lines.length < SPEECH_MAX_LINES) lines.push(current);
-  if (truncated && lines.length) {
-    let last = lines[lines.length - 1];
-    while (last && context.measureText(`${last}…`).width > SPEECH_MAX_LINE_WIDTH_PX) {
-      last = Array.from(last).slice(0, -1).join('');
-    }
-    lines[lines.length - 1] = `${last}…`;
-  }
+  if (current) lines.push(current);
   return lines.length ? lines : ['……'];
 }
 
@@ -226,6 +213,7 @@ export function figureActionOf(agent: SocietyAgent, intent: IntentView | undefin
   if (view.actionKind === 'move') return 'walk';
   if (view.actionKind === 'transfer') return 'carry';
   if (view.actionKind === 'attend') return 'attend';
+  if (view.actionKind === 'world-interact') return 'work';
   if (view.actionKind === 'inscribe') return 'attend';
   if (view.actionKind === 'talk') return 'talk';
   if (view.operation === 'ingest') return 'ingest';

@@ -1,4 +1,4 @@
-import { MATERIAL_PALETTE, type MaterialId } from '../domain/material';
+import { MATERIAL_PALETTE, materialHas, type MaterialId } from '../domain/material';
 import {
   perceiveMaterial,
   type MaterialPerceptionAccess,
@@ -1158,11 +1158,22 @@ function observableCandidates(
   campaign: ProjectHypothesisCampaign,
 ): ProjectHypothesisCandidate[] {
   const verifiedResponses = verifiedResponseEvidence(campaign);
+  // Survival food is never blind-experiment fodder for unrelated functions:
+  // a person carrying only rations and clay should not "try food with clay"
+  // for a kiln. Edible inputs stay legitimate for food/healing questions.
+  const foodAgnosticProject = project.desiredFunction !== 'prepared-food'
+    && project.desiredFunction !== 'healing';
+  const experimentEvidence = foodAgnosticProject
+    ? evidence.filter((item) => !materialHas(item.materialId, 'edible'))
+    : evidence;
+  // Only apply the filter while non-food evidence remains; otherwise a person
+  // holding nothing but food would look like they hold nothing at all.
+  const usableEvidence = experimentEvidence.length ? experimentEvidence : evidence;
   const candidates = request.operation === 'combine-inventory'
-    ? combineCandidates(seed, person, project, evidence, request, verifiedResponses)
+    ? combineCandidates(seed, person, project, usableEvidence, request, verifiedResponses)
     : request.operation === 'exert-air'
-      ? exertCandidates(seed, person, project, evidence, request, verifiedResponses)
-      : exposeCandidates(seed, person, project, evidence, request, verifiedResponses);
+      ? exertCandidates(seed, person, project, usableEvidence, request, verifiedResponses)
+      : exposeCandidates(seed, person, project, usableEvidence, request, verifiedResponses);
   return candidates.map((candidate) => {
     const exactAttempt = exactAttemptLearnedEvidence(campaign, candidate, evidence);
     const renewal = candidateUsesRenewalOpportunity(project, candidate, evidence);

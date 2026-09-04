@@ -18,6 +18,7 @@
     "test:limited-embodiment": "node scripts/test-player-embodiment.mjs && node scripts/test-limited-embodiment-session.mjs",
     "test:frontend-session": "node scripts/test-frontend-session-reliability.mjs",
     "test:model-authority": "node scripts/test-model-social-authority.mjs",
+    "test:model-context": "node scripts/test-model-decision-context.mjs && node scripts/test-model-decision-json-schema.mjs",
     "test:civilization-sequence": "node scripts/test-civilization-sequence.mjs",
     "test:capability-milestones": "node scripts/test-capability-milestones.mjs",
     "test:triple-sun-collapse": "node scripts/test-triple-sun-collapse.mjs",

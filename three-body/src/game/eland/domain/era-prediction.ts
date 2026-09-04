@@ -10,7 +10,7 @@ export function personTrustsEraPrediction(
   prediction: EraPrediction,
 ): boolean {
   if (prediction.predictorId === person.id) return true;
-  if (!prediction.audienceIds.includes(person.id)) return false;
+  if (!prediction.perceivedByPersonIds.includes(person.id)) return false;
   const resolved = state.eraPredictions.filter((candidate) => (
     candidate.predictorId === prediction.predictorId
       && candidate.status !== 'pending'

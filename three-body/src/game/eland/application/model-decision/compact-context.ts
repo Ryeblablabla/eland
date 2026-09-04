@@ -9,11 +9,10 @@ import type { RecentDialogueContextLine } from './recent-dialogue';
 import { buildCharacterTurnNote } from '../../domain/person-soul';
 
 export interface CompactDecisionRequestContext {
-  schemaVersion: 'decision-context-compact-v1';
+  schemaVersion: 'decision-context-compact-v2';
   person: Record<string, unknown>;
   situation: Record<string, unknown>;
   recentDialogue: RecentDialogueContextLine[];
-  cognition: Record<string, unknown>;
   commitments: Record<string, unknown>;
   options: Array<Record<string, unknown> & { id: string }>;
   followUpOptions: Array<Record<string, unknown> & { id: string }>;
@@ -46,7 +45,7 @@ function relevantPersonIds(options: readonly DecisionRequestContext['options'][n
 function activatedSoulFacet(context: DecisionRequestContext) {
   const facets = context.person.soul.sceneFacets;
   const find = (id: typeof facets[number]['id']) => facets.find((facet) => facet.id === id) ?? facets[0];
-  const needKinds = new Set(context.person.cognition.needs.slice(0, 4).map((need) => need.kind));
+  const needKinds = new Set(context.options.flatMap((option) => option.semantics.needKinds));
   const purposes = new Set(context.options.map((option) => option.semantics.purpose));
   if (context.activePressures.length || needKinds.has('safety') || needKinds.has('care') || needKinds.has('bereavement')) {
     return find('danger-and-loss');
@@ -267,18 +266,18 @@ export function buildCompactDecisionRequestContext(
     context.followUpOptions[index] ? [context.followUpOptions[index]] : []
   ));
   const relatedPeople = relevantPersonIds(selectedOptions);
-  const communicatedKnowledgeIds = new Set(selectedOptions.flatMap((option) => (
-    option.communicatesFactId ? [option.communicatesFactId] : []
+  const expressedKnowledgeIds = new Set(selectedOptions.flatMap((option) => (
+    option.expressesFactId ? [option.expressesFactId] : []
   )));
-  const communicatedKnowledge = context.person.knowledge
-    .filter((item) => communicatedKnowledgeIds.has(item.id))
+  const expressedKnowledge = context.person.knowledge
+    .filter((item) => expressedKnowledgeIds.has(item.id))
     .sort((left, right) => right.confidence - left.confidence || left.id.localeCompare(right.id));
   const knowledge = [
-    ...communicatedKnowledge,
+    ...expressedKnowledge,
     ...context.person.knowledge
-      .filter((item) => !communicatedKnowledgeIds.has(item.id))
+      .filter((item) => !expressedKnowledgeIds.has(item.id))
       .sort((left, right) => right.confidence - left.confidence || left.id.localeCompare(right.id))
-      .slice(0, Math.max(0, 3 - communicatedKnowledge.length)),
+      .slice(0, Math.max(0, 3 - expressedKnowledge.length)),
   ];
   const knowledgeHandleById = new Map(knowledge.map((item, index) => [item.id, `k${index + 1}`]));
   const optionHandleById = new Map(context.options.map((option, index) => [option.id, `o${index + 1}`]));
@@ -342,17 +341,6 @@ export function buildCompactDecisionRequestContext(
   const activeFacet = activatedSoulFacet(context);
   const characterNote = buildCharacterTurnNote(soul, experience, activeFacet.id);
   const { styleMatrix: currentDelivery, ...adaptivePersonality } = experience.adaptivePersonality;
-  const selectedOptionIds = new Set(selectedOptions.map((option) => option.id));
-  const appraisals = context.person.cognition.optionAppraisals
-    .filter((appraisal) => selectedOptionIds.has(appraisal.optionId))
-    .map((appraisal) => ({
-    optionId: optionHandleById.get(appraisal.optionId) ?? appraisal.optionId,
-    addressedNeeds: appraisal.addressedNeeds,
-    motivation: appraisal.motivation,
-    aspiration: appraisal.aspiration,
-    expectedSuccess: appraisal.expectedSuccess,
-    uncertainty: appraisal.uncertainty,
-    }));
   const targetedDrops = new Set([...selectedOptions, ...selectedFollowUps].flatMap((option) => (
     option.target?.kind === 'drop' ? [option.target.dropId] : []
   )));
@@ -363,7 +351,7 @@ export function buildCompactDecisionRequestContext(
     option.target?.kind === 'container' ? [option.target.containerId] : []
   )));
   return {
-    schemaVersion: 'decision-context-compact-v1',
+    schemaVersion: 'decision-context-compact-v2',
     person: {
       id: context.person.id,
       name: context.person.name,
@@ -373,6 +361,7 @@ export function buildCompactDecisionRequestContext(
       conditions: context.person.conditions.map(({ kind, stage }) => ({ kind, stage })),
       capacities: context.person.capacities,
       personality: context.person.personality,
+      personalityType: context.person.personalityType,
       motiveSensitivity: context.person.motiveSensitivity,
       soul: {
         innerVoice: soul.innerVoice,
@@ -400,7 +389,7 @@ export function buildCompactDecisionRequestContext(
       },
       position: context.person.position,
       mindMarkdown: context.person.mindMarkdown,
-      inventory: context.person.inventory.slice(0, 6).map(({ stackId, name, properties, quantity }) => ({
+      inventory: context.person.inventory.map(({ stackId, name, properties, quantity }) => ({
         handle: handles.held.find((item) => item.stackId === stackId)?.handle,
         name,
         properties,
@@ -434,15 +423,10 @@ export function buildCompactDecisionRequestContext(
       climate: context.climate,
       epoch: context.epoch,
       weather: context.weather,
+      sheltered: context.sheltered,
       activePressures: context.activePressures,
     },
     recentDialogue: (context.recentDialogue ?? []).slice(0, 4),
-    cognition: {
-      needs: context.person.cognition.needs.slice(0, 3).map(({ kind, urgency, reasons }) => ({
-        kind, urgency, reasons: reasons.slice(0, 1),
-      })),
-      optionAppraisals: appraisals,
-    },
     commitments: {
       ...(context.activeIntent ? { activeIntent: context.activeIntent } : {}),
       ...(context.activeProject ? { activeProject: {
@@ -512,20 +496,21 @@ export function buildCompactDecisionRequestContext(
           socialContext: compactSocialContext(option.semantics.socialContext, visiblePersonHandleById),
         } : {}),
       },
+      ...(option.experiencedOutcomes ? { experiencedOutcomes: option.experiencedOutcomes } : {}),
       ...(option.communicationKind ? { communicationKind: option.communicationKind } : {}),
       ...(option.speechAct ? { speechAct: compactSpeechAct(option.speechAct) } : {}),
-      ...(option.communicatesFactId ? {
-        communicatesKnowledgeId: knowledgeHandleById.get(option.communicatesFactId) ?? option.communicatesFactId,
+      ...(option.expressesFactId ? {
+        expressesKnowledgeId: knowledgeHandleById.get(option.expressesFactId) ?? option.expressesFactId,
       } : {}),
       ...(option.openConversationGrounding ? {
         groundingFacts: handles.groundingFacts
           .filter((fact) => fact.optionId === option.id)
           .map(({ handle, kind, summary }) => ({ handle, kind, summary })),
       } : {}),
-      ...(option.socialRepetition ? { socialRepetition: {
-        score: option.socialRepetition.score,
-        hasNewEvidence: option.socialRepetition.hasNewEvidence,
-        ...(option.socialRepetition.outcome ? { outcome: option.socialRepetition.outcome } : {}),
+      ...(option.socialHistory ? { socialHistory: {
+        rememberedBefore: option.socialHistory.rememberedBefore,
+        hasNewEvidence: option.socialHistory.hasNewEvidence,
+        ...(option.socialHistory.outcome ? { outcome: option.socialHistory.outcome } : {}),
       } } : {}),
     })),
     followUpOptions: selectedFollowUpIndices.map((index) => ({ index, option: context.followUpOptions[index] }))

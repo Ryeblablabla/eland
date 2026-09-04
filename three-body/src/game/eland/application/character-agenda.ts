@@ -21,10 +21,10 @@ import { containerById } from '../domain/container';
 import { materialDefinition } from '../domain/material';
 import type { ActionFact, DecisionContext, SimulationState, WorldEvent } from '../domain/model';
 import type { PersonState } from '../domain/person';
-import { actionOptionSemantics } from '../domain/action-option-semantics';
+import { actionOptionSemantics, classifyActionOption } from '../domain/action-option-semantics';
 import { intentById, personById, projectById } from '../domain/state-index';
 import { agendaMemorySignals } from '../domain/agent-memory';
-import { cellId, voxelAt } from '../world/grid';
+import { cellId, findStandingPath, voxelAt } from '../world/grid';
 
 const MAX_AGENDA_EVIDENCE_SOURCES = 24;
 
@@ -44,6 +44,64 @@ export interface AcceptedCharacterAgendaUpdate extends AcceptedCharacterAgendaPr
   operation: CharacterAgendaUpdate['kind'];
 }
 
+function coalesceMissingAffordance(
+  items: readonly CharacterAgendaItem[],
+  proposal: CharacterAgendaProposal,
+): CharacterAgendaProposal {
+  if (proposal.approach.disposition !== 'missing-affordance') return proposal;
+  const proposalTopic = agendaTopic(`${proposal.aim}；${proposal.approach.summary}`);
+  if (!proposalTopic) return proposal;
+  const existing = [...items].reverse().find((item) => (
+    item.theme === proposal.theme
+      && item.status !== 'fulfilled'
+      && item.status !== 'abandoned'
+      && agendaTopic(`${item.aim}；${item.approaches.map((approach) => approach.summary).join('；')}`) === proposalTopic
+      && item.approaches.some((approach) => approach.disposition === 'missing-affordance')
+  ));
+  const approach = existing?.approaches.findLast((candidate) => (
+    candidate.disposition === 'missing-affordance'
+  ));
+  return existing && approach ? {
+    ...proposal,
+    basisKey: existing.basisKey,
+    approach: {
+      ...proposal.approach,
+      basisKey: approach.basisKey,
+    },
+  } : proposal;
+}
+
+function agendaTopic(value: string): string | undefined {
+  if (/住所|庇护|遮蔽|挡风|遮雨|挡雨|屋顶|顶棚|地基/u.test(value)) return 'shelter';
+  if (/饮水|水源|取水|储水|蓄水|存水|留住水|水流|水洼|引水|挖沟|缺水/u.test(value)) return 'water';
+  if (/食物|进食|生肉|熟食|烹饪|饥饿/u.test(value)) return 'food';
+  if (/受伤|伤口|治疗|照护|疾病|恢复/u.test(value)) return 'care';
+  if (/捕猎|狩猎|猛兽|狼|兔|鹿/u.test(value)) return 'hunting';
+  if (/记录|知识|保存|教学|学习/u.test(value)) return 'knowledge';
+  if (/储藏|仓库|库存|容器/u.test(value)) return 'storage';
+  if (/高温|火|燃烧|烧制|冶炼/u.test(value)) return 'heat';
+  if (/铜|锡|青铜|合金/u.test(value)) return 'copper-alloy';
+  if (/铁|钢/u.test(value)) return 'iron';
+  if (/动力|水轮|传动|供电|电力/u.test(value)) return 'power';
+  if (/测量|比较重量|质量/u.test(value)) return 'measurement';
+  if (/同伴|陪伴|交谈|关系|共同体/u.test(value)) return 'social';
+  return undefined;
+}
+
+function relatedOpenAgenda(
+  items: readonly CharacterAgendaItem[],
+  aim: string,
+  approachSummary: string,
+): CharacterAgendaItem | undefined {
+  const topic = agendaTopic(`${aim}；${approachSummary}`);
+  if (!topic) return undefined;
+  return [...items].reverse().find((item) => (
+    item.status !== 'fulfilled'
+      && item.status !== 'abandoned'
+      && agendaTopic(`${item.aim}；${item.approaches.map((approach) => approach.summary).join('；')}`) === topic
+  ));
+}
+
 function uniqueIds(values: readonly (string | undefined)[]): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value?.trim())).map((value) => value.trim()))]
     .slice(-MAX_AGENDA_EVIDENCE_SOURCES);
@@ -55,6 +113,27 @@ function boundedText(value: unknown, maximum: number): string {
 
 function probeEntitySourceFactIds(context: DecisionContext, probe: CharacterAgendaProbe | undefined): string[] {
   if (!probe) return [];
+  if (probe.kind === 'world-interaction') {
+    return uniqueIds(probe.adjudication.targets.flatMap((target) => {
+      if (target.kind === 'inventory-stack' && target.personId === context.person.id) {
+        return context.person.inventory.find((stack) => stack.id === target.stackId)?.sourceEventIds ?? [];
+      }
+      if (target.kind === 'drop') {
+        return context.visibleDrops.find((drop) => drop.id === target.dropId)?.sourceEventIds ?? [];
+      }
+      if (target.kind === 'container') return containerById(context.state, target.containerId)?.sourceEventIds ?? [];
+      if (target.kind === 'remains') {
+        return (context.visibleRemains ?? []).find((remains) => remains.id === target.remainsId)?.sourceEventIds ?? [];
+      }
+      if (target.kind === 'person') {
+        return [
+          ...(context.person.relations.find((relation) => relation.personId === target.personId)?.sourceEventIds ?? []),
+          ...context.person.memories.filter((memory) => memory.personIds.includes(target.personId)).flatMap((memory) => memory.sourceEventIds),
+        ];
+      }
+      return [];
+    }));
+  }
   if (probe.kind === 'combine') {
     return uniqueIds(probe.ownStackIds.flatMap((stackId) => (
       context.person.inventory.find((stack) => stack.id === stackId)?.sourceEventIds ?? []
@@ -69,6 +148,7 @@ function probeEntitySourceFactIds(context: DecisionContext, probe: CharacterAgen
       ...(context.person.inventory.find((stack) => stack.id === probe.inputStackId)?.sourceEventIds ?? []),
     ]);
   }
+  if (probe.kind === 'move') return [];
   const target = probe.target;
   if (target.kind === 'own-inventory-stack') {
     return uniqueIds(context.person.inventory.find((stack) => stack.id === target.stackId)?.sourceEventIds ?? []);
@@ -113,8 +193,63 @@ function visibleVoxel(context: DecisionContext, position: { x: number; y: number
   return context.visibleCells.includes(cellId(position.x, position.y));
 }
 
+function groundedObservationTarget(
+  context: DecisionContext,
+  target: Extract<CharacterAgendaProbe, { kind: 'observe' }>['target'],
+): Extract<CharacterAgendaProbe, { kind: 'observe' }>['target'] | undefined {
+  const visible = target.kind === 'voxel'
+    ? visibleVoxel(context, target.position)
+    : target.kind === 'own-inventory-stack'
+      ? context.person.inventory.some((stack) => stack.id === target.stackId && stack.quantity > 0)
+      : target.kind === 'drop'
+        ? context.visibleDrops.some((drop) => drop.id === target.dropId && drop.quantity > 0)
+        : target.kind === 'person'
+          ? context.visiblePeople.some((person) => person.id === target.personId)
+          : target.kind === 'animal'
+            ? context.visibleAnimals.some((animal) => animal.id === target.animalId && animal.diedAtMonth === undefined)
+            : target.kind === 'remains'
+              ? (context.visibleRemains ?? []).some((remains) => remains.id === target.remainsId)
+              : Boolean(containerById(context.state, target.containerId)
+                && context.visibleCells.includes(cellId(
+                  containerById(context.state, target.containerId)!.position.x,
+                  containerById(context.state, target.containerId)!.position.y,
+                )));
+  return visible ? structuredClone(target) : undefined;
+}
+
+function groundedWorldRef(context: DecisionContext, target: WorldRef): boolean {
+  if (target.kind === 'inventory-stack') {
+    return target.personId === context.person.id
+      && context.person.inventory.some((stack) => stack.id === target.stackId && stack.quantity > 0);
+  }
+  if (target.kind === 'voxel') return visibleVoxel(context, target.position);
+  if (target.kind === 'drop') return context.visibleDrops.some((drop) => drop.id === target.dropId && drop.quantity > 0);
+  if (target.kind === 'person') return target.personId === context.person.id
+    || context.visiblePeople.some((person) => person.id === target.personId);
+  if (target.kind === 'animal') {
+    return context.visibleAnimals.some((animal) => animal.id === target.animalId && animal.diedAtMonth === undefined);
+  }
+  if (target.kind === 'remains') return (context.visibleRemains ?? []).some((remains) => remains.id === target.remainsId);
+  const container = containerById(context.state, target.containerId);
+  return Boolean(container && context.visibleCells.includes(cellId(container.position.x, container.position.y)));
+}
+
 function groundedProbe(context: DecisionContext, probe: CharacterAgendaProbe | undefined): CharacterAgendaProbe | undefined {
   if (!probe) return undefined;
+  if (probe.kind === 'world-interaction') {
+    const adjudication = probe.adjudication;
+    if (adjudication.version !== 'world-adjudicated-interaction-v1'
+      || !adjudication.request.trim()
+      || !adjudication.result.trim()
+      || adjudication.targets.length > 8
+      || adjudication.targets.some((target) => !groundedWorldRef(context, target))) return undefined;
+    const requested = new Set(adjudication.targets.map((target) => JSON.stringify(target)));
+    const effectTargets = adjudication.effects.flatMap((effect) => (
+      'target' in effect ? [effect.target] : []
+    ));
+    if (effectTargets.some((target) => !requested.has(JSON.stringify(target)))) return undefined;
+    return structuredClone(probe);
+  }
   if (probe.kind === 'combine') {
     const stackIds = [...new Set(probe.ownStackIds)];
     if (stackIds.length < 2 || stackIds.length > 3) return undefined;
@@ -137,25 +272,17 @@ function groundedProbe(context: DecisionContext, probe: CharacterAgendaProbe | u
       ? structuredClone(probe)
       : undefined;
   }
-  const target = probe.target;
-  const visible = target.kind === 'voxel'
-    ? visibleVoxel(context, target.position)
-    : target.kind === 'own-inventory-stack'
-      ? context.person.inventory.some((stack) => stack.id === target.stackId && stack.quantity > 0)
-      : target.kind === 'drop'
-        ? context.visibleDrops.some((drop) => drop.id === target.dropId && drop.quantity > 0)
-        : target.kind === 'person'
-          ? context.visiblePeople.some((person) => person.id === target.personId)
-          : target.kind === 'animal'
-            ? context.visibleAnimals.some((animal) => animal.id === target.animalId && animal.diedAtMonth === undefined)
-            : target.kind === 'remains'
-              ? (context.visibleRemains ?? []).some((remains) => remains.id === target.remainsId)
-              : Boolean(containerById(context.state, target.containerId)
-                && context.visibleCells.includes(cellId(
-                  containerById(context.state, target.containerId)!.position.x,
-                  containerById(context.state, target.containerId)!.position.y,
-                )));
-  return visible ? structuredClone(probe) : undefined;
+  if (probe.kind === 'move') {
+    const destination = {
+      cellId: cellId(probe.target.position.x, probe.target.position.y),
+      z: probe.target.position.z + 1,
+    };
+    return visibleVoxel(context, probe.target.position)
+      && findStandingPath(context.state.world.grid, context.person.position, destination).length > 0
+      ? structuredClone(probe)
+      : undefined;
+  }
+  return groundedObservationTarget(context, probe.target) ? structuredClone(probe) : undefined;
 }
 
 function containsForbiddenAuthorityClaim(value: unknown, depth = 0): boolean {
@@ -213,6 +340,8 @@ function probeStackMaterialName(context: DecisionContext, stackId: string): stri
 
 function canonicalProbeSummary(context: DecisionContext, probe: CharacterAgendaProbe): string {
   if (probe.kind === 'observe') return `观察${probeTargetLabel(context, probe.target)}，记录眼前实际状态`;
+  if (probe.kind === 'world-interaction') return probe.adjudication.request;
+  if (probe.kind === 'move') return `走向${probeTargetLabel(context, probe.target)}附近，看看沿途和抵达后会遇见什么`;
   if (probe.kind === 'combine') {
     return `把${probe.ownStackIds.map((stackId) => probeStackMaterialName(context, stackId)).join('与')}做一次小规模结合，记录是否发生变化`;
   }
@@ -239,14 +368,27 @@ export function compileCharacterAgendaProposal(
   if (!aim || !summary) return null;
   const forbiddenAuthorityClaim = containsForbiddenAuthorityClaim(raw);
   const probe = forbiddenAuthorityClaim ? undefined : groundedProbe(context, raw.approach?.probe);
-  const existingAgendaItem = raw.basisKey
-    ? characterAgendaStateOf(context.person, context.state.clock.elapsedMonths)
-      .items.find((item) => item.basisKey === raw.basisKey)
-    : undefined;
+  const currentAgenda = characterAgendaStateOf(context.person, context.state.clock.elapsedMonths);
   const selectedProjectId = selectedOption?.projectId ?? selectedOption?.projectProposal?.id;
+  const explicitAgendaItem = raw.basisKey
+    ? currentAgenda.items.find((item) => item.basisKey === raw.basisKey)
+    : undefined;
+  const projectAgendaItem = !explicitAgendaItem && selectedProjectId
+    ? [...currentAgenda.items].reverse().find((item) => (
+        item.status !== 'fulfilled'
+          && item.status !== 'abandoned'
+          && item.projectIds.includes(selectedProjectId)
+      ))
+    : undefined;
+  const relatedAgendaItem = explicitAgendaItem ?? (!raw.basisKey
+    ? projectAgendaItem ?? relatedOpenAgenda(currentAgenda.items, aim, summary)
+    : undefined);
+  const existingAgendaItem = explicitAgendaItem ?? relatedAgendaItem;
+  const effectiveBasisKey = raw.basisKey ?? relatedAgendaItem?.basisKey;
   const selectedActionContinuesExistingAgenda = existingAgendaItem
     ? selectedOption?.characterAgendaItemId === existingAgendaItem.id
       || Boolean(selectedProjectId && existingAgendaItem.projectIds.includes(selectedProjectId))
+      || Boolean(relatedAgendaItem && selectedOption && optionDeservesDurableAgenda(selectedOption))
     : !selectedOption?.characterAgendaItemId;
   const selectedActionCanGroundDurableAgenda = Boolean(
     existingAgendaItem || (selectedOption && optionDeservesDurableAgenda(selectedOption)),
@@ -276,7 +418,7 @@ export function compileCharacterAgendaProposal(
   if (!sourceFactIds.length) return null;
   return {
     proposal: {
-      ...(typeof raw.basisKey === 'string' && raw.basisKey.trim() ? { basisKey: raw.basisKey.trim() } : {}),
+      ...(effectiveBasisKey ? { basisKey: effectiveBasisKey } : {}),
       aim,
       theme,
       importance: Math.max(0, Math.min(100, Math.round(Number(raw.importance) || 50))),
@@ -345,9 +487,10 @@ export function acceptCharacterAgendaProposal(
 ): AcceptedCharacterAgendaProposal | null {
   const compiled = compileCharacterAgendaProposal(context, raw, selectedOption, source === 'local-deliberation');
   if (!compiled) return null;
+  const current = characterAgendaStateOf(person, atMonth);
   const result = upsertCharacterAgenda(
-    characterAgendaStateOf(person, atMonth),
-    compiled.proposal,
+    current,
+    coalesceMissingAffordance(current.items, compiled.proposal),
     atMonth,
     source,
   );
@@ -374,9 +517,10 @@ export function acceptCharacterAgendaUpdate(
   if (update.kind === 'create' || update.kind === 'revise') {
     const compiled = compileCharacterAgendaProposal(context, update.proposal, selectedOption, false);
     if (!compiled) return null;
+    const current = characterAgendaStateOf(person, atMonth);
     const result = upsertCharacterAgenda(
-      characterAgendaStateOf(person, atMonth),
-      compiled.proposal,
+      current,
+      coalesceMissingAffordance(current.items, compiled.proposal),
       atMonth,
       'model-proposal',
     );
@@ -518,6 +662,23 @@ function actionForProbe(person: PersonState, probe: CharacterAgendaProbe): { act
     const target = worldRefForObservation(person, probe);
     return { action: { kind: 'attend', target }, target };
   }
+  if (probe.kind === 'world-interaction') {
+    return {
+      action: { kind: 'world-interact', adjudication: structuredClone(probe.adjudication) },
+      ...(probe.adjudication.targets[0] ? { target: structuredClone(probe.adjudication.targets[0]) } : {}),
+    };
+  }
+  if (probe.kind === 'move') {
+    const target: WorldRef = structuredClone(probe.target);
+    return {
+      action: {
+        kind: 'move',
+        toCellId: cellId(probe.target.position.x, probe.target.position.y),
+        toZ: probe.target.position.z + 1,
+      },
+      target,
+    };
+  }
   if (probe.kind === 'combine') return {
     action: {
       kind: 'act',
@@ -550,6 +711,33 @@ function actionForProbe(person: PersonState, probe: CharacterAgendaProbe): { act
   };
 }
 
+/** Compile a validated model tool call directly; one-turn experiments are not durable agenda items. */
+export function buildImmediateCharacterProbeOption(
+  context: DecisionContext,
+  probeInput: CharacterAgendaProbe,
+  optionId: string,
+): ActionOption | undefined {
+  const probe = groundedProbe(context, probeInput);
+  if (!probe) return undefined;
+  const compiled = actionForProbe(context.person, probe);
+  const target = compiled.target;
+  return classifyActionOption({
+    id: optionId,
+    summary: canonicalProbeSummary(context, probe),
+    reason: '这是人物本轮选择的一次有界试验；结果只由真实世界响应决定',
+    goal: probe.kind === 'observe'
+      ? { kind: 'knowledge', factId: observationFactId(context, worldRefForObservation(context.person, probe)) }
+      : probe.kind === 'move'
+        ? { kind: 'at-cell', cellId: cellId(probe.target.position.x, probe.target.position.y) }
+      : { kind: 'knowledge', factId: `attempt:${optionId}` },
+    nextAction: compiled.action,
+    ...(target ? { target } : {}),
+    estimatedDuration: 'one-month',
+    sourceFactIds: probeEntitySourceFactIds(context, probe),
+    domain: 'strategic',
+  });
+}
+
 export function buildCharacterAgendaOptions(context: DecisionContext, atMonth: number): ActionOption[] {
   const agenda = characterAgendaStateOf(context.person, atMonth);
   const options: ActionOption[] = [];
@@ -569,6 +757,8 @@ export function buildCharacterAgendaOptions(context: DecisionContext, atMonth: n
         reason: `这次有限尝试服务于仍未解决的长期关切“${item.aim}”；结果由真实世界响应决定`,
         goal: probe.kind === 'observe'
           ? { kind: 'knowledge', factId: observationFactId(context, worldRefForObservation(context.person, probe)) }
+          : probe.kind === 'move'
+            ? { kind: 'at-cell', cellId: cellId(probe.target.position.x, probe.target.position.y) }
           : { kind: 'knowledge', factId: `attempt:${approach.id}:${attemptOrdinal}` },
         nextAction: compiled.action,
         ...(target ? { target } : {}),
@@ -601,7 +791,19 @@ function sameWorldRef(left: WorldRef, right: WorldRef): boolean {
 function actionMatchesProbe(person: PersonState, fact: ActionFact, probe: CharacterAgendaProbe): boolean {
   const expected = actionForProbe(person, probe).action;
   if (expected.kind !== fact.action.kind) return false;
+  if (expected.kind === 'world-interact' && fact.action.kind === 'world-interact') {
+    return expected.adjudication.request === fact.action.adjudication.request
+      && expected.adjudication.targets.length === fact.action.adjudication.targets.length
+      && expected.adjudication.targets.every((target, index) => (
+        sameWorldRef(target, fact.action.kind === 'world-interact'
+          ? fact.action.adjudication.targets[index]!
+          : target)
+      ));
+  }
   if (expected.kind === 'attend' && fact.action.kind === 'attend') return sameWorldRef(expected.target, fact.action.target);
+  if (expected.kind === 'move' && fact.action.kind === 'move') {
+    return expected.toCellId === fact.action.toCellId && expected.toZ === fact.action.toZ;
+  }
   if (expected.kind !== 'act' || fact.action.kind !== 'act' || expected.operation !== fact.action.operation) return false;
   if (expected.toolStackId !== fact.action.toolStackId) return false;
   return expected.targets.length === fact.action.targets.length
@@ -667,6 +869,23 @@ function terminalIntentAgendaOutcome(intent: Intent): 'supported' | 'blocked' | 
   return 'parked';
 }
 
+function normalizeApproachSummary(text: string): string {
+  return text.replace(/[\s，。、；：？！""''（）《》〈〉—…·,.;:?!'"()[\]<>-]/gu, '');
+}
+
+/**
+ * Conservative textual match between an incubating approach and a completed
+ * free intent: exact equality after normalization, or the approach fully
+ * contained in the intent phrasing ("取得石" inside "取得石并带回营地").
+ * Short fragments under three characters never match.
+ */
+export function approachSummaryMatchesIntent(approachSummary: string, intentSummary: string): boolean {
+  const approach = normalizeApproachSummary(approachSummary);
+  const intent = normalizeApproachSummary(intentSummary);
+  if (approach.length < 3 || !intent) return false;
+  return approach === intent || intent.includes(approach);
+}
+
 /**
  * Runs before month facts commit so the committed ActionFact itself carries the
  * accepted agenda outcome. Action outcomes may expose frozen diff receipts, so
@@ -682,7 +901,53 @@ export function reconcileCharacterAgendasForMonth(
     const event = events[eventIndex];
     if (event.kind !== 'action' || !event.intentId) continue;
     const intent = intentById(state, event.intentId);
-    if (!intent?.characterAgendaItemId || !intent.characterAgendaApproachId) continue;
+    if (!intent) continue;
+    if (!intent.characterAgendaItemId || !intent.characterAgendaApproachId) {
+      // A free model decision can demonstrably execute a means that an
+      // incubating concern still labels "missing-affordance" (civilization 371:
+      // Joan gathered stones twice while her "取得石" approach stayed frozen).
+      // Retro-match the terminal intent to the semantically identical approach
+      // so real success reopens the concern instead of leaving it incubating.
+      const person = state.people.find((candidate) => candidate.id === event.who);
+      if (!person || !intentIsTerminal(intent) || intent.actionEventIds.at(-1) !== event.id) continue;
+      const outcome = terminalIntentAgendaOutcome(intent);
+      if (outcome !== 'supported') continue;
+      const agenda = characterAgendaStateOf(person, atMonth);
+      const matched = agenda.items
+        .filter((item) => item.status !== 'fulfilled' && item.status !== 'abandoned')
+        .flatMap((item) => item.approaches
+          .filter((approach) => approach.disposition === 'missing-affordance'
+            || approach.disposition === 'waiting-for-evidence'
+            || approach.disposition === 'observation-needed')
+          .map((approach) => ({ item, approach })))
+        .find(({ approach }) => approachSummaryMatchesIntent(approach.summary, intent.summary));
+      if (!matched) continue;
+      const evidence = intent.goalOutcome?.sourceEventIds?.length
+        ? intent.goalOutcome.sourceEventIds
+        : [event.id];
+      const reconciled = reconcileCharacterAgendaApproach(
+        agenda,
+        matched.item.id,
+        matched.approach.id,
+        outcome,
+        evidence,
+        atMonth,
+        `本人以独立意图完成了同一办法：${intent.summary}`,
+      );
+      person.characterAgenda = reconciled.state;
+      if (reconciled.accepted) {
+        events[eventIndex] = {
+          ...event,
+          diff: {
+            ...event.diff,
+            characterAgendaItemId: matched.item.id,
+            characterAgendaApproachId: matched.approach.id,
+            characterAgendaOutcome: outcome,
+          },
+        };
+      }
+      continue;
+    }
     const currentAgenda = characterAgendaStateOf(state.people.find((person) => person.id === event.who) ?? { characterAgenda: undefined }, atMonth);
     const item = currentAgenda.items.find((candidate) => candidate.id === intent.characterAgendaItemId);
     const approach = item?.approaches.find((candidate) => candidate.id === intent.characterAgendaApproachId);

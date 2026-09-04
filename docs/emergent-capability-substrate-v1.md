@@ -334,7 +334,8 @@ type PrimitiveAction =
   | { kind: 'transfer'; object: PhysicalRef; quantity: number; from: HolderRef; to: HolderRef }
   | { kind: 'act'; operation: SourceOperation; targets: WorldRef[]; tool?: AssemblyRef }
   | { kind: 'attend'; target: WorldRef | RecordRef | ClaimRef; instrument?: AssemblyRef }
-  | { kind: 'talk'; content: RepresentationRef; channel: ChannelRef; audience: AudienceRef };
+  | { kind: 'talk'; speakerMeaning: RepresentationRef }
+  | { kind: 'inscribe'; inscriptionMeaning: ClaimRef; carrierStackId: string };
 
 type SourceOperation =
   | 'exert'
@@ -620,7 +621,7 @@ domain/
   matter/         物质、物品堆、组装体、连接和衰变
   energy/         热、机械、化学、电与信号网络
   life/           活体、人物、生命周期、状态、疾病与遗传
-  agency/         意图、五种原子动作、感知、情绪与局部决策
+  agency/         意图、六种原子动作、统一决策语言、语言感知、情绪与局部决策
   knowledge/      Claim、Technique、Codebook、Metric、Narrative、记录
   social/         关系、授权、Agreement、共同体、角色、规则与责任
   economy/        持有、所有权、交换、账户、债务与份额

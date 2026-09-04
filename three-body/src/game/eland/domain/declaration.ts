@@ -4,10 +4,10 @@ import { sameLocation } from './person';
 import { applyRelationEvidence } from './relation';
 import { intentById, personById } from './state-index';
 import { worldEventById } from './event-index';
-import { languageBroadcastFromDiff } from './language-perception';
+import { languageInterpreterIds } from './language-perception';
 
 /**
- * A model utterance is not trust evidence by itself. When an audience member
+ * A model utterance is not trust evidence by itself. When someone who understood it
  * later witnesses the speaker complete the concrete follow-up from that same
  * intent, the declaration and action together become directional evidence.
  */
@@ -23,8 +23,8 @@ export function recordWitnessedDeclarationFulfillment(state: SimulationState, fa
   const declarationEventId = intent.actionEventIds[0];
   if (!declarationEventId) return;
   const declarationEvent = worldEventById(state, declarationEventId);
-  const understoodBy = declarationEvent?.kind === 'action'
-    ? languageBroadcastFromDiff(declarationEvent.diff)?.understoodByPersonIds ?? []
+  const understoodBy = declarationEvent?.kind === 'action' && declarationEvent.action.kind === 'talk'
+    ? languageInterpreterIds(declarationEvent.diff, declarationEvent.action.speakerMeaning.id)
     : [];
   const witnesses = state.people.filter((person) => understoodBy.includes(person.id)
     && sameLocation(person, speaker));

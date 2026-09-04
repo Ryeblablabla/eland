@@ -74,7 +74,7 @@ function qualifiesAsRelationshipEvidence(
     }
     const conversation = event.action.communication?.groundedConversation;
     if (!conversation?.basisVerified) return false;
-    const participants = new Set([conversation.speakerId, conversation.listenerId]);
+    const participants = new Set([conversation.speakerId, ...conversation.interpreterIds]);
     return participants.has(proposerId) && participants.has(partnerId);
   }
   if (event.agreementFulfilled) return true;
@@ -158,7 +158,7 @@ function isDirectIntimacyEvidence(
     if (!conversation?.basisVerified
       || conversation.turn !== 'response'
       || ['open', 'discovery', 'everyday', 'reminiscence', 'playful'].includes(conversation.topic)) return false;
-    const participants = new Set([conversation.speakerId, conversation.listenerId]);
+    const participants = new Set([conversation.speakerId, ...conversation.interpreterIds]);
     return participants.has(proposer.id) && participants.has(partner.id);
   }
   const childId = event.environment?.change === 'body'

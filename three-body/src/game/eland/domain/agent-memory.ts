@@ -1,6 +1,5 @@
-import type { GroundedConversationRef } from './action';
 import { materialDefinition } from './material';
-import type { ActionFact, SimulationState } from './model';
+import type { ActionFact, DecisionFact, SimulationState } from './model';
 import type {
   GoalOutcomeBelief,
   MemoryRecord,
@@ -8,13 +7,18 @@ import type {
   PersonState,
 } from './person';
 import { memoryDurationMultiplier } from './trait';
+import {
+  languageBroadcastFromDiff,
+  languageInterpreterIds,
+  languageReceptionFor,
+  perceivedLanguageText,
+  type LanguageBroadcast,
+} from './language-perception';
 
-export const AGENT_MEMORY_STORE_VERSION = 'agent-memory-store-v1' as const;
-export const MAX_AGENT_MEMORY_ITEMS_PER_OWNER = 48;
+export const AGENT_MEMORY_STORE_VERSION = 'agent-memory-store-v3' as const;
+/** Large person-local archive; prompt projection has its own much smaller token budget. */
+export const MAX_AGENT_MEMORY_ITEMS_PER_OWNER = 4_096;
 export const MAX_AGENT_MEMORY_SOURCES = 16;
-export const MAX_CONVERSATION_EPISODES = 128;
-export const MAX_GROUNDED_CONVERSATION_TURNS = 4;
-export const GROUNDED_CONVERSATION_EPISODE_MONTHS = 6;
 
 export type AgentMemoryLane =
   | 'episodic'
@@ -47,10 +51,9 @@ export interface AgentMemoryItem {
   causalOutcome?: 'completed' | 'progressed' | 'blocked' | 'failed';
   exactUtterance?: string;
   speechLineId?: string;
-  conversationEpisodeId?: string;
   replyToMemoryId?: string;
   dialogueSpeakerId?: string;
-  dialogueAudienceIds?: string[];
+  dialoguePerceivedByPersonIds?: string[];
   consolidation?: {
     source: 'local' | 'model';
     sourceItemIds: string[];
@@ -58,43 +61,10 @@ export interface AgentMemoryItem {
   };
 }
 
-export type ConversationEpisodeStatus =
-  | 'reserved'
-  | 'awaiting-response'
-  | 'response-reserved'
-  | 'closed'
-  | 'expired'
-  | 'cancelled';
-
-export interface ConversationEpisode {
-  id: string;
-  initiatorId: string;
-  listenerId: string;
-  status: ConversationEpisodeStatus;
-  reservedByDecisionEventId: string;
-  openingIntentId?: string;
-  responseIntentId?: string;
-  openingActionEventId?: string;
-  responseActionEventId?: string;
-  /** Most recent completed turn; continuation requires a substantive move. */
-  lastActionEventId?: string;
-  /** Participant whose voluntary decision may produce the next turn. */
-  nextSpeakerId?: string;
-  turnCount?: number;
-  openingTurnMemoryIds: string[];
-  responseTurnMemoryIds: string[];
-  createdAtMonth: number;
-  openedAtMonth?: number;
-  replyByMonth: number;
-  closedAtMonth?: number;
-  cancellationReason?: string;
-}
-
 export interface AgentMemoryStoreState {
   version: typeof AGENT_MEMORY_STORE_VERSION;
   nextOrdinal: number;
   items: AgentMemoryItem[];
-  conversations: ConversationEpisode[];
 }
 
 export interface RecalledMemory {
@@ -115,15 +85,18 @@ export interface RecalledMemory {
   causalBasisKey?: string;
   causalOutcome?: AgentMemoryItem['causalOutcome'];
   exactUtterance?: string;
-  conversationEpisodeId?: string;
   dialogueSpeakerId?: string;
-  dialogueAudienceIds?: string[];
+  dialoguePerceivedByPersonIds?: string[];
 }
 
 export interface AgentMemoryQuery {
   atMonth: number;
   personIds?: readonly string[];
   topicKeys?: readonly string[];
+  sourceEventIds?: readonly string[];
+  textTerms?: readonly string[];
+  /** Exclude memories that do not match any supplied person/topic/source/text focus. */
+  requireFocusMatch?: boolean;
   actionBasisKey?: string;
   unresolved?: boolean;
   lanes?: readonly AgentMemoryLane[];
@@ -132,13 +105,13 @@ export interface AgentMemoryQuery {
   limit?: number;
 }
 
-export interface DialogueMemoryInput {
+export interface LanguageMemoryInput {
   speechLineId: string;
-  sourceActionEventId: string;
+  sourceEventId: string;
   sourceFactIds: readonly string[];
   atMonth: number;
   speakerId: string;
-  audienceIds: readonly string[];
+  perceivedByPersonIds: readonly string[];
   text: string;
   communicationKind: string;
   topic?: string;
@@ -155,11 +128,38 @@ export interface PlayerInteractionMemoryInput {
   agentReply: string;
 }
 
-const LIVE_CONVERSATION_STATUSES = new Set<ConversationEpisodeStatus>([
-  'reserved',
-  'awaiting-response',
-  'response-reserved',
-]);
+export interface AgentMemoryCompactionSource {
+  handle: string;
+  itemId: string;
+  lane: AgentMemoryLane;
+  gist: string;
+  firstExperiencedAtMonth: number;
+  lastExperiencedAtMonth: number;
+  unresolved: boolean;
+}
+
+export interface AgentMemoryCompactionBatch {
+  ownerId: string;
+  ownerName: string;
+  atMonth: number;
+  sources: AgentMemoryCompactionSource[];
+  existingCapsules: Array<{
+    handle: string;
+    itemId: string;
+    lane: 'semantic' | 'procedural' | 'social';
+    summary: string;
+    sourceCount: number;
+  }>;
+}
+
+export interface AgentMemoryCompactionCapsuleInput {
+  summary: string;
+  lane: 'semantic' | 'procedural' | 'social';
+  sourceHandles: string[];
+  unresolved: boolean;
+}
+
+const hydratedStores = new WeakSet<AgentMemoryStoreState>();
 
 function clamp(value: number, minimum = 0, maximum = 100): number {
   return Math.max(minimum, Math.min(maximum, Number.isFinite(value) ? value : minimum));
@@ -274,15 +274,12 @@ function normalizedMemoryItem(value: AgentMemoryItem): AgentMemoryItem | null {
       : {}),
     ...(exactUtterance ? { exactUtterance } : {}),
     ...(boundedText(value.speechLineId, 180) ? { speechLineId: boundedText(value.speechLineId, 180) } : {}),
-    ...(boundedText(value.conversationEpisodeId, 180)
-      ? { conversationEpisodeId: boundedText(value.conversationEpisodeId, 180) }
-      : {}),
     ...(boundedText(value.replyToMemoryId, 180) ? { replyToMemoryId: boundedText(value.replyToMemoryId, 180) } : {}),
     ...(boundedText(value.dialogueSpeakerId, 120)
       ? { dialogueSpeakerId: boundedText(value.dialogueSpeakerId, 120) }
       : {}),
-    ...(Array.isArray(value.dialogueAudienceIds)
-      ? { dialogueAudienceIds: uniqueStrings(value.dialogueAudienceIds, 8) }
+    ...(Array.isArray(value.dialoguePerceivedByPersonIds)
+      ? { dialoguePerceivedByPersonIds: uniqueStrings(value.dialoguePerceivedByPersonIds, 8) }
       : {}),
     ...(value.consolidation ? {
       consolidation: {
@@ -294,48 +291,19 @@ function normalizedMemoryItem(value: AgentMemoryItem): AgentMemoryItem | null {
   };
 }
 
-function normalizedEpisode(value: ConversationEpisode): ConversationEpisode | null {
-  const id = boundedText(value?.id, 180);
-  const initiatorId = boundedText(value?.initiatorId, 120);
-  const listenerId = boundedText(value?.listenerId, 120);
-  const status = value?.status;
-  if (!id || !initiatorId || !listenerId || initiatorId === listenerId
-    || !['reserved', 'awaiting-response', 'response-reserved', 'closed', 'expired', 'cancelled'].includes(status)) {
-    return null;
-  }
-  const createdAtMonth = Math.round(Number(value.createdAtMonth) || 0);
-  return {
-    id,
-    initiatorId,
-    listenerId,
-    status,
-    reservedByDecisionEventId: boundedText(value.reservedByDecisionEventId, 180) || `legacy:${id}`,
-    ...(boundedText(value.openingIntentId, 180) ? { openingIntentId: boundedText(value.openingIntentId, 180) } : {}),
-    ...(boundedText(value.responseIntentId, 180) ? { responseIntentId: boundedText(value.responseIntentId, 180) } : {}),
-    ...(boundedText(value.openingActionEventId, 180) ? { openingActionEventId: boundedText(value.openingActionEventId, 180) } : {}),
-    ...(boundedText(value.responseActionEventId, 180) ? { responseActionEventId: boundedText(value.responseActionEventId, 180) } : {}),
-    ...(boundedText(value.lastActionEventId, 180)
-      ? { lastActionEventId: boundedText(value.lastActionEventId, 180) }
-      : boundedText(value.responseActionEventId, 180)
-        ? { lastActionEventId: boundedText(value.responseActionEventId, 180) }
-        : boundedText(value.openingActionEventId, 180)
-          ? { lastActionEventId: boundedText(value.openingActionEventId, 180) }
-          : {}),
-    ...(boundedText(value.nextSpeakerId, 120) ? { nextSpeakerId: boundedText(value.nextSpeakerId, 120) } : {}),
-    turnCount: Math.max(0, Math.round(Number(value.turnCount)
-      || (value.responseActionEventId ? 2 : value.openingActionEventId ? 1 : 0))),
-    openingTurnMemoryIds: uniqueStrings(value.openingTurnMemoryIds ?? [], 4),
-    responseTurnMemoryIds: uniqueStrings(value.responseTurnMemoryIds ?? [], 4),
-    createdAtMonth,
-    ...(Number.isFinite(value.openedAtMonth) ? { openedAtMonth: Math.round(value.openedAtMonth!) } : {}),
-    replyByMonth: Math.max(createdAtMonth, Math.round(Number(value.replyByMonth) || createdAtMonth + 6)),
-    ...(Number.isFinite(value.closedAtMonth) ? { closedAtMonth: Math.round(value.closedAtMonth!) } : {}),
-    ...(boundedText(value.cancellationReason, 180) ? { cancellationReason: boundedText(value.cancellationReason, 180) } : {}),
-  };
+function isSolitaryDecisionSelfEcho(item: AgentMemoryItem): boolean {
+  return item.lane === 'dialogue'
+    && item.ownerId === item.dialogueSpeakerId
+    && item.personIds.length === 0
+    && (item.dialoguePerceivedByPersonIds?.length ?? 0) === 0
+    && (item.speechLineId?.includes('-decision-') === true
+      || item.sourceEventIds.some((sourceEventId) => sourceEventId.includes('-decision-')));
 }
 
 export function createAgentMemoryStore(): AgentMemoryStoreState {
-  return { version: AGENT_MEMORY_STORE_VERSION, nextOrdinal: 0, items: [], conversations: [] };
+  const store: AgentMemoryStoreState = { version: AGENT_MEMORY_STORE_VERSION, nextOrdinal: 0, items: [] };
+  hydratedStores.add(store);
+  return store;
 }
 
 export function hydrateAgentMemoryStore(
@@ -343,12 +311,12 @@ export function hydrateAgentMemoryStore(
   livingPersonIds: readonly string[] = [],
 ): AgentMemoryStoreState {
   if (input?.version !== AGENT_MEMORY_STORE_VERSION
-    || !Array.isArray(input.items)
-    || !Array.isArray(input.conversations)) return createAgentMemoryStore();
+    || !Array.isArray(input.items)) return createAgentMemoryStore();
   const validOwners = new Set(livingPersonIds);
   const items = input.items
     .map(normalizedMemoryItem)
     .filter((item): item is AgentMemoryItem => Boolean(item))
+    .filter((item) => !isSolitaryDecisionSelfEcho(item))
     .filter((item) => validOwners.size === 0 || validOwners.has(item.ownerId));
   const retainedItems: AgentMemoryItem[] = [];
   for (const ownerId of new Set(items.map((item) => item.ownerId))) {
@@ -359,36 +327,173 @@ export function hydrateAgentMemoryStore(
         || left.id.localeCompare(right.id))
       .slice(0, MAX_AGENT_MEMORY_ITEMS_PER_OWNER));
   }
-  const conversations = input.conversations
-    .map(normalizedEpisode)
-    .filter((episode): episode is ConversationEpisode => Boolean(episode))
-    .sort((left, right) => right.createdAtMonth - left.createdAtMonth || left.id.localeCompare(right.id))
-    .slice(0, MAX_CONVERSATION_EPISODES);
-  const liveConversationIds = new Set(conversations
-    .filter((episode) => LIVE_CONVERSATION_STATUSES.has(episode.status))
-    .map((episode) => episode.id));
-  for (const item of retainedItems) {
-    if (item.lane !== 'dialogue'
-      || !item.causalBasisKey?.startsWith('grounded-conversation-v1|')
-      || !item.conversationEpisodeId) continue;
-    // v1 stores written before compact basis IDs joined the episode could stay
-    // unresolved forever. Episode authority, including bounded eviction of an
-    // already-terminal episode, is the only valid source for this flag.
-    item.unresolved = liveConversationIds.has(item.conversationEpisodeId);
-  }
-  return {
+  const store: AgentMemoryStoreState = {
     version: AGENT_MEMORY_STORE_VERSION,
     nextOrdinal: Math.max(0, Math.round(Number(input.nextOrdinal) || 0)),
     items: retainedItems,
-    conversations,
   };
+  hydratedStores.add(store);
+  return store;
 }
 
 type MemoryStoreOwner = Pick<SimulationState, 'memoryStore' | 'people'>;
 
 export function ensureAgentMemoryStore(state: MemoryStoreOwner): AgentMemoryStoreState {
+  if (state.memoryStore?.version === AGENT_MEMORY_STORE_VERSION
+    && Array.isArray(state.memoryStore.items)
+    && hydratedStores.has(state.memoryStore)) return state.memoryStore;
   state.memoryStore = hydrateAgentMemoryStore(state.memoryStore, state.people.map((person) => person.id));
   return state.memoryStore;
+}
+
+const MIN_MEMORY_COMPACTION_SOURCES = 8;
+const MAX_MEMORY_COMPACTION_SOURCES = 24;
+
+/** Select old, not-yet-compacted memories without exposing authoritative ids to the model. */
+export function nextAgentMemoryCompactionBatch(
+  state: MemoryStoreOwner,
+  person: PersonState,
+  atMonth: number,
+): AgentMemoryCompactionBatch | null {
+  const store = ensureAgentMemoryStore(state);
+  const alreadyCompacted = new Set(store.items.flatMap((item) => item.consolidation?.sourceItemIds ?? []));
+  const candidates = store.items
+    .filter((item) => item.ownerId === person.id
+      && !item.consolidation
+      && !alreadyCompacted.has(item.id)
+      && item.lastExperiencedAtMonth <= atMonth - 12)
+    .sort((left, right) => left.lastExperiencedAtMonth - right.lastExperiencedAtMonth
+      || right.salience - left.salience
+      || left.id.localeCompare(right.id))
+    .slice(0, MAX_MEMORY_COMPACTION_SOURCES);
+  if (candidates.length < MIN_MEMORY_COMPACTION_SOURCES) return null;
+  const existingCapsules = store.items
+    .filter((item) => item.ownerId === person.id
+      && item.consolidation?.source === 'model'
+      && (item.lane === 'semantic' || item.lane === 'procedural' || item.lane === 'social'))
+    .sort((left, right) => (right.consolidation?.atMonth ?? 0) - (left.consolidation?.atMonth ?? 0)
+      || right.lastExperiencedAtMonth - left.lastExperiencedAtMonth
+      || left.id.localeCompare(right.id))
+    .slice(0, 12)
+    .map((item, index) => ({
+      handle: `c${index + 1}`,
+      itemId: item.id,
+      lane: item.lane as 'semantic' | 'procedural' | 'social',
+      summary: item.gist,
+      sourceCount: item.consolidation?.sourceItemIds.length ?? 0,
+    }));
+  return {
+    ownerId: person.id,
+    ownerName: person.name,
+    atMonth,
+    existingCapsules,
+    sources: candidates.map((item, index) => ({
+      handle: `r${index + 1}`,
+      itemId: item.id,
+      lane: item.lane,
+      gist: item.gist,
+      firstExperiencedAtMonth: item.firstExperiencedAtMonth,
+      lastExperiencedAtMonth: item.lastExperiencedAtMonth,
+      unresolved: item.unresolved,
+    })),
+  };
+}
+
+/**
+ * Replace the model-written retrieval layer with one newly compacted view.
+ * Every old capsule must be represented exactly once. A call may consume only
+ * part of the new batch; omitted raw sources remain eligible for a later pass.
+ */
+export function applyAgentMemoryCompaction(
+  state: MemoryStoreOwner,
+  batch: AgentMemoryCompactionBatch,
+  capsules: readonly AgentMemoryCompactionCapsuleInput[],
+): number {
+  const store = ensureAgentMemoryStore(state);
+  const sourceByHandle = new Map(batch.sources.map((source) => [source.handle, source]));
+  const existingByHandle = new Map(batch.existingCapsules.map((capsule) => [capsule.handle, capsule]));
+  const itemById = new Map(store.items.map((item) => [item.id, item]));
+  const expectedHandles = new Set([...sourceByHandle.keys(), ...existingByHandle.keys()]);
+  const usedHandles = new Set<string>();
+  const prepared: Array<{
+    capsule: AgentMemoryCompactionCapsuleInput;
+    sources: AgentMemoryItem[];
+  }> = [];
+  for (const capsule of capsules.slice(0, 4)) {
+    const summary = boundedText(capsule.summary, 360);
+    const handles = uniqueStrings(capsule.sourceHandles, 64)
+      .filter((handle) => expectedHandles.has(handle));
+    if (!summary || handles.length === 0 || handles.some((handle) => usedHandles.has(handle))) return 0;
+    const sourceItems = handles.flatMap((handle) => {
+      const source = sourceByHandle.get(handle);
+      if (source) {
+        const item = itemById.get(source.itemId);
+        return item && item.ownerId === batch.ownerId ? [item] : [];
+      }
+      const existing = existingByHandle.get(handle);
+      const compacted = existing ? itemById.get(existing.itemId) : undefined;
+      if (!compacted || compacted.ownerId !== batch.ownerId
+        || compacted.consolidation?.source !== 'model') return [];
+      return compacted.consolidation.sourceItemIds.flatMap((itemId) => {
+        const item = itemById.get(itemId);
+        return item && item.ownerId === batch.ownerId ? [item] : [];
+      });
+    });
+    const sources = [...new Map(sourceItems.map((item) => [item.id, item])).values()];
+    if (sources.length === 0) return 0;
+    handles.forEach((handle) => usedHandles.add(handle));
+    prepared.push({ capsule: { ...capsule, summary }, sources });
+  }
+  const usedNewSourceCount = batch.sources
+    .filter((source) => usedHandles.has(source.handle)).length;
+  if (prepared.length === 0
+    || usedNewSourceCount < 2
+    || batch.existingCapsules.some((capsule) => !usedHandles.has(capsule.handle))) return 0;
+
+  const replacedItemIds = new Set(batch.existingCapsules.map((capsule) => capsule.itemId));
+  let nextOrdinal = store.nextOrdinal;
+  const compactedItems: AgentMemoryItem[] = prepared.map(({ capsule, sources }) => {
+    const sourceItemIds = sources.map((item) => item.id);
+    const first = Math.min(...sources.map((item) => item.firstExperiencedAtMonth));
+    const last = Math.max(...sources.map((item) => item.lastExperiencedAtMonth));
+    const confidence = Math.round(sources.reduce((sum, item) => sum + item.confidence, 0) / sources.length * 0.9);
+    const ordinal = nextOrdinal;
+    nextOrdinal += 1;
+    return {
+      id: `agent-memory:${batch.ownerId}:compaction:${ordinal}`,
+      ownerId: batch.ownerId,
+      lane: capsule.lane,
+      gist: capsule.summary,
+      precision: 'general',
+      confidence: clamp(confidence),
+      salience: Math.max(...sources.map((item) => item.salience)),
+      emotionalValence: clamp(
+        sources.reduce((sum, item) => sum + item.emotionalValence, 0) / sources.length,
+        -1,
+        1,
+      ),
+      personIds: uniqueStrings(sources.flatMap((item) => item.personIds), 8),
+      topicKeys: uniqueStrings(['memory:compacted', ...sources.flatMap((item) => item.topicKeys)], 8),
+      sourceEventIds: uniqueStrings(sources.flatMap((item) => item.sourceEventIds)),
+      sourceMemoryIds: uniqueStrings(sources.flatMap((item) => item.sourceMemoryIds), 24),
+      unresolved: capsule.unresolved && sources.some((item) => item.unresolved),
+      firstExperiencedAtMonth: first,
+      lastExperiencedAtMonth: last,
+      lastRecalledAtMonth: batch.atMonth,
+      consolidation: {
+        source: 'model',
+        sourceItemIds,
+        atMonth: batch.atMonth,
+      },
+    };
+  });
+  store.items = [
+    ...store.items.filter((item) => !replacedItemIds.has(item.id)),
+    ...compactedItems,
+  ];
+  store.nextOrdinal = nextOrdinal;
+  enforceOwnerCapacity(store, batch.ownerId, batch.atMonth);
+  return prepared.length;
 }
 
 export function agentMemoryStoreOf(state: Pick<SimulationState, 'memoryStore'>): AgentMemoryStoreState {
@@ -448,6 +553,16 @@ function legacyMemoryWorthKeeping(memory: MemoryRecord): boolean {
   return memory.importance >= 60 || memory.personIds.length > 0;
 }
 
+function recentLivedEpisodeWorthRecalling(
+  person: PersonState,
+  memory: MemoryRecord,
+  atMonth: number,
+): boolean {
+  if (memory.kind !== 'episode') return false;
+  if (memory.causal?.basisKey.includes('|move|') || memory.summary.includes('移动到目标位置')) return false;
+  return atMonth - memory.createdAtMonth <= 3 * memoryDurationMultiplier(person);
+}
+
 function mergeLegacyItem(target: AgentMemoryItem, candidate: AgentMemoryItem): void {
   target.sourceMemoryIds = uniqueStrings([...target.sourceMemoryIds, ...candidate.sourceMemoryIds], 24);
   target.sourceEventIds = uniqueStrings([...target.sourceEventIds, ...candidate.sourceEventIds]);
@@ -465,9 +580,8 @@ function mergeLegacyItem(target: AgentMemoryItem, candidate: AgentMemoryItem): v
 }
 
 function protectedItemIds(store: AgentMemoryStoreState): Set<string> {
-  return new Set(store.conversations
-    .filter((episode) => LIVE_CONVERSATION_STATUSES.has(episode.status))
-    .flatMap((episode) => [...episode.openingTurnMemoryIds, ...episode.responseTurnMemoryIds]));
+  void store;
+  return new Set();
 }
 
 function retentionScore(item: AgentMemoryItem, atMonth: number): number {
@@ -521,8 +635,7 @@ function precisionForAge(item: AgentMemoryItem, person: PersonState | undefined,
   if (age <= exactWindow) return item.exactUtterance ? 'exact' : 'specific';
   if (age <= 18) return 'specific';
   if (age <= 60) return 'general';
-  if (age <= 120 || item.unresolved || item.salience >= 75) return 'faint';
-  return null;
+  return 'faint';
 }
 
 function blurItem(item: AgentMemoryItem, nextPrecision: AgentMemoryPrecision): void {
@@ -532,51 +645,14 @@ function blurItem(item: AgentMemoryItem, nextPrecision: AgentMemoryPrecision): v
     item.gist = boundedText(`大概记得：${item.gist}`, 220);
     item.confidence = clamp(item.confidence - 8);
   } else if (nextPrecision === 'faint') {
-    const people = item.personIds.length ? `与${item.personIds.length}名熟人有关` : '与自己经历过的事情有关';
-    item.gist = `只模糊记得这件事${people}`;
+    const compactGist = item.gist.replace(/^(?:大概记得：|模糊记得：)/u, '');
+    item.gist = boundedText(`模糊记得：${compactGist}`, 140);
     item.confidence = clamp(item.confidence - 18);
   }
 }
 
-export function expireConversationEpisodes(state: SimulationState, atMonth: number): void {
-  const store = ensureAgentMemoryStore(state);
-  for (const episode of store.conversations) {
-    if (!LIVE_CONVERSATION_STATUSES.has(episode.status) || atMonth <= episode.replyByMonth) continue;
-    episode.status = 'expired';
-    episode.closedAtMonth = atMonth;
-    episode.cancellationReason = '回应窗口已经过去';
-    for (const item of store.items) {
-      if ([...episode.openingTurnMemoryIds, ...episode.responseTurnMemoryIds].includes(item.id)) item.unresolved = false;
-    }
-  }
-  store.conversations = [...store.conversations]
-    .sort((left, right) => Number(LIVE_CONVERSATION_STATUSES.has(right.status)) - Number(LIVE_CONVERSATION_STATUSES.has(left.status))
-      || right.createdAtMonth - left.createdAtMonth
-      || left.id.localeCompare(right.id))
-    .slice(0, MAX_CONVERSATION_EPISODES);
-}
-
 export function maintainAgentMemoryStore(state: SimulationState, atMonth: number): void {
   synchronizeLegacyMemories(state, atMonth);
-  const currentStore = ensureAgentMemoryStore(state);
-  for (const episode of currentStore.conversations) {
-    if (episode.status === 'reserved' && episode.openingIntentId) {
-      const intent = state.intents.find((candidate) => candidate.id === episode.openingIntentId);
-      if (!intent || ['completed', 'blocked', 'failed', 'abandoned'].includes(intent.status)) {
-        episode.status = 'cancelled';
-        episode.closedAtMonth = atMonth;
-        episode.cancellationReason = '开场意图已经结束但没有完成说话';
-      }
-    } else if (episode.status === 'response-reserved' && episode.responseIntentId) {
-      const intent = state.intents.find((candidate) => candidate.id === episode.responseIntentId);
-      if (!intent || ['completed', 'blocked', 'failed', 'abandoned'].includes(intent.status)) {
-        episode.status = atMonth > episode.replyByMonth ? 'expired' : 'awaiting-response';
-        if (episode.status === 'expired') episode.closedAtMonth = atMonth;
-        delete episode.responseIntentId;
-      }
-    }
-  }
-  expireConversationEpisodes(state, atMonth);
   const store = ensureAgentMemoryStore(state);
   const protectedIds = protectedItemIds(store);
   for (const item of [...store.items]) {
@@ -594,70 +670,59 @@ export function maintainAgentMemoryStore(state: SimulationState, atMonth: number
   }
 }
 
-function actionEventForDialogue(state: SimulationState, input: DialogueMemoryInput): ActionFact | undefined {
-  const event = state.world.past.find((candidate): candidate is ActionFact => candidate.id === input.sourceActionEventId
-    && candidate.kind === 'action');
-  return event?.status === 'completed'
-    && event.action.kind === 'talk'
-    && event.action.channel === 'voice'
-    && event.who === input.speakerId
-    && input.audienceIds.every((personId) => event.action.kind === 'talk' && ((event.diff.understoodByPersonIds as string[] | undefined) ?? []).includes(personId))
+type LanguageMemoryEvent = ActionFact | DecisionFact;
+
+function broadcastForLanguageEvent(event: LanguageMemoryEvent): LanguageBroadcast | undefined {
+  return event.kind === 'decision' ? event.languageBroadcast : languageBroadcastFromDiff(event.diff);
+}
+
+function languageEventForMemory(state: SimulationState, input: LanguageMemoryInput): LanguageMemoryEvent | undefined {
+  const event = state.world.past.find((candidate): candidate is LanguageMemoryEvent => (
+    candidate.id === input.sourceEventId && (candidate.kind === 'action' || candidate.kind === 'decision')
+  ));
+  if (!event || event.who !== input.speakerId) return undefined;
+  if (event.kind === 'action' && (event.status !== 'completed' || event.action.kind !== 'talk')) return undefined;
+  const broadcast = broadcastForLanguageEvent(event);
+  return broadcast
+    && input.perceivedByPersonIds.every((personId) => broadcast.perceivedByPersonIds.includes(personId))
     ? event
     : undefined;
 }
 
-function dialogueGist(input: DialogueMemoryInput, ownerId: string): string {
-  const role = ownerId === input.speakerId ? '自己说过' : '亲耳听见';
-  return `${role}：“${boundedText(input.text, 180)}”`;
+function languageGist(input: LanguageMemoryInput, ownerId: string, perceivedText: string): string {
+  const role = ownerId === input.speakerId ? '自己说过' : '听见';
+  return `${role}：“${boundedText(perceivedText, 180)}”`;
 }
 
-function episodeForSpeech(store: AgentMemoryStoreState, event: ActionFact): ConversationEpisode | undefined {
-  if (event.action.kind !== 'talk' || event.action.speakerMeaning.kind !== 'claim') return undefined;
-  const episodeId = event.action.speakerMeaning.conversation?.episodeId;
-  return episodeId ? store.conversations.find((episode) => episode.id === episodeId) : undefined;
-}
-
-function applySpeechDispositionToEpisode(
-  episode: ConversationEpisode,
-  event: ActionFact,
-  disposition: DialogueMemoryInput['disposition'],
-): void {
-  if (event.action.kind !== 'talk'
-    || event.action.speakerMeaning.kind !== 'claim'
-    || !event.action.speakerMeaning.conversation) return;
-  if (disposition !== 'continue'
-    || episode.status === 'cancelled'
-    || episode.status === 'expired') return;
-  const conversation = event.action.speakerMeaning.conversation;
-  const openedAtMonth = episode.openedAtMonth ?? episode.createdAtMonth;
-  if ((episode.turnCount ?? 1) >= MAX_GROUNDED_CONVERSATION_TURNS
-    || event.atMonth > openedAtMonth + GROUNDED_CONVERSATION_EPISODE_MONTHS) return;
-  episode.status = 'awaiting-response';
-  episode.nextSpeakerId = conversation.listenerId;
-  episode.replyByMonth = openedAtMonth + GROUNDED_CONVERSATION_EPISODE_MONTHS;
-  delete episode.closedAtMonth;
-  delete episode.cancellationReason;
-  delete episode.responseIntentId;
-}
-
-export function writeDialogueMemory(state: SimulationState, input: DialogueMemoryInput): string[] {
-  const event = actionEventForDialogue(state, input);
+export function writeLanguageMemory(state: SimulationState, input: LanguageMemoryInput): string[] {
+  const event = languageEventForMemory(state, input);
   const text = boundedText(input.text, 180);
   if (!event || !text) return [];
-  const groundedBasisKey = event.action.kind === 'talk'
+  const broadcast = broadcastForLanguageEvent(event);
+  if (!broadcast) return [];
+  const groundedBasisKey = event.kind === 'action' && event.action.kind === 'talk'
     && event.action.speakerMeaning.kind === 'claim'
     ? boundedText(event.action.speakerMeaning.conversation?.basisKey, 1_200)
     : '';
   const store = ensureAgentMemoryStore(state);
-  const episode = episodeForSpeech(store, event);
-  const earlierTurnMemoryIds = episode
-    ? [...episode.openingTurnMemoryIds, ...episode.responseTurnMemoryIds]
-    : [];
-  const ownerIds = uniqueStrings([input.speakerId, ...input.audienceIds], 8);
+  const ownerIds = uniqueStrings(
+    event.kind === 'decision'
+      ? input.perceivedByPersonIds.filter((personId) => personId !== input.speakerId)
+      : [input.speakerId, ...input.perceivedByPersonIds],
+    Math.max(8, state.people.length + 1),
+  );
   const written: string[] = [];
   for (const ownerId of ownerIds) {
     if (!state.people.some((person) => person.id === ownerId)) continue;
-    const legacyMemoryId = `memory:${input.sourceActionEventId}:${ownerId}`;
+    const perceivedText = perceivedLanguageText({
+      broadcast: { ...broadcast, text },
+      observerId: ownerId,
+      speakerId: input.speakerId,
+      seed: state.seed,
+    });
+    if (!perceivedText) continue;
+    const reception = languageReceptionFor(broadcast, ownerId);
+    const legacyMemoryId = `memory:${input.sourceEventId}:${ownerId}`;
     store.items = store.items.filter((item) => !(item.ownerId === ownerId
       && !item.exactUtterance
       && item.sourceMemoryIds.includes(legacyMemoryId)));
@@ -672,13 +737,19 @@ export function writeDialogueMemory(state: SimulationState, input: DialogueMemor
     const replyToMemoryId = input.replyToSpeechLineId
       ? store.items.find((item) => item.ownerId === ownerId && item.speechLineId === input.replyToSpeechLineId)?.id
       : undefined;
+    if (replyToMemoryId) {
+      const parent = store.items.find((item) => item.id === replyToMemoryId);
+      if (parent) parent.unresolved = false;
+    }
     const item: AgentMemoryItem = {
       id,
       ownerId,
       lane: 'dialogue',
-      gist: dialogueGist(input, ownerId),
-      precision: 'exact',
-      confidence: 100,
+      gist: languageGist(input, ownerId, perceivedText),
+      precision: ownerId === input.speakerId || reception?.decoded
+        ? 'exact'
+        : (reception?.intelligibility ?? 0) >= 0.45 ? 'specific' : 'faint',
+      confidence: ownerId === input.speakerId ? 100 : Math.round(25 + (reception?.intelligibility ?? 0) * 70),
       salience: input.disposition === 'rupture' ? 90 : input.replyToSpeechLineId ? 70 : 64,
       emotionalValence: input.disposition === 'rupture' ? -0.8 : input.disposition === 'close' ? 0 : 0.1,
       personIds: counterpartIds,
@@ -686,44 +757,82 @@ export function writeDialogueMemory(state: SimulationState, input: DialogueMemor
         `dialogue:${boundedText(input.topic, 80) || input.communicationKind}`,
         ...(input.dialogueMove ? [`move:${input.dialogueMove}`] : []),
       ], 8),
-      sourceEventIds: uniqueStrings([input.sourceActionEventId, ...input.sourceFactIds]),
+      sourceEventIds: uniqueStrings([input.sourceEventId, ...input.sourceFactIds]),
       sourceMemoryIds: [`speech:${input.speechLineId}`, legacyMemoryId],
-      unresolved: input.disposition === 'continue'
-        || Boolean(episode && (episode.status === 'awaiting-response' || episode.status === 'response-reserved')),
+      unresolved: input.disposition === 'continue',
       firstExperiencedAtMonth: input.atMonth,
       lastExperiencedAtMonth: input.atMonth,
       lastRecalledAtMonth: input.atMonth,
       ...(groundedBasisKey ? { causalBasisKey: groundedBasisKey } : {}),
-      exactUtterance: text,
+      exactUtterance: perceivedText,
       speechLineId: input.speechLineId,
-      ...(episode ? { conversationEpisodeId: episode.id } : {}),
       ...(replyToMemoryId ? { replyToMemoryId } : {}),
       dialogueSpeakerId: input.speakerId,
-      dialogueAudienceIds: [...input.audienceIds],
+      dialoguePerceivedByPersonIds: [...input.perceivedByPersonIds],
     };
     store.items.push(item);
     written.push(id);
     enforceOwnerCapacity(store, ownerId, input.atMonth);
   }
-  if (episode) {
-    const target = event.action.kind === 'talk'
-      && event.action.speakerMeaning.kind === 'claim'
-      && event.action.speakerMeaning.conversation?.turn === 'response'
-      ? episode.responseTurnMemoryIds
-      : episode.openingTurnMemoryIds;
-    target.splice(0, target.length, ...uniqueStrings([...target, ...written], 16));
-    for (const item of store.items) {
-      if (earlierTurnMemoryIds.includes(item.id)) item.unresolved = false;
+  return written;
+}
+
+/** Persist the one outward language wave produced by a model decision. */
+export function rememberDecisionLanguage(state: SimulationState, fact: DecisionFact): string[] {
+  const broadcast = fact.languageBroadcast;
+  const mentalAct = 'mentalAct' in fact.decision ? fact.decision.mentalAct : undefined;
+  if (!broadcast || !mentalAct?.utterance.trim()) return [];
+  const store = ensureAgentMemoryStore(state);
+  const ownerIds = uniqueStrings(
+    broadcast.perceivedByPersonIds.filter((personId) => personId !== fact.who),
+    Math.max(8, state.people.length + 1),
+  );
+  const written: string[] = [];
+  for (const ownerId of ownerIds) {
+    const owner = state.people.find((person) => person.id === ownerId);
+    if (!owner) continue;
+    const perceivedText = perceivedLanguageText({
+      broadcast,
+      observerId: ownerId,
+      speakerId: fact.who,
+      seed: state.seed,
+    });
+    if (!perceivedText) continue;
+    const reception = languageReceptionFor(broadcast, ownerId);
+    const speechLineId = `speech:${state.branchId}:${fact.id}`;
+    const id = `agent-memory:${ownerId}:speech:${stableHash(speechLineId)}`;
+    if (store.items.some((item) => item.id === id)) {
+      written.push(id);
+      continue;
     }
-    applySpeechDispositionToEpisode(episode, event, input.disposition);
-    if (input.disposition === 'close' || input.disposition === 'rupture') {
-      episode.status = 'closed';
-      episode.closedAtMonth = input.atMonth;
-      delete episode.nextSpeakerId;
-      for (const item of store.items) {
-        if ([...episode.openingTurnMemoryIds, ...episode.responseTurnMemoryIds].includes(item.id)) item.unresolved = false;
-      }
-    }
+    store.items.push({
+      id,
+      ownerId,
+      lane: 'dialogue',
+      gist: ownerId === fact.who
+        ? `自己说过：“${boundedText(perceivedText, 180)}”`
+        : `听见${state.people.find((person) => person.id === fact.who)?.name ?? '某人'}：“${boundedText(perceivedText, 180)}”`,
+      precision: ownerId === fact.who || reception?.decoded
+        ? 'exact'
+        : (reception?.intelligibility ?? 0) >= 0.45 ? 'specific' : 'faint',
+      confidence: ownerId === fact.who ? 100 : Math.round(25 + (reception?.intelligibility ?? 0) * 70),
+      salience: ownerId === fact.who ? 58 : 52,
+      emotionalValence: 0,
+      personIds: ownerId === fact.who ? broadcast.perceivedByPersonIds : [fact.who],
+      topicKeys: ['language:decision', `mental-act:${mentalAct.kind}`],
+      sourceEventIds: [fact.id],
+      sourceMemoryIds: [`speech:${fact.id}:${ownerId}`],
+      unresolved: false,
+      firstExperiencedAtMonth: fact.atMonth,
+      lastExperiencedAtMonth: fact.atMonth,
+      lastRecalledAtMonth: fact.atMonth,
+      exactUtterance: perceivedText,
+      speechLineId,
+      dialogueSpeakerId: fact.who,
+      dialoguePerceivedByPersonIds: [...broadcast.perceivedByPersonIds],
+    });
+    written.push(id);
+    enforceOwnerCapacity(store, ownerId, fact.atMonth);
   }
   return written;
 }
@@ -746,19 +855,18 @@ export function rememberGroundedConversationBasis(
   const conversation = event.action.speakerMeaning.conversation;
   const basisKey = boundedText(conversation.basisKey, 1_200);
   if (!basisKey) return [];
+  const understoodBy = languageInterpreterIds(event.diff, event.action.speakerMeaning.id);
   const store = ensureAgentMemoryStore(state);
-  const episode = episodeForSpeech(store, event);
   const ownerIds = uniqueStrings([
-    conversation.speakerId,
-    conversation.listenerId,
-  ], 2);
+    event.who,
+    ...understoodBy,
+  ], Math.max(2, state.people.length + 1));
   const written: string[] = [];
-  const unresolved = Boolean(episode && LIVE_CONVERSATION_STATUSES.has(episode.status));
   for (const ownerId of ownerIds) {
     if (!state.people.some((person) => person.id === ownerId)) continue;
-    const counterpartId = ownerId === conversation.speakerId
-      ? conversation.listenerId
-      : conversation.speakerId;
+    const counterpartIds = ownerId === event.who
+      ? understoodBy
+      : [event.who];
     const id = `agent-memory:${ownerId}:conversation-basis:${stableHash(basisKey)}`;
     const sourceEventIds = uniqueStrings([event.id, ...conversation.sourceFactIds]);
     const existing = store.items.find((item) => item.id === id && item.ownerId === ownerId);
@@ -766,7 +874,7 @@ export function rememberGroundedConversationBasis(
       existing.gist = boundedText(event.action.speakerMeaning.summary) || existing.gist;
       existing.confidence = Math.max(existing.confidence, 82);
       existing.salience = Math.max(existing.salience, 62);
-      existing.personIds = uniqueStrings([...existing.personIds, counterpartId], 8);
+      existing.personIds = uniqueStrings([...existing.personIds, ...counterpartIds], 8);
       existing.topicKeys = uniqueStrings([
         ...existing.topicKeys,
         `dialogue:${conversation.topic}`,
@@ -778,7 +886,7 @@ export function rememberGroundedConversationBasis(
       ], 24);
       existing.lastExperiencedAtMonth = Math.max(existing.lastExperiencedAtMonth, event.atMonth);
       existing.lastRecalledAtMonth = Math.max(existing.lastRecalledAtMonth, event.atMonth);
-      existing.unresolved = unresolved;
+      existing.unresolved = false;
       written.push(id);
       continue;
     }
@@ -791,32 +899,20 @@ export function rememberGroundedConversationBasis(
       confidence: 82,
       salience: 62,
       emotionalValence: 0.1,
-      personIds: [counterpartId],
+      personIds: counterpartIds,
       topicKeys: [`dialogue:${conversation.topic}`],
       sourceEventIds,
       sourceMemoryIds: [`memory:${event.id}:${ownerId}`],
-      unresolved,
+      unresolved: false,
       firstExperiencedAtMonth: event.atMonth,
       lastExperiencedAtMonth: event.atMonth,
       lastRecalledAtMonth: event.atMonth,
       causalBasisKey: basisKey,
-      conversationEpisodeId: conversation.episodeId,
-      dialogueSpeakerId: conversation.speakerId,
-      dialogueAudienceIds: [conversation.listenerId],
+      dialogueSpeakerId: event.who,
+      dialoguePerceivedByPersonIds: [...understoodBy],
     });
     written.push(id);
     enforceOwnerCapacity(store, ownerId, event.atMonth);
-  }
-  if (episode) {
-    const target = conversation.turn === 'response'
-      ? episode.responseTurnMemoryIds
-      : episode.openingTurnMemoryIds;
-    target.splice(0, target.length, ...uniqueStrings([...target, ...written], 16));
-    if (!LIVE_CONVERSATION_STATUSES.has(episode.status)) {
-      for (const item of store.items) {
-        if (written.includes(item.id)) item.unresolved = false;
-      }
-    }
   }
   return written;
 }
@@ -842,7 +938,7 @@ export function writePlayerInteractionMemory(
       gist: `主对我说：“${userMessage}”`,
       text: userMessage,
       speakerId: 'player',
-      audienceIds: [agent.id],
+      perceivedByPersonIds: [agent.id],
       salience: 70,
     },
     {
@@ -850,7 +946,7 @@ export function writePlayerInteractionMemory(
       gist: `我回答主：“${agentReply}”`,
       text: agentReply,
       speakerId: agent.id,
-      audienceIds: ['player'],
+      perceivedByPersonIds: ['player'],
       salience: 66,
     },
   ] as const;
@@ -880,7 +976,7 @@ export function writePlayerInteractionMemory(
       lastRecalledAtMonth: input.atMonth,
       exactUtterance: boundedText(exchange.text, 180),
       dialogueSpeakerId: exchange.speakerId,
-      dialogueAudienceIds: [...exchange.audienceIds],
+      dialoguePerceivedByPersonIds: [...exchange.perceivedByPersonIds],
     });
     written.push(id);
   }
@@ -888,7 +984,7 @@ export function writePlayerInteractionMemory(
   return written;
 }
 
-type AgentMemoryReadState = Pick<SimulationState, 'memoryStore' | 'people' | 'clock'>;
+type AgentMemoryReadState = Pick<SimulationState, 'memoryStore' | 'people' | 'clock' | 'projects'>;
 
 function relationGist(state: AgentMemoryReadState, personId: string, trust: number, bond: number, fear: number): string {
   const name = state.people.find((candidate) => candidate.id === personId)?.name ?? '某个人';
@@ -913,7 +1009,7 @@ function actionExperienceLabel(basisKey: string): string {
     return actionKey.includes('->person') ? `把${materialName}交给他人或自己` : `搬运${materialName}`;
   }
   if (actionKey.startsWith('attend:')) return '观察眼前的具体对象';
-  if (actionKey.startsWith('communicate:')) {
+  if (actionKey.startsWith('talk:')) {
     const topic = actionKey.split(':')[1] ?? '';
     const label = topic.startsWith('proposal-') ? '提出具体约定'
       : topic === 'request' ? '提出请求'
@@ -1033,12 +1129,70 @@ function proceduralMemories(person: PersonState): RecalledMemory[] {
   });
 }
 
+/**
+ * A completed project needs one consolidated autobiographical summary, not
+ * merely a list of low-level moves, transfers, and material operations. The
+ * project and its frozen NeedResolutionEpisode already provide the
+ * authoritative bridge; this projection makes that existing evidence
+ * recallable as stable self-knowledge.
+ */
+function resolvedNeedMemories(
+  state: AgentMemoryReadState,
+  person: PersonState,
+): RecalledMemory[] {
+  const projects = new Map(state.projects.map((project) => [project.id, project] as const));
+  return (person.cognition?.needResolutionEpisodes ?? []).flatMap((episode): RecalledMemory[] => {
+    const project = projects.get(episode.projectId);
+    if (!project || project.status !== 'completed') return [];
+    const sourceEventIds = uniqueStrings(
+      episode.sourceFactIds.length ? episode.sourceFactIds : episode.outcomeEventIds,
+    );
+    if (!sourceEventIds.length) return [];
+    const age = Math.max(0, state.clock.elapsedMonths - episode.observedAtMonth)
+      / memoryDurationMultiplier(person);
+    const precision: AgentMemoryPrecision = age <= 18 ? 'specific' : age <= 60 ? 'general' : 'faint';
+    const prefix = precision === 'faint' ? '模糊记得自己曾完成过' : '记得自己完成过';
+    const participantIds = uniqueStrings([
+      project.ownerId,
+      ...project.contributorIds,
+      ...project.beneficiaryIds,
+    ], 8).filter((personId) => personId !== person.id);
+    const evidenceSalience = Math.round(Math.log2(sourceEventIds.length + 1) * 6);
+    return [{
+      id: `resolved-need:${person.id}:${episode.id}`,
+      lane: 'semantic',
+      gist: `${prefix}：${boundedText(project.summary, 180)}`,
+      precision,
+      confidence: precision === 'specific' ? 90 : precision === 'general' ? 80 : 66,
+      salience: clamp(62 + evidenceSalience),
+      emotionalValence: 0,
+      personIds: participantIds,
+      topicKeys: uniqueStrings([
+        'experience:need-resolution',
+        'project:completed',
+        `project:${project.id}`,
+        `need:${episode.projectNeed}`,
+        `function:${episode.desiredFunction}`,
+      ], 8),
+      sourceEventIds,
+      unresolved: false,
+      firstExperiencedAtMonth: episode.observedAtMonth,
+      lastExperiencedAtMonth: episode.observedAtMonth,
+      lastRecalledAtMonth: episode.observedAtMonth,
+      causalBasisKey: episode.basisKey,
+      causalOutcome: 'completed',
+    }];
+  });
+}
+
 function dynamicMemories(state: AgentMemoryReadState, person: PersonState): RecalledMemory[] {
   const storedLegacyIds = new Set(agentMemoryStoreOf(state).items
     .filter((item) => item.ownerId === person.id)
     .flatMap((item) => item.sourceMemoryIds));
   const legacy = person.memories
-    .filter((memory) => !storedLegacyIds.has(memory.id) && legacyMemoryWorthKeeping(memory))
+    .filter((memory) => !storedLegacyIds.has(memory.id)
+      && (legacyMemoryWorthKeeping(memory)
+        || recentLivedEpisodeWorthRecalling(person, memory, state.clock.elapsedMonths)))
     .map((memory) => memoryItemForLegacy(person, memory));
   const semantic = [
     ...person.knowledge.map((fact): RecalledMemory => ({
@@ -1060,7 +1214,7 @@ function dynamicMemories(state: AgentMemoryReadState, person: PersonState): Reca
     ...person.knownPlaces.map((place): RecalledMemory => ({
       id: `place:${person.id}:${place.id}`,
       lane: 'semantic',
-      gist: `记得一种物质曾在已知地点出现`,
+      gist: `记得${materialDefinition(place.materialId).name}曾在一个已知地点出现`,
       precision: 'specific',
       confidence: clamp(82 - Math.max(0, state.clock.elapsedMonths - place.lastConfirmedAtMonth)),
       salience: 48,
@@ -1092,6 +1246,7 @@ function dynamicMemories(state: AgentMemoryReadState, person: PersonState): Reca
     lastRecalledAtMonth: state.clock.elapsedMonths,
   }));
   const procedural = proceduralMemories(person);
+  const resolvedNeeds = resolvedNeedMemories(state, person);
   const prospective = (person.characterAgenda?.items ?? []).map((agenda): RecalledMemory => ({
     id: `prospective:${person.id}:${agenda.id}`,
     lane: 'prospective',
@@ -1108,7 +1263,7 @@ function dynamicMemories(state: AgentMemoryReadState, person: PersonState): Reca
     lastExperiencedAtMonth: agenda.lastReviewedAtMonth,
     lastRecalledAtMonth: agenda.lastReviewedAtMonth,
   }));
-  return [...legacy, ...semantic, ...social, ...procedural, ...prospective];
+  return [...legacy, ...semantic, ...social, ...procedural, ...resolvedNeeds, ...prospective];
 }
 
 function personalityRecallBias(person: PersonState, memory: RecalledMemory): number {
@@ -1138,15 +1293,54 @@ function personalityRecallBias(person: PersonState, memory: RecalledMemory): num
   return Math.max(-18, Math.min(18, stableBias + adaptiveBias));
 }
 
-function queryScore(memory: RecalledMemory, query: AgentMemoryQuery, person: PersonState): number {
-  const people = new Set(query.personIds ?? []);
-  const topics = new Set(query.topicKeys ?? []);
+interface PreparedMemoryFocus {
+  people: Set<string>;
+  topics: Set<string>;
+  sources: Set<string>;
+  textTerms: string[];
+}
+
+function prepareMemoryFocus(query: AgentMemoryQuery): PreparedMemoryFocus {
+  return {
+    people: new Set(query.personIds ?? []),
+    topics: new Set(query.topicKeys ?? []),
+    sources: new Set(query.sourceEventIds ?? []),
+    textTerms: [...new Set((query.textTerms ?? [])
+      .map((term) => term.trim().toLowerCase())
+      .filter(Boolean))],
+  };
+}
+
+function queryFocusScore(memory: RecalledMemory, focus: PreparedMemoryFocus): number {
+  const personMatch = focus.people.size
+    && memory.personIds.some((personId) => focus.people.has(personId)) ? 70 : 0;
+  const topicMatch = focus.topics.size
+    && memory.topicKeys.some((topic) => focus.topics.has(topic)) ? 55 : 0;
+  const sourceMatch = focus.sources.size
+    && memory.sourceEventIds.some((sourceId) => focus.sources.has(sourceId)) ? 100 : 0;
+  const text = `${memory.gist}\n${memory.topicKeys.join('\n')}\n${memory.causalBasisKey ?? ''}`.toLowerCase();
+  const textMatchCount = focus.textTerms.filter((term) => text.includes(term)).length;
+  const textMatch = textMatchCount > 0 ? Math.min(80, 44 + (textMatchCount - 1) * 12) : 0;
+  return personMatch + topicMatch + sourceMatch + textMatch;
+}
+
+function matchesQueryFocus(memory: RecalledMemory, focus: PreparedMemoryFocus): boolean {
+  const text = `${memory.gist}\n${memory.topicKeys.join('\n')}\n${memory.causalBasisKey ?? ''}`.toLowerCase();
+  return memory.personIds.some((personId) => focus.people.has(personId))
+    || memory.topicKeys.some((topic) => focus.topics.has(topic))
+    || focus.textTerms.some((term) => text.includes(term));
+}
+
+function queryScore(
+  memory: RecalledMemory,
+  query: AgentMemoryQuery,
+  person: PersonState,
+  focus: PreparedMemoryFocus,
+): number {
   const age = Math.max(0, query.atMonth - memory.lastExperiencedAtMonth);
-  const personMatch = people.size && memory.personIds.some((personId) => people.has(personId)) ? 70 : 0;
-  const topicMatch = topics.size && memory.topicKeys.some((topic) => topics.has(topic)) ? 55 : 0;
   const basisMatch = query.actionBasisKey && memory.causalBasisKey === query.actionBasisKey ? 85 : 0;
   const unresolvedMatch = query.unresolved === true && memory.unresolved ? 45 : 0;
-  return personMatch + topicMatch + basisMatch + unresolvedMatch
+  return queryFocusScore(memory, focus) + basisMatch + unresolvedMatch
     + memory.salience * 0.7 + memory.confidence * 0.25
     + (memory.unresolved ? 18 : 0)
     + personalityRecallBias(person, memory)
@@ -1172,9 +1366,8 @@ function asRecalled(item: AgentMemoryItem): RecalledMemory {
     ...(item.causalBasisKey ? { causalBasisKey: item.causalBasisKey } : {}),
     ...(item.causalOutcome ? { causalOutcome: item.causalOutcome } : {}),
     ...(item.exactUtterance ? { exactUtterance: item.exactUtterance } : {}),
-    ...(item.conversationEpisodeId ? { conversationEpisodeId: item.conversationEpisodeId } : {}),
     ...(item.dialogueSpeakerId ? { dialogueSpeakerId: item.dialogueSpeakerId } : {}),
-    ...(item.dialogueAudienceIds ? { dialogueAudienceIds: [...item.dialogueAudienceIds] } : {}),
+    ...(item.dialoguePerceivedByPersonIds ? { dialoguePerceivedByPersonIds: [...item.dialoguePerceivedByPersonIds] } : {}),
   };
 }
 
@@ -1199,12 +1392,22 @@ export function retrieveAgentMemories(
   query: AgentMemoryQuery,
 ): RecalledMemory[] {
   const laneFilter = query.lanes?.length ? new Set(query.lanes) : null;
+  const focus = prepareMemoryFocus(query);
   const all = [
     ...agentMemoryStoreOf(state).items.filter((item) => item.ownerId === person.id).map(asRecalled),
     ...dynamicMemories(state, person),
   ].map((memory) => personVisibleMemory(person, memory))
     .filter((memory): memory is RecalledMemory => Boolean(memory))
-    .filter((memory) => !laneFilter || laneFilter.has(memory.lane));
+    .filter((memory) => !laneFilter || laneFilter.has(memory.lane))
+    .filter((memory) => !query.requireFocusMatch || matchesQueryFocus(memory, focus));
+  const scoreCache = new WeakMap<RecalledMemory, number>();
+  const score = (memory: RecalledMemory): number => {
+    const cached = scoreCache.get(memory);
+    if (cached !== undefined) return cached;
+    const value = queryScore(memory, query, person, focus);
+    scoreCache.set(memory, value);
+    return value;
+  };
   const unique = new Map<string, RecalledMemory>();
   for (const memory of all) {
     // One replayable event may have both an old Action memory and an old
@@ -1213,14 +1416,14 @@ export function retrieveAgentMemories(
       ? `episodic:${[...memory.sourceEventIds].sort().join('|')}`
       : memory.id;
     const existing = unique.get(key);
-    if (!existing || queryScore(memory, query, person) > queryScore(existing, query, person)) unique.set(key, memory);
+    if (!existing || score(memory) > score(existing)) unique.set(key, memory);
   }
-  const sorted = [...unique.values()].sort((left, right) => queryScore(right, query, person) - queryScore(left, query, person)
+  const sorted = [...unique.values()].sort((left, right) => score(right) - score(left)
     || right.lastExperiencedAtMonth - left.lastExperiencedAtMonth
     || left.id.localeCompare(right.id));
   const laneCounts = new Map<AgentMemoryLane, number>();
   const result: RecalledMemory[] = [];
-  const maximum = Math.max(1, Math.min(24, Math.round(query.limit ?? 10)));
+  const maximum = Math.max(1, Math.min(64, Math.round(query.limit ?? 10)));
   const budget = Math.max(120, Math.min(8_000, Math.round(query.tokenBudget ?? 1_200)));
   let used = 0;
   for (const memory of sorted) {
@@ -1249,240 +1452,4 @@ export function agendaMemorySignals(
     limit: 6,
     tokenBudget: 900,
   }).filter((memory) => memory.unresolved && memory.salience >= 58);
-}
-
-function liveEpisodeForParticipant(store: AgentMemoryStoreState, personId: string): ConversationEpisode | undefined {
-  return store.conversations.find((episode) => LIVE_CONVERSATION_STATUSES.has(episode.status)
-    && (episode.initiatorId === personId || episode.listenerId === personId));
-}
-
-export function liveConversationEpisodeForPerson(
-  state: Pick<SimulationState, 'memoryStore'>,
-  personId: string,
-): ConversationEpisode | undefined {
-  return liveEpisodeForParticipant(agentMemoryStoreOf(state), personId);
-}
-
-export function conversationEpisodeById(
-  state: Pick<SimulationState, 'memoryStore'>,
-  episodeId: string,
-): ConversationEpisode | undefined {
-  return agentMemoryStoreOf(state).conversations.find((episode) => episode.id === episodeId);
-}
-
-export function pendingConversationEpisodeForListener(
-  state: Pick<SimulationState, 'memoryStore'>,
-  listenerId: string,
-  atMonth: number,
-): ConversationEpisode | undefined {
-  return agentMemoryStoreOf(state).conversations
-    .filter((episode) => (episode.nextSpeakerId ?? episode.listenerId) === listenerId
-      && episode.status === 'awaiting-response'
-      && atMonth <= episode.replyByMonth)
-    .sort((left, right) => right.openedAtMonth! - left.openedAtMonth! || left.id.localeCompare(right.id))[0];
-}
-
-export function closeConversationWithoutResponse(
-  state: SimulationState,
-  listenerId: string,
-  atMonth: number,
-  reason = '选择不回应这次交谈',
-): ConversationEpisode | null {
-  const episode = pendingConversationEpisodeForListener(state, listenerId, atMonth);
-  if (!episode) return null;
-  episode.status = 'closed';
-  episode.closedAtMonth = atMonth;
-  episode.cancellationReason = boundedText(reason, 180);
-  for (const item of ensureAgentMemoryStore(state).items) {
-    if ([...episode.openingTurnMemoryIds, ...episode.responseTurnMemoryIds].includes(item.id)) item.unresolved = false;
-  }
-  return episode;
-}
-
-function closeConversationAfterTurn(
-  state: SimulationState,
-  episode: ConversationEpisode,
-  atMonth: number,
-  reason: string,
-): void {
-  episode.status = 'closed';
-  episode.closedAtMonth = atMonth;
-  episode.cancellationReason = boundedText(reason, 180);
-  delete episode.nextSpeakerId;
-  delete episode.responseIntentId;
-  for (const item of ensureAgentMemoryStore(state).items) {
-    if ([...episode.openingTurnMemoryIds, ...episode.responseTurnMemoryIds].includes(item.id)) item.unresolved = false;
-  }
-}
-
-export function reserveConversationEpisode(
-  state: SimulationState,
-  conversation: GroundedConversationRef,
-  decisionEventId: string,
-  atMonth: number,
-): ConversationEpisode | null {
-  const episodeId = boundedText(conversation.episodeId, 180);
-  if (!episodeId || conversation.speakerId === conversation.listenerId) return null;
-  const store = ensureAgentMemoryStore(state);
-  if (conversation.turn === 'response') {
-    let episode = store.conversations.find((candidate) => candidate.id === episodeId);
-    if (!episode && conversation.referenceEventId) {
-      const opening = state.world.past.find((event): event is ActionFact => event.id === conversation.referenceEventId
-        && event.kind === 'action');
-      if (opening?.status === 'completed'
-        && opening.action.kind === 'talk'
-        && opening.action.speakerMeaning.kind === 'claim'
-        && opening.action.speakerMeaning.conversation?.turn === 'opening'
-        && atMonth - opening.atMonth <= 6) {
-        episode = {
-          id: episodeId,
-          initiatorId: opening.who,
-          listenerId: conversation.speakerId,
-          status: 'awaiting-response',
-          reservedByDecisionEventId: `legacy:${opening.id}`,
-          openingActionEventId: opening.id,
-          lastActionEventId: opening.id,
-          nextSpeakerId: conversation.speakerId,
-          turnCount: 1,
-          openingTurnMemoryIds: [],
-          responseTurnMemoryIds: [],
-          createdAtMonth: opening.atMonth,
-          openedAtMonth: opening.atMonth,
-          replyByMonth: opening.atMonth + 6,
-        };
-        store.conversations.push(episode);
-      }
-    }
-    if (!episode
-      || episode.status !== 'awaiting-response'
-      || (episode.nextSpeakerId ?? episode.listenerId) !== conversation.speakerId
-      || ![episode.initiatorId, episode.listenerId].includes(conversation.speakerId)
-      || ![episode.initiatorId, episode.listenerId].includes(conversation.listenerId)
-      || conversation.speakerId === conversation.listenerId
-      || atMonth > episode.replyByMonth) return null;
-    const occupied = [conversation.speakerId, conversation.listenerId]
-      .some((personId) => {
-        const live = liveEpisodeForParticipant(store, personId);
-        return live && live.id !== episode.id;
-      });
-    if (occupied) return null;
-    episode.status = 'response-reserved';
-    episode.reservedByDecisionEventId = decisionEventId;
-    return episode;
-  }
-  if (store.conversations.some((episode) => episode.id === episodeId)) return null;
-  if (liveEpisodeForParticipant(store, conversation.speakerId)
-    || liveEpisodeForParticipant(store, conversation.listenerId)) return null;
-  const episode: ConversationEpisode = {
-    id: episodeId,
-    initiatorId: conversation.speakerId,
-    listenerId: conversation.listenerId,
-    status: 'reserved',
-    reservedByDecisionEventId: decisionEventId,
-    openingTurnMemoryIds: [],
-    responseTurnMemoryIds: [],
-    createdAtMonth: atMonth,
-    replyByMonth: atMonth + 6,
-    nextSpeakerId: conversation.listenerId,
-    turnCount: 0,
-  };
-  store.conversations.push(episode);
-  expireConversationEpisodes(state, atMonth);
-  return episode;
-}
-
-export function bindConversationEpisodeIntent(
-  state: SimulationState,
-  episodeId: string,
-  turn: 'opening' | 'response',
-  intentId: string,
-): boolean {
-  const episode = conversationEpisodeById(state, episodeId);
-  if (!episode) return false;
-  if (turn === 'opening' && episode.status === 'reserved') episode.openingIntentId = intentId;
-  else if (turn === 'response' && episode.status === 'response-reserved') episode.responseIntentId = intentId;
-  else return false;
-  return true;
-}
-
-export function cancelConversationReservation(
-  state: SimulationState,
-  episodeId: string,
-  turn: 'opening' | 'response',
-  reason: string,
-): void {
-  const episode = conversationEpisodeById(state, episodeId);
-  if (!episode) return;
-  if (turn === 'response' && episode.status === 'response-reserved') {
-    episode.status = 'awaiting-response';
-    delete episode.responseIntentId;
-    return;
-  }
-  if (turn === 'opening' && episode.status === 'reserved') {
-    episode.status = 'cancelled';
-    episode.closedAtMonth = state.clock.elapsedMonths;
-    episode.cancellationReason = boundedText(reason, 180) || '开场没有执行';
-  }
-}
-
-export function recordConversationActionOutcome(state: SimulationState, fact: ActionFact): void {
-  if (fact.action.kind !== 'talk' || fact.action.speakerMeaning.kind !== 'claim') return;
-  const conversation = fact.action.speakerMeaning.conversation;
-  if (!conversation?.episodeId) return;
-  const episode = conversationEpisodeById(state, conversation.episodeId);
-  if (!episode) return;
-  if (conversation.turn === 'opening') {
-    if (fact.status === 'completed'
-      && episode.status === 'reserved'
-      && episode.initiatorId === fact.who
-      && episode.listenerId === conversation.listenerId) {
-      episode.status = 'awaiting-response';
-      episode.openingActionEventId = fact.id;
-      episode.lastActionEventId = fact.id;
-      episode.nextSpeakerId = conversation.listenerId;
-      episode.turnCount = 1;
-      episode.openedAtMonth = fact.atMonth;
-      episode.replyByMonth = fact.atMonth + 6;
-    } else if (episode.status === 'reserved') {
-      episode.status = 'cancelled';
-      episode.closedAtMonth = fact.atMonth;
-      episode.cancellationReason = fact.result;
-    }
-    return;
-  }
-  if (fact.status === 'completed'
-    && episode.status === 'response-reserved'
-    && (episode.nextSpeakerId ?? episode.listenerId) === fact.who
-    && [episode.initiatorId, episode.listenerId].includes(conversation.listenerId)) {
-    episode.responseActionEventId = fact.id;
-    episode.lastActionEventId = fact.id;
-    episode.turnCount = (episode.turnCount ?? 1) + 1;
-    const move = conversation.move ?? 'acknowledge';
-    const opensAnotherQuestion = ['question', 'challenge', 'share-fact', 'commit'].includes(move);
-    const openedAtMonth = episode.openedAtMonth ?? episode.createdAtMonth;
-    const withinEpisodeWindow = fact.atMonth <= openedAtMonth + GROUNDED_CONVERSATION_EPISODE_MONTHS;
-    if (opensAnotherQuestion
-      && episode.turnCount < MAX_GROUNDED_CONVERSATION_TURNS
-      && withinEpisodeWindow) {
-      episode.status = 'awaiting-response';
-      episode.nextSpeakerId = conversation.listenerId;
-      // A substantive turn can keep the original window alive, but never slide
-      // it forward indefinitely merely because somebody acknowledged a line.
-      episode.replyByMonth = openedAtMonth + GROUNDED_CONVERSATION_EPISODE_MONTHS;
-      delete episode.responseIntentId;
-    } else {
-      closeConversationAfterTurn(
-        state,
-        episode,
-        fact.atMonth,
-        opensAnotherQuestion
-          ? '对话已经达到有界回合或时限，双方结束了这次交谈'
-          : `回应以${move}结束了这次交谈`,
-      );
-    }
-  } else if (episode.status === 'response-reserved') {
-    episode.status = fact.atMonth > episode.replyByMonth ? 'expired' : 'awaiting-response';
-    if (episode.status === 'expired') episode.closedAtMonth = fact.atMonth;
-    delete episode.responseIntentId;
-  }
 }

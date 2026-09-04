@@ -159,7 +159,7 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
 
   if (route === 'end' && method === 'POST') {
     try {
-      liveObserverRunner.forget(runId);
+      await liveObserverRunner.stop(runId);
       return { status: 200, body: { ended: elandSessions.end(runId, leaseId), activeSessions: elandSessions.size() } };
     } catch (error) {
       if (error instanceof ElandSessionBusyError) return { status: 409, body: { error: error.message } };
@@ -184,6 +184,7 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
     }
     if (cosmos && cosmos.t !== sky.toTime) return { status: 400, body: { error: '宇宙快照与天象时刻不一致' } };
     try {
+      await liveObserverRunner.stop(runId);
       return {
         status: 200,
         body: elandSessions.begin(runId, creationId, worldSeed, sky, characterIds, leaseId, cosmos),

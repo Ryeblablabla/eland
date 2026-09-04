@@ -44,11 +44,13 @@ export function recentDialogueForDecision(
     laneLimits: { dialogue: 4 },
     limit: 4,
     tokenBudget: 480,
-  }).filter((memory) => memory.exactUtterance && memory.dialogueSpeakerId);
+  }).filter((memory) => memory.exactUtterance
+    && memory.dialogueSpeakerId
+    && memory.dialogueSpeakerId !== selfId);
   if (recalled.length) return recalled.map((memory) => ({
     month: memory.lastExperiencedAtMonth,
     speaker: nameById.get(memory.dialogueSpeakerId!) ?? '未知人物',
-    listeners: (memory.dialogueAudienceIds ?? []).slice(0, 4)
+    listeners: (memory.dialoguePerceivedByPersonIds ?? []).slice(0, 4)
       .map((personId) => nameById.get(personId) ?? '未知人物'),
     text: memory.exactUtterance!,
     sourceEventId: memory.sourceEventIds[0] ?? memory.id,
@@ -56,7 +58,8 @@ export function recentDialogueForDecision(
   if (!committedSpeechLines.length) return [];
   const personallyObservedCandidates = committedSpeechLines.filter((line) => (
     line.month < planningMonth
-    && (line.speakerId === selfId || line.audienceIds.includes(selfId))
+    && line.speakerId !== selfId
+    && line.perceivedByPersonIds.includes(selfId)
   ));
   const verified = verifiedSpeechLinesBySourceEventId(personallyObservedCandidates, {
     get: (eventId) => worldEventById(context.state, eventId),
@@ -65,7 +68,7 @@ export function recentDialogueForDecision(
   return [...verified.values()]
     .map((line) => ({
       line,
-      counterpartRelevant: [line.speakerId, ...line.audienceIds]
+      counterpartRelevant: [line.speakerId, ...line.perceivedByPersonIds]
         .some((personId) => personId !== selfId && counterpartIds.has(personId)),
     }))
     .sort((left, right) => (
@@ -79,8 +82,8 @@ export function recentDialogueForDecision(
     .map(({ line }) => ({
       month: line.month,
       speaker: (nameById.get(line.speakerId) ?? line.speakerName).trim().slice(0, 80),
-      listeners: line.audienceIds.slice(0, 4).map((personId, index) => (
-        nameById.get(personId) ?? line.audienceNames[index] ?? '未知人物'
+      listeners: line.perceivedByPersonIds.slice(0, 4).map((personId, index) => (
+        nameById.get(personId) ?? line.perceivedByPersonNames[index] ?? '未知人物'
       ).trim().slice(0, 80)),
       text: line.text.trim().replace(/\s+/gu, ' ').slice(0, 180),
       ...(line.dialogueMove ? { move: line.dialogueMove } : {}),

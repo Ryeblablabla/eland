@@ -32,6 +32,7 @@ import { registerProjectParticipantMembership } from '../domain/project-particip
 import type { ProjectPressureView } from './project-pressure';
 import { mechanicalPowerProjectHasCurrentRecoveryWait } from './mechanical-power-options';
 import { hibernationRescueProposal } from './hibernation-rescue-options';
+import { languageInterpreterIds } from '../domain/language-perception';
 import { findStandingPath, surfaceMaterial } from '../world/grid';
 import {
   appendProjectLeadershipSuccession,
@@ -145,8 +146,7 @@ function projectPlanBasisTransitionAtMonth(
       || response.diff.projectKnowledgeRequestEventId !== request.requestEventId
       || response.diff.projectKnowledgeOutputMaterialId !== request.outputMaterialId
       || response.diff.projectKnowledgeTechniqueId !== request.techniqueId
-      || !Array.isArray(response.diff.audience)
-      || !response.diff.audience.includes(owner.id)) continue;
+      || !languageInterpreterIds(response.diff, response.action.speakerMeaning.id).includes(owner.id)) continue;
     const learnedTechnique = owner.knowledge.find((fact) => fact.id === request.techniqueId
       && fact.kind === 'technique'
       && fact.confidence >= 55

@@ -24,7 +24,7 @@
 没有模型       ≠ 人物没有决定
 ```
 
-规则世界、人物规划和动作执行必须在本地完整闭环。实时模型只能从本地已经生成的合法候选中重选，并由领域层再次校验；对人物台词的增强则必须等规则先提交 completed `voice talk` ActionFact，且只写入绑定该事实的 GameFrame 投影。玩家交互、实时表达和叙事增强使用非权威请求、任务或投影；当前没有可执行的长期战略任务队列。
+规则世界、人物规划和动作执行必须在本地完整闭环。实时模型只能从本地已经生成的合法候选中重选，并由领域层再次校验；每个有效 MentalAct 同请求返回唯一 `utterance / delivery`，提交 DecisionFact 时立即形成语言广播。社会性 talk 复用同一条波；只有没有模型原话的规则 talk 才在 completed ActionFact 后进入表达增强。玩家交互、实时表达和叙事增强使用非权威请求、任务或投影；当前没有可执行的长期战略任务队列。
 
 ## 2. 权威时钟
 
@@ -167,9 +167,9 @@ interface Intent {
 
 实时会话在进入 15 个 planning tick 前，先为所有可行动人物计算完整本地决定。必须回应只在同时有两个以上合法 required option，或唯一 required option 需要 follow-up 且存在两个以上语义匹配的 follow-up 时，才进入模型决策批次；单一固定回应直接由规则提交。其他生活对话、空闲新方向、项目停滞与状态复核也必须确有选择空间才会进入。开局、身体危险和既定履约不进入重选。模型只返回当前候选 ID、必要的对话 follow-up、理由和台词；领域层重新验证强制回应范围、候选合法性与 follow-up 的共同人物 / 项目 / 来源。超时、缺少端点或返回非法结果时使用预先计算的本地决定。
 
-选择和说话不是同一个时间门槛。没有决策空间的必须回应，以及 planning tick 2..15 才产生的口头沟通，依然由规则正常提交。当月事实完成后，实时服务从当月事件中只选取完成的 `voice talk` ActionFact：决策批次已给出台词的直接复用，其余通过同一 `decision` endpoint 进入独立 speech-only 批次。
+每次模型选择都会同步发出唯一 `utterance`，不存在另一个“心念”通道。若所选步骤本身是社会性 talk，ActionFact 复用这条 DecisionFact 语言波，不再次广播；没有决策空间的必须回应，以及 planning tick 2..15 才由规则产生的 talk，依然由规则正常提交，并在缺少模型原话时按需进入 speech-only 批次。
 
-决策台词读取该决策的只读上下文；speech-only 台词读取说话者的有效人格、本月提交后的当前身体和状态、说话者对听者的当前关系、当前处境与有源近期经历，不是 action tick 精确快照。规则先把 ActionFact 投影成不含显示文本的 `speech-act-v1` 草稿；只有成功且通过沟通类型 / 结构化立场校验的模型文本才绑定原 ActionFact 进入 `GameFrame.speechLines`，不改写规则 summary、人物记忆、关系、知识或文明纪事。模型失败、越界或改变结构化立场时保留沟通事实，但不显示文字气泡。
+决策模型的 `utterance` 就是已经发射的语言波，直接绑定 DecisionFact；表达层不得在事实发生后改写它。若社会性 talk 复用该波，SpeechLine 改为绑定 ActionFact，但仍保留同一原文。speech-only 只处理没有决策模型原话的规则 talk：它读取说话者的有效人格、本月提交后的当前身体和状态、当前关系、当前处境与有源近期经历，并从 ActionFact 的结构化 `speech-act-v1` 草稿生成显示文本。speech-only 失败时保留沟通事实但不显示文字气泡。
 
 玩家主动对话使用 `interaction` 路由。服务端先保守判定 `actionChoiceRequested`；第一阶段只生成角色回复和来源审计，纯问答不暴露其他人物待回应的 required option，也不触发意图调用；明确行动请求才追加隐藏 prompt，从实际回复中提取接受、考虑或拒绝。回复失败时不做本地补答，隐藏意图失败时保留回复且不形成行动。只有角色回复已经明确接受请求、隐藏意图阶段唯一匹配 `accept + choice` 且本地校验通过，才在当前分支保存排除临时月份和表达 ID 的稳定 choice key。下一次可行动月份只用最新局部状态和合法候选做本地唯一重配，不再让模型重新决定，也不能绕过强制回应、履约、物理或意图校验。
 
@@ -190,7 +190,7 @@ interface Intent {
 6. 月末结算身体、状态、疾病、妊娠、产后恢复、死亡和环境后果
 7. 更新人格证据、关系、知识、共同体与观察器
 8. 提交更新后的 `SimulationState` 与本月 `WorldEvent` 历史；实时会话保存 checkpoint / delta 快照并组装 `GameFrame` 规则投影
-9. 收集当月完成的 `voice talk` ActionFact；模型演进下复用合法的决策台词，再为其余口头事实运行 speech-only 批次，写入 `GameFrame.speechLines`
+9. 收集当月模型 DecisionFact 的唯一 utterance 和 completed talk ActionFact；复用同一波的决策 / talk 只投影一次，再为没有模型原话的规则 talk 运行 speech-only 批次，写入 `GameFrame.speechLines`
 10. 每 12 月生成确定性年度聚合
 11. 如有重要事件，可在事实提交后生成即时叙事投影或异步排队增强任务
 ```
@@ -236,7 +236,7 @@ interface EventTime {
 - 意图开始、改变、完成和阻塞；
 - 重大身体、关系、协议和环境事实。
 
-实时 GameFrame 另可包含 `speechLines`：每条都指向一个已完成口头沟通 ActionFact，标记说话者、听者、planning tick、来源事实和台词来源。可见台词只可由决策模型或 speech-only 模型提供，并始终是 `projection-only`；规则只提交沟通事实与结构化话语行为。
+实时 GameFrame 另可包含 `speechLines`：每条指向一个模型 DecisionFact，或一个已完成的 talk ActionFact，标记说话者、实际感知者、planning tick、来源事实和台词来源。模型决策原话对应权威 LanguageBroadcast；SpeechLine 只是显示投影。规则 talk 的可见措辞可由 speech-only 模型补充，但不能改变结构化话语行为。
 
 客户端可以压缩展示，但不能伪造路径或提前显示月末结果。观察页只通过有过期时间的在线租约声明当前有人观看，并轮询最新已提交 `GameFrame`；它不发送逐月推进命令。服务端从已提交宇宙快照形成下一月天象，完整执行 15 个 tick、模型候选重选与台词组装后再原子提交；最后一个观察租约失效后不再开始新月份，进行中的月份最多完成一次。已保存帧的回放不重新调用模型；后台 `/evolve` 与实验矩阵仍完全不等待模型。
 
@@ -270,7 +270,7 @@ p_month = 1 - (1 - P_year)^(1/12)
 - 纯玩家问答不能继承其他人物的 required response，也不能经模型解析形成行动；只有 `accept + choice` 可等待下一月本地重配；
 - 模型超时不会让月帧停在上一月；
 - 模型结果不能直接修改格子、身体、物质、协议或计划进度；
-- 模型台词只进入 `GameFrame.speechLines`，不改写动作 summary、记忆、关系、知识或文明纪事；
-- 模型说话失败时，每个已完成且具有可解析真实听者的口头 ActionFact 仍然成立，但不生成文字气泡；
+- 模型决策原话进入 DecisionFact 的 LanguageBroadcast，并投影到 `GameFrame.speechLines`；它不能直接改写物理结果、关系、知识或文明纪事；
+- speech-only 说话失败时，每个已完成且具有可解析真实听者的规则 talk ActionFact 仍然成立，但不生成文字气泡；
 - 相同种子和已接受输入得到相同规则历史；
 - 回放不重新运行规划器或模型；

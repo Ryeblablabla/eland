@@ -5,6 +5,7 @@ import { isAlive } from './person';
 import { agreementById, type Agreement } from './agreement';
 import type { DecisionRule, Mandate } from './governance';
 import { livingPeople, personById } from './state-index';
+import { languageInterpreterIds } from './language-perception';
 
 export type MembershipStatus = 'active' | 'withdrawn' | 'ended';
 
@@ -126,7 +127,9 @@ export function recordCollectiveAction(state: SimulationState, fact: ActionFact)
   if (content.kind !== 'withdraw') return;
   const collective = state.collectives.find((candidate) => candidate.id === content.collectiveId);
   const current = collective && activeMembership(collective, fact.who);
-  if (!collective || !current) return;
+  const understoodBy = languageInterpreterIds(fact.diff, content.id);
+  if (!collective || !current
+    || !activeMemberIds(state, collective).some((personId) => personId !== fact.who && understoodBy.includes(personId))) return;
   current.status = 'withdrawn';
   current.endedAtMonth = fact.atMonth;
   current.sourceEventIds = [...new Set([...current.sourceEventIds, fact.id])];

@@ -22,13 +22,15 @@ import type {
   DropState,
   SimulationState,
 } from './model';
-import { cellId, cellX, cellY, cellsInRadius, findStandingPath, setVoxel, standingPathMovementCost, standingPathSegmentForTick, surfaceMaterial, voxelAt, type StandingPosition } from '../world/grid';
+import { cellId, cellX, cellY, cellsInRadius, findStandingPath, neighbors4, setVoxel, standingPathMovementCost, standingPathSegmentForTick, standingPositions, surfaceMaterial, voxelAt, type StandingPosition } from '../world/grid';
 import { seededFraction } from '../world/generator';
+import { createWork, modifyWork, registerWork, workAt, workShelterCoverAt } from './works';
+import { applyAnimalBondContact, resetAnimalBond } from './animal-bonds';
 import { communicationById } from './social-facts';
 import { remember, rememberAction } from './memory';
+import type { LanguageBroadcast } from './language-perception';
 import { recordPersonalityEvidence } from './personality';
 import { recordActionOutcomeBelief } from './cognition';
-import { recordConversationActionOutcome } from './agent-memory';
 import { applyRelationEvidence, relationTo } from './relation';
 import { activeReproductionAgreementBetween, agreementAuthorizesTransfer, agreementById, recordAgreementAction, reproductionAttemptedBetweenInMonth } from './agreement';
 import { recordCollectiveAction } from './collective';
@@ -59,7 +61,7 @@ import {
   inventoryVoxelInteractionTechniqueId,
 } from './interaction-rules';
 import { rememberMaterialPlace } from './spatial-knowledge';
-import { shelterGeometryAt } from './structure';
+import { shelterGeometryAt, survivalShelterAt } from './structure';
 import { geneticKinshipRisk } from './kinship';
 import { recordInteractionFailureKnowledge } from './interaction-knowledge';
 import { recordWitnessedDeclarationFulfillment } from './declaration';
@@ -461,7 +463,7 @@ export function goalSatisfied(
     return Boolean(container && containerQuantity(container, goal.materialId) >= goal.quantity);
   }
   if (goal.kind === 'at-cell') return person.position.cellId === goal.cellId;
-  if (goal.kind === 'sheltered') return Boolean(shelterGeometryAt(state.world.grid, person.position));
+  if (goal.kind === 'sheltered') return Boolean(survivalShelterAt(state, person.position));
   if (goal.kind === 'voxel-is') return voxelAt(state.world.grid, goal.position.x, goal.position.y, goal.position.z) === goal.materialId;
   if (goal.kind === 'knowledge') {
     const owner = goal.personId ? personById(state, goal.personId) : person;
@@ -556,7 +558,7 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
     const reasonIsCurrent = Boolean(dependent) && (
       transportBasis.reason === 'thermal-shelter'
         ? dependent!.conditions.some((condition) => condition.kind === 'cold' || condition.kind === 'heat')
-          && Boolean(shelterGeometryAt(state.world.grid, {
+          && Boolean(survivalShelterAt(state, {
             cellId: action.toCellId,
             z: action.toZ ?? dependent!.position.z,
           }))
@@ -1922,12 +1924,20 @@ function executeHunt(state: SimulationState, person: PersonState, action: Extrac
   }
   const damage = Math.round(26 + person.baselineCapacities.manipulation * 0.42 + toolBonus * 90);
   animal.health = Math.max(0, animal.health - damage);
+  const witnessedBy = state.people
+    .filter((candidate) => {
+      if (candidate.id === person.id || !isAlive(candidate)) return false;
+      const radius = 4 + Math.floor(candidate.baselineCapacities.perception / 25);
+      return Math.abs(candidate.position.z - animal.position.z) <= radius
+        && cellsInRadius(candidate.position.cellId, radius).includes(animal.position.cellId);
+    })
+    .map((candidate) => candidate.id);
   if (animal.health > 0) return {
     status: 'progressed' as const,
     result: `${person.name}击伤了${species.name}，但它仍然存活`,
     diff: {
       animalId: animal.id, animalSpeciesId: animal.speciesId, success: true, killed: false,
-      damage, health: animal.health, chance, sample, ...toolDiff,
+      damage, health: animal.health, chance, sample, witnessedBy, ...toolDiff,
     },
   };
   animal.diedAtMonth = atMonth;
@@ -1957,7 +1967,7 @@ function executeHunt(state: SimulationState, person: PersonState, action: Extrac
     diff: {
       animalId: animal.id, animalSpeciesId: animal.speciesId, success: true, killed: true,
       damage, products, outputMaterialId: Material.RawMeat,
-      ...toolDiff,
+      witnessedBy, ...toolDiff,
     },
   };
 }
@@ -2046,8 +2056,14 @@ export function executeIntentAction(
   atMonth: number,
   orderInMonth: number,
   actionTick: number,
+  languageBroadcast?: LanguageBroadcast,
 ): ActionFact {
-  return executePrimitiveAction(state, person, intent.nextAction, atMonth, orderInMonth, { intentId: intent.id, cause: 'intent', actionTick });
+  return executePrimitiveAction(state, person, intent.nextAction, atMonth, orderInMonth, {
+    intentId: intent.id,
+    cause: 'intent',
+    actionTick,
+    ...(languageBroadcast ? { languageBroadcast } : {}),
+  });
 }
 
 function hibernationRecoveryActionAllowed(
@@ -2076,13 +2092,598 @@ function hibernationRecoveryActionAllowed(
       || voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z) === Material.CropMature));
 }
 
+function worldInteractionTargetCell(state: SimulationState, person: PersonState, target: WorldRef): number | undefined {
+  if (target.kind === 'voxel') return cellId(target.position.x, target.position.y);
+  if (target.kind === 'inventory-stack') {
+    return target.personId === person.id
+      && person.inventory.some((stack) => stack.id === target.stackId && stack.quantity > 0)
+      ? person.position.cellId
+      : undefined;
+  }
+  if (target.kind === 'drop') return state.world.drops.find((drop) => drop.id === target.dropId && drop.quantity > 0)?.cellId;
+  if (target.kind === 'container') {
+    const container = containerById(state, target.containerId);
+    return container ? cellId(container.position.x, container.position.y) : undefined;
+  }
+  if (target.kind === 'person') return personById(state, target.personId)?.position.cellId;
+  if (target.kind === 'animal') return state.world.animals.find((animal) => animal.id === target.animalId && isAnimalAlive(animal))?.position.cellId;
+  return remainsById(state, target.remainsId)?.position.cellId;
+}
+
+function worldInteractionTargetZ(state: SimulationState, person: PersonState, target: WorldRef): number | undefined {
+  if (target.kind === 'voxel') return target.position.z;
+  if (target.kind === 'inventory-stack') return target.personId === person.id ? person.position.z : undefined;
+  if (target.kind === 'drop') return state.world.drops.find((drop) => drop.id === target.dropId && drop.quantity > 0)?.z;
+  if (target.kind === 'container') return containerById(state, target.containerId)?.position.z;
+  if (target.kind === 'person') return personById(state, target.personId)?.position.z;
+  if (target.kind === 'animal') return state.world.animals.find((animal) => animal.id === target.animalId && isAnimalAlive(animal))?.position.z;
+  return remainsById(state, target.remainsId)?.position.z;
+}
+
+/**
+ * 模型只能看见固体表面；它说"搭在湿土坡上"时指的是坡顶上方那个空位。
+ * 锚点归一化：目标为空位则原样采用；目标为固体且其上方为空，则取 z+1。
+ */
+function assembleAnchorPosition(
+  state: SimulationState,
+  position: { x: number; y: number; z: number },
+): { x: number; y: number; z: number } | null {
+  const { x, y, z } = position;
+  if (z > 0 && z + 1 < state.world.grid.levels
+    && voxelAt(state.world.grid, x, y, z) === Material.Air
+    && materialDefinition(voxelAt(state.world.grid, x, y, z - 1)).phase === 'solid') {
+    return { x, y, z };
+  }
+  if (z + 2 < state.world.grid.levels
+    && voxelAt(state.world.grid, x, y, z) !== Material.Air
+    && materialDefinition(voxelAt(state.world.grid, x, y, z)).phase === 'solid'
+    && voxelAt(state.world.grid, x, y, z + 1) === Material.Air
+    && voxelAt(state.world.grid, x, y, z + 2) === Material.Air) {
+    return { x, y, z: z + 1 };
+  }
+  return null;
+}
+
+function worldInteractionApproachPosition(
+  state: SimulationState,
+  person: PersonState,
+  target: WorldRef,
+): StandingPosition | null {
+  const targetCell = worldInteractionTargetCell(state, person, target);
+  if (targetCell === undefined) return null;
+  const candidates = cellsInRadius(targetCell, 2)
+    .flatMap((id) => standingPositions(state.world.grid, id))
+    .filter((position) => position.cellId !== person.position.cellId || position.z !== person.position.z)
+    .filter((position) => !state.people.some((other) => other.id !== person.id
+      && isAlive(other)
+      && other.position.cellId === position.cellId
+      && other.position.z === position.z))
+    .map((position) => ({ position, path: findStandingPath(state.world.grid, person.position, position) }))
+    .filter((candidate) => candidate.path.length > 0)
+    .sort((left, right) => left.path.length - right.path.length
+      || left.position.cellId - right.position.cellId
+      || left.position.z - right.position.z);
+  return candidates[0]?.position ?? null;
+}
+
+function executeWorldInteraction(
+  state: SimulationState,
+  person: PersonState,
+  action: Extract<PrimitiveAction, { kind: 'world-interact' }>,
+  atMonth: number,
+  eventId: string,
+) {
+  const verdict = action.adjudication;
+  if (verdict.version !== 'world-adjudicated-interaction-v1'
+    || !verdict.request.trim()
+    || !verdict.result.trim()
+    || verdict.targets.length > 8) {
+    return { status: 'blocked' as const, result: '世界裁决缺少完整的交互、对象或结果', diff: {} };
+  }
+  const perceptionRadius = 4 + Math.floor(person.baselineCapacities.perception / 25);
+  const targetKeys = new Set(verdict.targets.map((target) => JSON.stringify(target)));
+  if (verdict.targets.some((target) => {
+    const targetCell = worldInteractionTargetCell(state, person, target);
+    return targetCell === undefined
+      || Math.abs(cellX(targetCell) - cellX(person.position.cellId))
+        + Math.abs(cellY(targetCell) - cellY(person.position.cellId)) > perceptionRadius;
+  })) return { status: 'blocked' as const, result: '人物点名的交互对象已经不在当前可接触范围内', diff: {} };
+  if (verdict.effects.some((effect) => (
+    'target' in effect && effect.target && !targetKeys.has(JSON.stringify(effect.target))
+  ))) return { status: 'blocked' as const, result: '世界裁决试图改动人物没有点名的对象', diff: {} };
+  if (verdict.effects.some((effect) => effect.kind === 'relocate'
+    && !targetKeys.has(JSON.stringify(effect.destination)))) {
+    return { status: 'blocked' as const, result: '世界裁决试图把物件移到人物没有点名的位置', diff: {} };
+  }
+  const plannedMove = verdict.effects.find((effect) => effect.kind === 'move-self');
+  const interactionCellId = plannedMove
+    ? cellId(plannedMove.target.position.x, plannedMove.target.position.y)
+    : person.position.cellId;
+  // 人物在近身作业区（自身与邻格、以及伸手可及的再外一格）可以直接操作；
+  // 搭建天然是"脚边材料 + 坡面/水面"的跨格协作，操作半径过小会扼杀建造。
+  const MANIPULATION_REACH = 2;
+  const physicallyChangedRefs = verdict.effects.flatMap((effect): WorldRef[] => {
+    if (effect.kind === 'consume' || effect.kind === 'replace-voxel') return [effect.target];
+    if (effect.kind === 'relocate') return [effect.target, effect.destination];
+    if (effect.kind === 'world-state' && effect.target) return [effect.target];
+    if (effect.kind === 'body' && effect.target) return [effect.target];
+    if (effect.kind === 'assemble' || effect.kind === 'modify-structure') return [effect.target];
+    if (effect.kind === 'bond-animal') return [effect.target];
+    return [];
+  });
+  const unreachablePhysicalRef = physicallyChangedRefs.find((target) => {
+    if (target.kind === 'inventory-stack' && target.personId === person.id) return false;
+    if (target.kind === 'person' && target.personId === person.id) return false;
+    const targetCell = worldInteractionTargetCell(state, person, target);
+    return targetCell === undefined
+      || Math.abs(cellX(targetCell) - cellX(interactionCellId))
+        + Math.abs(cellY(targetCell) - cellY(interactionCellId)) > MANIPULATION_REACH;
+  });
+  if (unreachablePhysicalRef) {
+    // The model named a real, perceivable object that is simply out of arm's
+    // reach. The honest outcome is the person walking toward it this tick —
+    // not a phantom success, and not a month thrown away on a system error.
+    // The same world-interact retries on the next tick once the person is
+    // adjacent, so preparation turns into approach instead of amnesia.
+    // Guard: an atomic action can only ever touch ONE remote place. When the
+    // verdict physically changes refs at several distinct cells beyond the
+    // working zone (pick up wood here, immerse it in water there), walking
+    // toward any one of them can never satisfy the others — the person would
+    // ping-pong between sites forever. Refs inside the working zone may mix
+    // freely (kneeling beside a slope while using materials at one's feet).
+    // relocate is exempt: carrying from A to B is its entire purpose, and its
+    // own destination validation already constrains it.
+    const remoteCells = new Set(verdict.effects.flatMap((effect): number[] => {
+      if (effect.kind === 'consume' || effect.kind === 'replace-voxel'
+        || effect.kind === 'assemble' || effect.kind === 'modify-structure') {
+        if (effect.target.kind === 'inventory-stack' && effect.target.personId === person.id) return [];
+        if (effect.target.kind === 'person' && effect.target.personId === person.id) return [];
+        const cell = worldInteractionTargetCell(state, person, effect.target);
+        if (cell === undefined) return [];
+        const distance = Math.abs(cellX(cell) - cellX(interactionCellId))
+          + Math.abs(cellY(cell) - cellY(interactionCellId));
+        return distance > MANIPULATION_REACH ? [cell] : [];
+      }
+      if (effect.kind === 'bond-animal') {
+        const cell = worldInteractionTargetCell(state, person, effect.target);
+        if (cell === undefined) return [];
+        const distance = Math.abs(cellX(cell) - cellX(interactionCellId))
+          + Math.abs(cellY(cell) - cellY(interactionCellId));
+        return distance > MANIPULATION_REACH ? [cell] : [];
+      }
+      if ((effect.kind === 'world-state' || effect.kind === 'body') && effect.target) {
+        if (effect.target.kind === 'person' && effect.target.personId === person.id) return [];
+        const cell = worldInteractionTargetCell(state, person, effect.target);
+        if (cell === undefined) return [];
+        const distance = Math.abs(cellX(cell) - cellX(interactionCellId))
+          + Math.abs(cellY(cell) - cellY(interactionCellId));
+        return distance > MANIPULATION_REACH ? [cell] : [];
+      }
+      return [];
+    }));
+    if (remoteCells.size > 1) {
+      return {
+        status: 'blocked' as const,
+        result: '一个动作无法同时触及两处不同的地方；人物需要先把它拆成几步',
+        diff: { worldAdjudicatedMultiSite: true, remoteCells: [...remoteCells] },
+      };
+    }
+    const approach = worldInteractionApproachPosition(state, person, unreachablePhysicalRef);
+    if (approach) {
+      const approached = executeMove(
+        state,
+        person,
+        { kind: 'move', toCellId: approach.cellId, toZ: approach.z },
+        eventId,
+        atMonth,
+      );
+      return {
+        ...approached,
+        // The interaction itself has not happened yet; only the approach has.
+        status: 'progressed' as const,
+        result: `${approached.result}（先向点名的交互对象靠近）`,
+        diff: { ...approached.diff, worldAdjudicatedApproach: true },
+      };
+    }
+    return {
+      status: 'blocked' as const,
+      result: '人物尚未到达能够实际改变点名对象的位置',
+      diff: {
+        worldAdjudicatedNoPath: true,
+        approachTargetKind: unreachablePhysicalRef.kind,
+        approachTargetCell: worldInteractionTargetCell(state, person, unreachablePhysicalRef),
+      },
+    };
+  }
+  const planFeedback = verdict.feedback;
+  if (planFeedback) {
+    person.knowledge.push({
+      id: `plan-feedback:${eventId}`,
+      kind: 'claim',
+      summary: `${planFeedback.correction}；下次调整：${planFeedback.adjustment}`,
+      confidence: 64,
+      learnedAtMonth: atMonth,
+      sourceEventIds: [eventId],
+    });
+  }
+  if (verdict.status === 'blocked') {
+    return {
+      status: 'blocked' as const,
+      result: verdict.result,
+      diff: {
+        worldAdjudicated: true,
+        appliedEffects: 0,
+        ...(planFeedback ? { planFeedback } : {}),
+      },
+    };
+  }
+
+  for (const effect of verdict.effects) {
+    if ((effect.kind === 'produce' || effect.kind === 'replace-voxel')
+      && (materialDefinition(effect.materialId).id !== effect.materialId || effect.materialId === Material.Air)) {
+      return { status: 'blocked' as const, result: '世界裁决产生了当前世界无法表示的材料', diff: {} };
+    }
+    if (effect.kind === 'consume') {
+      if (effect.quantity < 1 || effect.quantity > 8) return { status: 'blocked' as const, result: '世界裁决的材料消耗量无法执行', diff: {} };
+      if (effect.target.kind === 'inventory-stack') {
+        const stackId = effect.target.stackId;
+        const stack = person.inventory.find((candidate) => candidate.id === stackId);
+        if (effect.target.personId !== person.id || !stack || stack.quantity < effect.quantity) {
+          return { status: 'blocked' as const, result: '人物点名的持有材料数量已经不足', diff: {} };
+        }
+      } else if (effect.target.kind === 'drop') {
+        const dropId = effect.target.dropId;
+        const drop = state.world.drops.find((candidate) => candidate.id === dropId);
+        if (!drop || drop.quantity < effect.quantity) return { status: 'blocked' as const, result: '人物点名的地面材料数量已经不足', diff: {} };
+      } else if (effect.target.kind !== 'voxel' || effect.quantity !== 1
+        || voxelAt(state.world.grid, effect.target.position.x, effect.target.position.y, effect.target.position.z) === Material.Air) {
+        return { status: 'blocked' as const, result: '人物点名的消耗对象当前不能被取用', diff: {} };
+      }
+    }
+    if (effect.kind === 'relocate') {
+      if (effect.quantity < 1 || effect.quantity > 8) {
+        return { status: 'blocked' as const, result: '世界裁决的搬运数量无法执行', diff: {} };
+      }
+      if (effect.target.kind === 'inventory-stack') {
+        const target = effect.target;
+        const stack = person.inventory.find((candidate) => candidate.id === target.stackId);
+        if (target.personId !== person.id || !stack || stack.quantity < effect.quantity) {
+          return { status: 'blocked' as const, result: '人物点名的持有材料数量已经不足', diff: {} };
+        }
+      } else {
+        const target = effect.target;
+        const drop = state.world.drops.find((candidate) => candidate.id === target.dropId);
+        if (!drop || drop.quantity < effect.quantity) {
+          return { status: 'blocked' as const, result: '人物点名的地面材料数量已经不足', diff: {} };
+        }
+      }
+      const destinationMaterial = voxelAt(
+        state.world.grid,
+        effect.destination.position.x,
+        effect.destination.position.y,
+        effect.destination.position.z,
+      );
+      const destinationZ = destinationMaterial === Material.Air
+        ? effect.destination.position.z
+        : effect.destination.position.z + 1;
+      if (destinationZ < 0 || destinationZ >= state.world.grid.levels) {
+        return { status: 'blocked' as const, result: '人物点名的放置位置当前无法承载物件', diff: {} };
+      }
+    }
+    if (effect.kind === 'move-self') {
+      const destination = { cellId: cellId(effect.target.position.x, effect.target.position.y), z: effect.target.position.z + 1 };
+      if (!findStandingPath(state.world.grid, person.position, destination).length) {
+        return { status: 'blocked' as const, result: '世界裁决指定的移动位置当前不可达', diff: {} };
+      }
+    }
+    if (effect.kind === 'body' && effect.target && !personById(state, effect.target.personId)) {
+      return { status: 'blocked' as const, result: '世界裁决指定的身体对象已经不存在', diff: {} };
+    }
+    if (effect.kind === 'bond-animal'
+      && !state.world.animals.some((animal) => animal.id === (effect.target as { animalId: string }).animalId && isAnimalAlive(animal))) {
+      return { status: 'blocked' as const, result: '人物想接触的那只动物已经不在了', diff: {} };
+    }
+    if (effect.kind === 'assemble') {
+      const anchor = assembleAnchorPosition(state, effect.target.position);
+      if (!anchor) {
+        return { status: 'blocked' as const, result: '人物点名的成型位置当前没有受支撑的空位', diff: {} };
+      }
+      if (state.people.some((other) => isAlive(other)
+        && other.position.cellId === cellId(anchor.x, anchor.y) && other.position.z === anchor.z)) {
+        return { status: 'blocked' as const, result: '人物点名的成型位置正被人占着', diff: {} };
+      }
+      if (!verdict.effects.some((candidate) => candidate.kind === 'consume')) {
+        return { status: 'blocked' as const, result: '没有真实投入材料的东西不能凭空成型', diff: {} };
+      }
+    }
+    if (effect.kind === 'modify-structure') {
+      if (!workAt(state.world, effect.target.position)) {
+        return { status: 'blocked' as const, result: '人物点名的地方没有可以加件的结构', diff: {} };
+      }
+    }
+  }
+
+  const applied: Record<string, unknown>[] = [];
+  let movementPath: number[] | undefined;
+  for (const effect of verdict.effects) {
+    if (effect.kind === 'knowledge') {
+      const factId = `observation:world-agent:${eventId}:${applied.length + 1}`;
+      person.knowledge.push({
+        id: factId,
+        kind: 'observation',
+        summary: effect.summary,
+        confidence: 68,
+        learnedAtMonth: atMonth,
+        sourceEventIds: [eventId],
+      });
+      applied.push({ kind: effect.kind, factId, summary: effect.summary });
+    } else if (effect.kind === 'consume') {
+      if (effect.target.kind === 'inventory-stack') {
+        const stackId = effect.target.stackId;
+        const stack = person.inventory.find((candidate) => candidate.id === stackId)!;
+        stack.quantity -= effect.quantity;
+        applied.push({ kind: effect.kind, target: effect.target, materialId: stack.materialId, quantity: effect.quantity });
+      } else if (effect.target.kind === 'drop') {
+        const dropId = effect.target.dropId;
+        const drop = state.world.drops.find((candidate) => candidate.id === dropId)!;
+        drop.quantity -= effect.quantity;
+        applied.push({ kind: effect.kind, target: effect.target, materialId: drop.materialId, quantity: effect.quantity });
+      } else if (effect.target.kind === 'voxel') {
+        const materialId = voxelAt(state.world.grid, effect.target.position.x, effect.target.position.y, effect.target.position.z);
+        setVoxel(state.world.grid, effect.target.position.x, effect.target.position.y, effect.target.position.z, Material.Air);
+        applied.push({ kind: effect.kind, target: effect.target, materialId, quantity: 1 });
+      }
+    } else if (effect.kind === 'produce') {
+      if (effect.destination === 'inventory') {
+        const stack = addInventory(person, effect.materialId, effect.quantity, [eventId], `stack-${person.id}-${effect.materialId}-${eventId}`);
+        applied.push({ kind: effect.kind, destination: effect.destination, materialId: effect.materialId, quantity: effect.quantity, stackId: stack.id });
+      } else {
+        const drop = addDrop(state, effect.materialId, effect.quantity, person.position.cellId, atMonth, [eventId], `world-agent-${person.id}`);
+        applied.push({ kind: effect.kind, destination: effect.destination, materialId: effect.materialId, quantity: effect.quantity, dropId: drop.id });
+      }
+    } else if (effect.kind === 'relocate') {
+      const target = effect.target;
+      const sourceDrop = target.kind === 'drop'
+        ? state.world.drops.find((candidate) => candidate.id === target.dropId)!
+        : undefined;
+      const sourceStack = target.kind === 'inventory-stack'
+        ? person.inventory.find((candidate) => candidate.id === target.stackId)!
+        : undefined;
+      const materialId = sourceDrop?.materialId ?? sourceStack!.materialId;
+      const sourceEventIds = [...new Set([
+        ...(sourceDrop?.sourceEventIds ?? []),
+        ...(sourceStack?.sourceEventIds ?? []),
+        eventId,
+      ])].slice(-24);
+      const sourceLineageKeys = [...new Set([
+        ...(sourceDrop ? [`drop:${sourceDrop.id}`, ...(sourceDrop.sourceLineageKeys ?? [])] : []),
+        ...(sourceStack ? [`inventory:${person.id}:${sourceStack.id}`, ...(sourceStack.sourceLineageKeys ?? [])] : []),
+      ])].slice(-32);
+      if (sourceDrop) sourceDrop.quantity -= effect.quantity;
+      if (sourceStack) sourceStack.quantity -= effect.quantity;
+      const destinationMaterial = voxelAt(
+        state.world.grid,
+        effect.destination.position.x,
+        effect.destination.position.y,
+        effect.destination.position.z,
+      );
+      const destinationZ = destinationMaterial === Material.Air
+        ? effect.destination.position.z
+        : effect.destination.position.z + 1;
+      const drop = addDrop(
+        state,
+        materialId,
+        effect.quantity,
+        cellId(effect.destination.position.x, effect.destination.position.y),
+        atMonth,
+        sourceEventIds,
+        `world-agent-${person.id}-relocate`,
+        sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId,
+        destinationZ,
+        sourceLineageKeys,
+      );
+      applied.push({
+        kind: effect.kind,
+        target: effect.target,
+        destination: effect.destination,
+        materialId,
+        quantity: effect.quantity,
+        dropId: drop.id,
+      });
+    } else if (effect.kind === 'replace-voxel') {
+      const previousMaterialId = voxelAt(state.world.grid, effect.target.position.x, effect.target.position.y, effect.target.position.z);
+      setVoxel(state.world.grid, effect.target.position.x, effect.target.position.y, effect.target.position.z, effect.materialId);
+      applied.push({ kind: effect.kind, target: effect.target, previousMaterialId, materialId: effect.materialId });
+    } else if (effect.kind === 'assemble' || effect.kind === 'modify-structure') {
+      // 组件 = 本次裁决真实消耗掉的材料；实体与锚点体素由规则提交，
+      // 模型只提供了排布意图与材料清单。
+      const components: { materialId: number; quantity: number }[] = [];
+      for (const candidate of verdict.effects) {
+        if (candidate.kind !== 'consume') continue;
+        if (candidate.target.kind === 'inventory-stack') {
+          const stack = person.inventory.find((entry) => entry.id === (candidate.target as { stackId: string }).stackId);
+          if (stack) components.push({ materialId: stack.materialId, quantity: candidate.quantity });
+        } else if (candidate.target.kind === 'drop') {
+          const drop = state.world.drops.find((entry) => entry.id === (candidate.target as { dropId: string }).dropId);
+          if (drop) components.push({ materialId: drop.materialId, quantity: candidate.quantity });
+        } else if (candidate.target.kind === 'voxel') {
+          const position = (candidate.target as { position: { x: number; y: number; z: number } }).position;
+          components.push({ materialId: voxelAt(state.world.grid, position.x, position.y, position.z), quantity: 1 });
+        }
+      }
+      if (effect.kind === 'assemble') {
+        const position = assembleAnchorPosition(state, effect.target.position)!;
+        const work = createWork({
+          position,
+          arrangement: effect.arrangement,
+          components,
+          summary: effect.summary,
+          builderId: person.id,
+          atMonth,
+          sourceEventId: eventId,
+        });
+        registerWork(state.world, work);
+        setVoxel(state.world.grid, position.x, position.y, position.z, work.anchorMaterialId);
+        applied.push({
+          kind: effect.kind,
+          workId: work.id,
+          arrangement: work.arrangement,
+          components: work.components,
+          anchorMaterialId: work.anchorMaterialId,
+          profile: work.profile,
+        });
+      } else {
+        const existing = workAt(state.world, effect.target.position)!;
+        const priorBuilderIds = existing.builderIds.filter((id) => id !== person.id);
+        const updated = modifyWork(existing, {
+          components,
+          ...(effect.arrangement ? { arrangement: effect.arrangement } : {}),
+          ...(effect.summary ? { summary: effect.summary } : {}),
+          builderId: person.id,
+          atMonth,
+          sourceEventId: eventId,
+        });
+        registerWork(state.world, updated);
+        if (updated.anchorMaterialId !== existing.anchorMaterialId) {
+          setVoxel(state.world.grid, effect.target.position.x, effect.target.position.y, effect.target.position.z, updated.anchorMaterialId);
+        }
+        // 在别人的造物上继续添砖加瓦是最具体的协作：每一次真实加件都在
+        // 建造者之间留下双向关系证据，共同造物由此成为社会纽带的载体。
+        const collaborationPartnerIds: string[] = [];
+        for (const partnerId of priorBuilderIds) {
+          const partner = personById(state, partnerId);
+          if (!partner || !isAlive(partner)) continue;
+          applyRelationEvidence(person, partnerId, eventId, { trust: 4, bond: 2 });
+          applyRelationEvidence(partner, person.id, eventId, { trust: 4, bond: 2 });
+          collaborationPartnerIds.push(partnerId);
+        }
+        applied.push({
+          kind: effect.kind,
+          workId: updated.id,
+          arrangement: updated.arrangement,
+          components: updated.components,
+          profile: updated.profile,
+          condition: updated.condition,
+          ...(collaborationPartnerIds.length ? { collaborationPartnerIds } : {}),
+        });
+      }
+    } else if (effect.kind === 'move-self') {
+      const destination = { cellId: cellId(effect.target.position.x, effect.target.position.y), z: effect.target.position.z + 1 };
+      const path = findStandingPath(state.world.grid, person.position, destination);
+      person.position.previousCellId = person.position.cellId;
+      person.position.previousZ = person.position.z;
+      person.position.cellId = destination.cellId;
+      person.position.z = destination.z;
+      person.position.lastPath = path.map((position) => position.cellId);
+      person.position.tickPath.push(...path.slice(1).map((position) => position.cellId));
+      movementPath = person.position.lastPath;
+      applied.push({ kind: effect.kind, target: effect.target });
+    } else if (effect.kind === 'body') {
+      const target = effect.target ? personById(state, effect.target.personId) : person;
+      if (target) target.body[effect.field] = clamp(target.body[effect.field] + effect.delta);
+      applied.push({ kind: effect.kind, personId: target?.id, field: effect.field, delta: effect.delta });
+    } else if (effect.kind === 'relation') {
+      applyRelationEvidence(person, effect.target.personId, eventId, { [effect.field]: effect.delta });
+      applied.push({ kind: effect.kind, personId: effect.target.personId, field: effect.field, delta: effect.delta });
+    } else if (effect.kind === 'bond-animal') {
+      // 绑定增量只由真实行为成分决定：真实喂食最有效，徒手接触缓慢，
+      // 同一次行动里若夹带伤害则清零。
+      const animalId = effect.target.animalId;
+      const harm = verdict.effects.some((candidate) => candidate.kind === 'body'
+        && candidate.target
+        && (candidate.target as { personId?: string }).personId === undefined
+        && candidate.delta < 0);
+      const fed = verdict.effects.some((candidate) => {
+        if (candidate.kind !== 'consume') return false;
+        if (candidate.target.kind === 'inventory-stack') {
+          const stack = person.inventory.find((entry) => entry.id === (candidate.target as { stackId: string }).stackId);
+          return stack ? materialHas(stack.materialId, 'edible') : false;
+        }
+        if (candidate.target.kind === 'drop') {
+          const drop = state.world.drops.find((entry) => entry.id === (candidate.target as { dropId: string }).dropId);
+          return drop ? materialHas(drop.materialId, 'edible') : false;
+        }
+        return false;
+      });
+      if (harm) {
+        resetAnimalBond(state.world, animalId, person.id);
+        applied.push({ kind: effect.kind, animalId, trust: 0, note: '伤害让信任归零' });
+      } else {
+        const delta = fed ? 14 : 4;
+        const bond = applyAnimalBondContact(state.world, {
+          animalId,
+          personId: person.id,
+          trustDelta: delta,
+          atMonth,
+          sourceEventId: eventId,
+        });
+        applied.push({ kind: effect.kind, animalId, trust: bond.trust, contacts: bond.contacts, fed });
+      }
+    } else {
+      state.world.openFacts ??= [];
+      if (effect.target && effect.stateKey) {
+        state.world.openFacts = state.world.openFacts.filter((fact) => (
+          fact.stateKey !== effect.stateKey
+            || !fact.targetRef
+            || JSON.stringify(fact.targetRef) !== JSON.stringify(effect.target)
+        ));
+      }
+      const stateCellId = effect.target
+        ? worldInteractionTargetCell(state, person, effect.target)
+        : undefined;
+      const stateZ = effect.target
+        ? worldInteractionTargetZ(state, person, effect.target)
+        : undefined;
+      state.world.openFacts.push({
+        id: `open-world:${eventId}:${applied.length + 1}`,
+        atMonth,
+        cellId: stateCellId ?? person.position.cellId,
+        z: stateZ ?? person.position.z,
+        actorId: person.id,
+        summary: effect.summary,
+        targetRefs: structuredClone(verdict.targets),
+        ...(effect.target ? { targetRef: structuredClone(effect.target) } : {}),
+        ...(effect.stateKey ? { stateKey: effect.stateKey } : {}),
+        ...(effect.stateValue ? { stateValue: effect.stateValue } : {}),
+        sourceEventId: eventId,
+      });
+      if (state.world.openFacts.length > 256) state.world.openFacts.splice(0, state.world.openFacts.length - 256);
+      applied.push({
+        kind: effect.kind,
+        summary: effect.summary,
+        ...(effect.target ? { target: effect.target } : {}),
+        ...(effect.stateKey ? { stateKey: effect.stateKey } : {}),
+        ...(effect.stateValue ? { stateValue: effect.stateValue } : {}),
+      });
+    }
+  }
+  removeEmptyStacks(person);
+  state.world.drops = state.world.drops.filter((drop) => drop.quantity > 0);
+  return {
+    status: verdict.status,
+    ...(movementPath ? { path: movementPath } : {}),
+    result: verdict.result,
+    diff: {
+      worldAdjudicated: true,
+      request: verdict.request,
+      appliedEffects: applied,
+      ...(planFeedback ? { planFeedback } : {}),
+    },
+  };
+}
+
 export function executePrimitiveAction(
   state: SimulationState,
   person: PersonState,
   action: PrimitiveAction,
   atMonth: number,
   orderInMonth: number,
-  meta: { intentId?: string; cause: ActionFact['cause']; actionTick: number },
+  meta: {
+    intentId?: string;
+    cause: ActionFact['cause'];
+    actionTick: number;
+    languageBroadcast?: LanguageBroadcast;
+  },
 ): ActionFact {
   const eventId = `e-${atMonth}-action-${person.id}-${orderInMonth}`;
   const fromCellId = person.position.cellId;
@@ -2104,8 +2705,10 @@ export function executePrimitiveAction(
           ? executeAct(state, person, action, atMonth, meta.actionTick, eventId)
           : action.kind === 'attend'
             ? executeAttend(state, person, action, atMonth, eventId, meta.intentId)
+            : action.kind === 'world-interact'
+              ? executeWorldInteraction(state, person, action, atMonth, eventId)
             : action.kind === 'talk'
-              ? executeTalk(state, person, action, atMonth, eventId)
+              ? executeTalk(state, person, action, atMonth, eventId, meta.languageBroadcast)
               : executeInscribe(state, person, action, atMonth, eventId);
   if (outcome.status === 'completed'
     && action.kind === 'act'
@@ -2123,7 +2726,7 @@ export function executePrimitiveAction(
     }
   }
   applyTechniqueLearning(techniqueLearning, outcome, eventId, atMonth);
-  const pathSegment = 'path' in outcome ? outcome.path : [fromCellId];
+  const pathSegment = 'path' in outcome && Array.isArray(outcome.path) ? outcome.path : [fromCellId];
   const fact: ActionFact = {
     id: eventId,
     kind: 'action',
@@ -2151,7 +2754,6 @@ export function executePrimitiveAction(
   recordPermissionAction(state, fact);
   recordInteractionFailureKnowledge(state, fact);
   recordWitnessedDeclarationFulfillment(state, fact);
-  recordConversationActionOutcome(state, fact);
   rememberAction(state, fact);
   recordPersonalityEvidence(state, fact);
   recordActionOutcomeBelief(state, fact);

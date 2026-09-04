@@ -2,6 +2,7 @@ import type { ActionFact, SimulationState } from './model';
 import { liveSocialEvidenceForPersonSource, worldEventById } from './event-index';
 import type { MaterialId } from './material';
 import { isAlive, type PersonState } from './person';
+import { languageInterpreterIds } from './language-perception';
 import type {
   ProjectMaterialContributionRequestBasis,
   ProjectMaterialDemand,
@@ -41,7 +42,7 @@ export function projectMaterialContributionRequestHasAuthoritativeSource(
     || event.atMonth !== request.atMonth
     || event.action.kind !== 'talk'
     || event.action.speakerMeaning.kind !== 'request') return false;
-  const audience = ((event.diff.understoodByPersonIds as string[] | undefined) ?? []);
+  const interpreters = languageInterpreterIds(event.diff, event.action.speakerMeaning.id);
   const payload = event.action.speakerMeaning.projectMaterialContribution;
   return Boolean(payload
     && request.version === 'project-material-contribution-request-v1'
@@ -50,7 +51,7 @@ export function projectMaterialContributionRequestHasAuthoritativeSource(
     && project.actionEventIds.includes(request.requestEventId)
     && request.contributorIds.length > 0
     && new Set(request.contributorIds).size === request.contributorIds.length
-    && request.contributorIds.every((personId) => audience.includes(personId))
+    && request.contributorIds.every((personId) => interpreters.includes(personId))
     && payload.version === request.version
     && payload.projectId === request.projectId
     && payload.requesterId === request.requesterId

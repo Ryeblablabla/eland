@@ -14,6 +14,19 @@ interface MentalActSchemaProtocol {
 
 type JsonSchema = Record<string, unknown>;
 
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function describedRefs(value: unknown): string[] {
+  return Array.isArray(value) ? value.flatMap((item) => {
+    const ref = record(item).ref;
+    return typeof ref === 'string' && ref ? [ref] : [];
+  }) : [];
+}
+
 function stringSchema(maxLength: number, description?: string): JsonSchema {
   return {
     type: 'string',
@@ -32,11 +45,17 @@ function handleSchema(values: readonly string[], description: string): JsonSchem
 }
 
 function experimentSchema(protocol: MentalActSchemaProtocol): JsonSchema | undefined {
-  const held = protocol.handles.held.map((item) => item.handle);
-  const visible = protocol.handles.visible.map((item) => item.handle);
-  const voxels = protocol.handles.voxels.map((item) => item.handle);
+  const actionSpace = record(protocol.requestContext.actionSpace);
+  const visibleContext = record(protocol.requestContext.visible);
+  const held = describedRefs(actionSpace.heldObjects);
+  const visible = describedRefs(visibleContext.nearbyObjects);
+  const voxels = describedRefs(visibleContext.surfaces);
+  const described = held.length || visible.length || voxels.length;
+  const allowedHeld = described ? held : protocol.handles.held.map((item) => item.handle);
+  const allowedVisible = described ? visible : protocol.handles.visible.map((item) => item.handle);
+  const allowedVoxels = described ? voxels : protocol.handles.voxels.map((item) => item.handle);
   const variants: JsonSchema[] = [];
-  const observable = [...held, ...visible, ...voxels];
+  const observable = [...allowedHeld, ...allowedVisible, ...allowedVoxels];
   if (observable.length) {
     variants.push({
       type: 'object',
@@ -44,11 +63,11 @@ function experimentSchema(protocol: MentalActSchemaProtocol): JsonSchema | undef
       required: ['kind', 'targetHandle'],
       properties: {
         kind: { type: 'string', enum: ['observe'] },
-        targetHandle: handleSchema(observable, 'possibleExperiments 中当前可观察的句柄'),
+        targetHandle: handleSchema(observable, 'actionSpace.heldObjects 或 visible 中当前可观察对象的 ref'),
       },
     });
   }
-  if (held.length >= 2) {
+  if (allowedHeld.length >= 2) {
     variants.push({
       type: 'object',
       additionalProperties: false,
@@ -58,35 +77,46 @@ function experimentSchema(protocol: MentalActSchemaProtocol): JsonSchema | undef
         stackHandles: {
           type: 'array',
           minItems: 2,
-          maxItems: Math.min(3, held.length),
+          maxItems: Math.min(3, allowedHeld.length),
           uniqueItems: true,
-          items: handleSchema(held, '本人当前持有的物品句柄'),
+          items: handleSchema(allowedHeld, 'actionSpace.heldObjects 中本人当前持有物品的 ref'),
         },
       },
     });
   }
-  if (held.length && voxels.length) {
+  if (allowedHeld.length && allowedVoxels.length) {
     variants.push({
       type: 'object',
       additionalProperties: false,
       required: ['kind', 'inputHandle', 'targetHandle'],
       properties: {
         kind: { type: 'string', enum: ['expose'] },
-        inputHandle: handleSchema(held, '本人当前持有的输入物句柄'),
-        targetHandle: handleSchema(voxels, '当前可见体素句柄'),
+        inputHandle: handleSchema(allowedHeld, 'actionSpace.heldObjects 中输入物的 ref'),
+        targetHandle: handleSchema(allowedVoxels, 'visible.surfaces 中环境或设施的 ref'),
       },
     });
   }
-  if (held.length >= 2 && voxels.length) {
+  if (allowedHeld.length >= 2 && allowedVoxels.length) {
     variants.push({
       type: 'object',
       additionalProperties: false,
       required: ['kind', 'toolHandle', 'inputHandle', 'targetHandle'],
       properties: {
         kind: { type: 'string', enum: ['exert'] },
-        toolHandle: handleSchema(held, '本人当前持有的工具句柄'),
-        inputHandle: handleSchema(held, '本人当前持有的输入物句柄'),
-        targetHandle: handleSchema(voxels, '当前可见体素句柄'),
+        toolHandle: handleSchema(allowedHeld, 'actionSpace.heldObjects 中工具的 ref'),
+        inputHandle: handleSchema(allowedHeld, 'actionSpace.heldObjects 中输入物的 ref'),
+        targetHandle: handleSchema(allowedVoxels, 'visible.surfaces 中环境或设施的 ref'),
+      },
+    });
+  }
+  if (allowedVoxels.length) {
+    variants.push({
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'targetHandle'],
+      properties: {
+        kind: { type: 'string', enum: ['move'] },
+        targetHandle: handleSchema(allowedVoxels, 'visible.surfaces 中当前可见的地表位置 ref'),
       },
     });
   }
@@ -114,7 +144,12 @@ function concernSchema(protocol: MentalActSchemaProtocol): JsonSchema {
 function mentalActProperties(protocol: MentalActSchemaProtocol): Record<string, JsonSchema> {
   const memoryHandles = protocol.handles.memories.map((item) => item.handle);
   return {
-    thoughtLine: stringSchema(180, '人物此刻形成的第一人称思考原话；它会像语言一样向周围透明传播'),
+    utterance: stringSchema(180, '人物本次决定形成的唯一第一人称语言波；三体人没有与说话分离的私密思考'),
+    delivery: {
+      type: 'string',
+      enum: ['whisper', 'normal', 'call'],
+      description: 'whisper 低强度、normal 正常、call 高强度；只改变传播，不指定听者',
+    },
     goal: stringSchema(240, '人物此刻真正想达到或弄清的事情'),
     strategy: stringSchema(320, '人物现在准备采用的可失败方法'),
     assumptions: {
@@ -131,7 +166,7 @@ function mentalActProperties(protocol: MentalActSchemaProtocol): Record<string, 
         minItems: 0,
         maxItems: Math.min(4, memoryHandles.length),
         uniqueItems: true,
-        items: handleSchema(memoryHandles, 'mind.markdown 中本轮可引用的记忆句柄'),
+        items: handleSchema(memoryHandles, 'mind.recentEvidence 或 learnedConclusions 中本轮可引用的记忆句柄'),
       },
     } : {}),
   };
@@ -144,8 +179,6 @@ function mentalActObjectSchema(
     stepHandles?: readonly string[];
     requireStep?: boolean;
     allowContinuation?: boolean;
-    allowUtterance?: boolean;
-    requireUtterance?: boolean;
     allowGrounding?: boolean;
     allowConcern?: boolean;
     allowExperiment?: boolean;
@@ -160,12 +193,12 @@ function mentalActObjectSchema(
     additionalProperties: false,
     required: [
       'kind',
-      'thoughtLine',
+      'utterance',
+      'delivery',
       'goal',
       'strategy',
       'assumptions',
       ...(options.requireStep ? ['firstStepHandle'] : []),
-      ...(options.requireUtterance ? ['utterance'] : []),
     ],
     properties: {
       kind: { type: 'string', enum: [...kinds] },
@@ -175,9 +208,6 @@ function mentalActObjectSchema(
       } : {}),
       ...(options.allowContinuation && continuationHandles.length ? {
         continuationHandle: handleSchema(continuationHandles, 'continuations 中与当前步骤配套的后续句柄'),
-      } : {}),
-      ...(options.allowUtterance ? {
-        utterance: stringSchema(180, '选择 talk 行为时额外主动说出的核心原话'),
       } : {}),
       ...(options.allowGrounding && groundingHandles.length ? {
         groundingFactHandles: {
@@ -217,8 +247,6 @@ function mentalActDecisionSchema(protocol: MentalActSchemaProtocol): JsonSchema 
         stepHandles: communicationSteps,
         requireStep: true,
         allowContinuation: true,
-        allowUtterance: true,
-        requireUtterance: true,
         allowGrounding: true,
         allowConcern: true,
       })] : []),
@@ -227,9 +255,131 @@ function mentalActDecisionSchema(protocol: MentalActSchemaProtocol): JsonSchema 
   };
 }
 
+function mindIntentionSchema(protocol: MentalActSchemaProtocol): JsonSchema {
+  const memoryHandles = protocol.handles.memories.map((item) => item.handle);
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['utterance', 'delivery', 'goal', 'orientation', 'horizon'],
+    properties: {
+      utterance: stringSchema(180, '人物此刻形成并向外传播的第一人称原话'),
+      delivery: {
+        type: 'string',
+        enum: ['whisper', 'normal', 'call'],
+        description: '语言波强度；不选择听者',
+      },
+      goal: stringSchema(240, '人物此刻真正想达到、维持或弄清的事情'),
+      orientation: {
+        type: 'string',
+        enum: ['social', 'inquiry', 'survival', 'construction', 'acquisition', 'exploration', 'rest'],
+        description: '人物在看到行动入口前形成的主观方向类别',
+      },
+      horizon: {
+        type: 'string',
+        enum: ['momentary', 'ongoing'],
+        description: '这一目标是一时念头，还是本人希望跨行动继续记住的方向',
+      },
+      ...(memoryHandles.length ? {
+        evidenceMemoryHandles: {
+          type: 'array',
+          uniqueItems: true,
+          items: handleSchema(memoryHandles, 'mind.recentEvidence 或 learnedConclusions 中本轮可引用的记忆句柄'),
+        },
+      } : {}),
+    },
+  };
+}
+
+function modelPlanSchema(protocol: MentalActSchemaProtocol): JsonSchema {
+  const stepHandles = protocol.requestContext.availableSteps.map((step) => step.handle);
+  const continuationHandles = protocol.requestContext.continuations.map((step) => step.handle);
+  const groundingHandles = protocol.handles.groundingFacts.map((item) => item.handle);
+  const experiment = experimentSchema(protocol);
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['steps', 'disposition'],
+    properties: {
+      disposition: {
+        type: 'string',
+        enum: ['act', 'continue', 'pause', 'abandon', 'stay'],
+        description: '人物选择执行、继续、搁置、放弃或停留；非 act 不携带执行入口',
+      },
+      steps: {
+        type: 'array',
+        minItems: 1,
+        items: stringSchema(240, '围绕冻结意图形成的一个领域规划步骤；不要求固定步数'),
+      },
+      ...(stepHandles.length ? {
+        firstStepHandle: handleSchema(
+          stepHandles,
+          'Execution 当前能够编译的计划入口',
+        ),
+      } : {}),
+      ...(continuationHandles.length ? {
+        continuationHandle: handleSchema(continuationHandles, '与计划入口配套的现有后续入口'),
+      } : {}),
+      ...(groundingHandles.length ? {
+        groundingFactHandles: {
+          type: 'array',
+          uniqueItems: true,
+          items: handleSchema(groundingHandles, '当前交流规划允许引用的事实句柄'),
+        },
+      } : {}),
+      ...(experiment ? { experiment } : {}),
+    },
+  };
+}
+
+function batchSchema(
+  name: string,
+  protocols: readonly MentalActSchemaProtocol[],
+  schemaFor: (protocol: MentalActSchemaProtocol) => JsonSchema,
+): ModelJsonSchema {
+  const rowVariants = protocols.map((protocol, index): JsonSchema => ({
+    type: 'object',
+    additionalProperties: false,
+    required: ['agentHandle', 'value'],
+    properties: {
+      agentHandle: { type: 'string', enum: [`a${index + 1}`] },
+      value: { anyOf: [{ type: 'null' }, schemaFor(protocol)] },
+    },
+  }));
+  return {
+    name,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['items'],
+      properties: {
+        items: {
+          type: 'array',
+          minItems: protocols.length,
+          maxItems: protocols.length,
+          items: { oneOf: rowVariants },
+        },
+      },
+    },
+  };
+}
+
+export function buildMindIntentionJsonSchema(protocol: MentalActSchemaProtocol): ModelJsonSchema {
+  return { name: 'eland_mind_intention_v1', schema: mindIntentionSchema(protocol) };
+}
+
+export function buildModelPlanJsonSchema(protocol: MentalActSchemaProtocol): ModelJsonSchema {
+  return { name: 'eland_model_plan_v1', schema: modelPlanSchema(protocol) };
+}
+
+export function buildModelPlanBatchJsonSchema(
+  protocols: readonly MentalActSchemaProtocol[],
+): ModelJsonSchema {
+  return batchSchema('eland_model_plans_v1', protocols, modelPlanSchema);
+}
+
 export function buildMentalActJsonSchema(protocol: MentalActSchemaProtocol): ModelJsonSchema {
   return {
-    name: 'eland_mental_act_v1',
+    name: 'eland_mental_act_v2',
     schema: mentalActDecisionSchema(protocol),
   };
 }

@@ -16,6 +16,28 @@ const memoryBundlePath = path.join(temporaryDirectory, 'memory.mjs');
 const waterAccessBundlePath = path.join(temporaryDirectory, 'water-access.mjs');
 const constructionBundlePath = path.join(temporaryDirectory, 'construction-options.mjs');
 const monthlyProcessesBundlePath = path.join(temporaryDirectory, 'monthly-processes.mjs');
+const actionExecutorBundlePath = path.join(temporaryDirectory, 'action-executor.mjs');
+
+const normalizeFixtureLanguage = (rawAction, rawDiff = {}) => {
+  const { interpreters: actionInterpreters = [], ...actionWithoutInterpreters } = rawAction;
+  const { interpreters: diffInterpreters = [], ...diffWithoutInterpreters } = rawDiff;
+  const interpreterIds = [...new Set([...actionInterpreters, ...diffInterpreters])];
+  if (actionWithoutInterpreters.kind !== 'talk') {
+    return { action: actionWithoutInterpreters, diff: diffWithoutInterpreters };
+  }
+  return {
+    action: actionWithoutInterpreters,
+    diff: {
+      ...diffWithoutInterpreters,
+      listenerInterpretations: interpreterIds.map((listenerId) => ({
+        version: 'listener-language-interpretation-v1',
+        listenerId,
+        sourceRepresentationId: actionWithoutInterpreters.speakerMeaning.id,
+        kind: actionWithoutInterpreters.speakerMeaning.kind,
+      })),
+    },
+  };
+};
 
 try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
@@ -48,6 +70,9 @@ try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'src/game/eland/domain/monthly-processes.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${monthlyProcessesBundlePath}`,
   ], { stdio: 'pipe' });
+  execFileSync(path.resolve('node_modules/.bin/esbuild'), [
+    'src/game/eland/domain/action-executor.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${actionExecutorBundlePath}`,
+  ], { stdio: 'pipe' });
   const { buildDecisionContexts, createInitialState, createSimulation, executeActiveIntent, seededFraction, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
   const { advanceAgreementLifecycle, agreementAuthorizesTransfer, recordAgreementAction } = await import(`${pathToFileURL(agreementBundlePath).href}?test=${Date.now()}`);
   const { buildDecisionRequestContext } = await import(`${pathToFileURL(decisionBundlePath).href}?test=${Date.now()}`);
@@ -58,6 +83,7 @@ try {
   const { findReachableWater } = await import(`${pathToFileURL(waterAccessBundlePath).href}?test=${Date.now()}`);
   const { buildConstructionOptions } = await import(`${pathToFileURL(constructionBundlePath).href}?test=${Date.now()}`);
   const { resolveClimate, resolveWeather } = await import(`${pathToFileURL(monthlyProcessesBundlePath).href}?test=${Date.now()}`);
+  const { executePrimitiveAction } = await import(`${pathToFileURL(actionExecutorBundlePath).href}?test=${Date.now()}`);
   const placeWith = (person, other) => {
     person.position.cellId = other.position.cellId;
     person.position.z = other.position.z;
@@ -84,7 +110,8 @@ try {
   };
 
   const initial = createInitialState(31, { endpoint: { kind: 'months', value: 180 } });
-  assert.equal(initial.schemaVersion, 17);
+  assert.equal(initial.schemaVersion, 19);
+  assert.equal(initial.people.length, 3, '新文明应固定由 3 位先民开始');
   assert.deepEqual(initial.clock, { unit: 'month', elapsedMonths: 0, monthsPerYear: 12 });
   assert.equal(initial.world.grid.width, 84);
   assert.equal(initial.world.grid.depth, 52);
@@ -213,6 +240,17 @@ try {
   assert.ok(projectedMemories.filter((memory) => memory.kind === 'dialogue').length <= 2, '模型上下文只保留少量最相关普通对话，避免对话自我强化');
 
   const kinshipState = createInitialState(315, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  while (kinshipState.people.length < 5) {
+    const source = kinshipState.people[kinshipState.people.length % 3];
+    const ordinal = kinshipState.people.length + 1;
+    kinshipState.people.push({
+      ...structuredClone(source),
+      id: `kinship-fixture-${ordinal}`,
+      name: `亲属夹具人物 ${ordinal}`,
+      geneticParents: [],
+      relations: [],
+    });
+  }
   const [kinshipMother, kinshipFather, kinshipSpeaker, kinshipSister, kinshipChild] = kinshipState.people;
   assert.ok(kinshipMother && kinshipFather && kinshipSpeaker && kinshipSister && kinshipChild, '亲属上下文测试需要至少五名人物');
   kinshipMother.sex = 'female';
@@ -265,27 +303,29 @@ try {
     const basisKey = `grounded-conversation-v1|topic=care|speaker=${cultivatedReproductionActor.id}|listener=${cultivatedReproductionPartner.id}|sources=${foundingFact.id}`;
     const openingId = `test-feasible-cultivated-opening-${month}`;
     const responseId = `test-feasible-cultivated-response-${month}`;
-    const shell = (id, orderInMonth, who, action) => ({
-      id, kind: 'action', actionTick: 1, atMonth: month, orderInMonth,
-      cellId: cultivatedReproductionActor.position.cellId, who, cause: 'intent', action,
-      fromCellId: cultivatedReproductionActor.position.cellId, toCellId: cultivatedReproductionActor.position.cellId,
-      fromZ: cultivatedReproductionActor.position.z, toZ: cultivatedReproductionActor.position.z,
-      pathSegment: [cultivatedReproductionActor.position.cellId], status: 'completed',
-      result: '双方完成有来源的生活交流', diff: { groundedConversationBasisKey: basisKey },
-    });
+    const shell = (id, orderInMonth, who, rawAction) => {
+      const { action, diff } = normalizeFixtureLanguage(rawAction, { groundedConversationBasisKey: basisKey });
+      return {
+        id, kind: 'action', actionTick: 1, atMonth: month, orderInMonth,
+        cellId: cultivatedReproductionActor.position.cellId, who, cause: 'intent', action,
+        fromCellId: cultivatedReproductionActor.position.cellId, toCellId: cultivatedReproductionActor.position.cellId,
+        fromZ: cultivatedReproductionActor.position.z, toZ: cultivatedReproductionActor.position.z,
+        pathSegment: [cultivatedReproductionActor.position.cellId], status: 'completed',
+        result: '双方完成有来源的生活交流', diff,
+      };
+    };
     return [
       shell(openingId, 0, cultivatedReproductionActor.id, {
-        kind: 'communicate', content: { id: openingId, kind: 'claim', summary: '关心对方近况', conversation: {
+        kind: 'talk', speakerMeaning: { id: openingId, kind: 'claim', summary: '关心对方近况', conversation: {
           version: 'grounded-conversation-v1', basisKey, topic: 'care', turn: 'opening',
-          speakerId: cultivatedReproductionActor.id, listenerId: cultivatedReproductionPartner.id, sourceFactIds: [foundingFact.id],
-        } }, audience: [cultivatedReproductionPartner.id], channel: 'voice',
+          sourceFactIds: [foundingFact.id],
+        } }, interpreters: [cultivatedReproductionPartner.id],
       }),
       shell(responseId, 1, cultivatedReproductionPartner.id, {
-        kind: 'communicate', content: { id: responseId, kind: 'claim', summary: '回应对方的关心', conversation: {
+        kind: 'talk', speakerMeaning: { id: responseId, kind: 'claim', summary: '回应对方的关心', conversation: {
           version: 'grounded-conversation-v1', basisKey, topic: 'care', turn: 'response',
-          speakerId: cultivatedReproductionPartner.id, listenerId: cultivatedReproductionActor.id,
           sourceFactIds: [foundingFact.id], referenceEventId: openingId, stance: 'supportive',
-        } }, audience: [cultivatedReproductionActor.id], channel: 'voice',
+        } }, interpreters: [cultivatedReproductionActor.id],
       }),
     ];
   });
@@ -374,13 +414,16 @@ try {
   const requester = agreementState.people[0];
   const helper = agreementState.people[1];
   const agreementId = 'test-assist-agreement';
-  const actionFact = (id, atMonth, who, action) => ({ id, kind: 'action', actionTick: 1, atMonth, orderInMonth: 0, cellId: requester.position.cellId, who, cause: 'intent', action, fromCellId: requester.position.cellId, toCellId: requester.position.cellId, fromZ: requester.position.z, toZ: requester.position.z, pathSegment: [requester.position.cellId], status: 'completed', result: id, diff: {} });
-  const proposal = actionFact('test-proposal', 1, requester.id, { kind: 'communicate', content: { id: agreementId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: requester.id, helperId: helper.id, need: 'food', expiresAtMonth: 3 } }, audience: [helper.id], channel: 'voice' });
+  const actionFact = (id, atMonth, who, rawAction) => {
+    const { action, diff } = normalizeFixtureLanguage(rawAction);
+    return { id, kind: 'action', actionTick: 1, atMonth, orderInMonth: 0, cellId: requester.position.cellId, who, cause: 'intent', action, fromCellId: requester.position.cellId, toCellId: requester.position.cellId, fromZ: requester.position.z, toZ: requester.position.z, pathSegment: [requester.position.cellId], status: 'completed', result: id, diff };
+  };
+  const proposal = actionFact('test-proposal', 1, requester.id, { kind: 'talk', speakerMeaning: { id: agreementId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: requester.id, helperId: helper.id, need: 'food', expiresAtMonth: 3 } }, interpreters: [helper.id] });
   recordAgreementAction(agreementState, proposal);
   appendFixtureEvents(agreementState, [proposal]);
   assert.equal(agreementState.agreements[0]?.status, 'proposed', '结构化求助应创建待回应 Agreement');
   const trustBeforeAcceptance = requester.relations.find((relation) => relation.personId === helper.id)?.trust;
-  const acceptance = actionFact('test-acceptance', 2, helper.id, { kind: 'communicate', content: { id: 'test-acceptance-content', kind: 'accept', referenceId: agreementId }, audience: [requester.id], channel: 'voice' });
+  const acceptance = actionFact('test-acceptance', 2, helper.id, { kind: 'talk', speakerMeaning: { id: 'test-acceptance-content', kind: 'accept', referenceId: agreementId }, interpreters: [requester.id] });
   recordAgreementAction(agreementState, acceptance);
   appendFixtureEvents(agreementState, [acceptance]);
   assert.equal(agreementState.agreements[0]?.status, 'active', '指定回应者接受后 Agreement 才生效');
@@ -414,20 +457,21 @@ try {
   });
   const firstSocialContext = buildDecisionContexts(socialBasisState).find((context) => context.person.id === socialActor.id);
   const firstTalk = firstSocialContext?.options.find((option) => option.id.startsWith('conversation:')
-    && option.nextAction.kind === 'communicate'
-    && option.nextAction.audience.includes(socialPeer.id));
-  assert.ok(firstTalk?.nextAction.kind === 'communicate', '社交冷却测试需要一项普通近身交谈');
+    && option.nextAction.kind === 'talk'
+    && option.target?.kind === 'person'
+    && option.target.personId === socialPeer.id);
+  assert.ok(firstTalk?.nextAction.kind === 'talk', '社交冷却测试需要一项普通近身交谈');
   const recentSocialTalk = actionFact('test-recent-social-talk', 1, socialActor.id, firstTalk.nextAction);
   appendFixtureEvents(socialBasisState, [recentSocialTalk]);
   socialActor.relations.find((relation) => relation.personId === socialPeer.id)?.sourceEventIds.push(recentSocialTalk.id);
   socialPeer.relations.find((relation) => relation.personId === socialActor.id)?.sourceEventIds.push(recentSocialTalk.id);
   const repeatedBasisContext = buildDecisionContexts(socialBasisState).find((context) => context.person.id === socialActor.id);
-  const firstBasisKey = firstTalk.nextAction.content.kind === 'claim'
-    ? firstTalk.nextAction.content.conversation?.basisKey
+  const firstBasisKey = firstTalk.nextAction.speakerMeaning.kind === 'claim'
+    ? firstTalk.nextAction.speakerMeaning.conversation?.basisKey
     : undefined;
-  assert.equal(repeatedBasisContext?.options.some((option) => option.nextAction.kind === 'communicate'
-    && option.nextAction.content.kind === 'claim'
-    && option.nextAction.content.conversation?.basisKey === firstBasisKey), false, '同一段生活经历没有新事实时不得伪装成新的对话开场');
+  assert.equal(repeatedBasisContext?.options.some((option) => option.nextAction.kind === 'talk'
+    && option.nextAction.speakerMeaning.kind === 'claim'
+    && option.nextAction.speakerMeaning.conversation?.basisKey === firstBasisKey), false, '同一段生活经历没有新事实时不得伪装成新的对话开场');
   assert.ok(repeatedBasisContext?.options.some((option) => option.domain === 'strategic'), '证据绑定的对话结束后仍应保留生产和探索候选');
 
   const emergencyBudgetState = createInitialState(321, { endpoint: { kind: 'months', value: 4 }, chaosIntensity: 0 });
@@ -468,10 +512,10 @@ try {
   tradeOfferer.inventory = [{ id: 'budget-trade-wood', materialId: 13, quantity: 2, sourceEventIds: [] }];
   tradeResponder.inventory = [{ id: 'budget-trade-food', materialId: 21, quantity: 2, sourceEventIds: [] }];
   const budgetExchangeId = 'test-budget-exchange';
-  const budgetExchangeOffer = actionFact('test-budget-exchange-offer', 1, tradeOfferer.id, { kind: 'communicate', content: { id: budgetExchangeId, kind: 'offer', summary: '木材换食物', proposal: { kind: 'exchange', offererId: tradeOfferer.id, partnerId: tradeResponder.id, offererMaterialId: 13, offererQuantity: 1, partnerMaterialId: 21, partnerQuantity: 1, expiresAtMonth: 6 } }, audience: [tradeResponder.id], channel: 'voice' });
+  const budgetExchangeOffer = actionFact('test-budget-exchange-offer', 1, tradeOfferer.id, { kind: 'talk', speakerMeaning: { id: budgetExchangeId, kind: 'offer', summary: '木材换食物', proposal: { kind: 'exchange', offererId: tradeOfferer.id, partnerId: tradeResponder.id, offererMaterialId: 13, offererQuantity: 1, partnerMaterialId: 21, partnerQuantity: 1, expiresAtMonth: 6 } }, interpreters: [tradeResponder.id] });
   recordAgreementAction(fulfillmentBudgetState, budgetExchangeOffer);
   appendFixtureEvents(fulfillmentBudgetState, [budgetExchangeOffer]);
-  const budgetExchangeAcceptance = actionFact('test-budget-exchange-acceptance', 1, tradeResponder.id, { kind: 'communicate', content: { id: 'test-budget-exchange-acceptance-content', kind: 'accept', referenceId: budgetExchangeId }, audience: [tradeOfferer.id], channel: 'voice' });
+  const budgetExchangeAcceptance = actionFact('test-budget-exchange-acceptance', 1, tradeResponder.id, { kind: 'talk', speakerMeaning: { id: 'test-budget-exchange-acceptance-content', kind: 'accept', referenceId: budgetExchangeId }, interpreters: [tradeOfferer.id] });
   recordAgreementAction(fulfillmentBudgetState, budgetExchangeAcceptance);
   appendFixtureEvents(fulfillmentBudgetState, [budgetExchangeAcceptance]);
   fulfillmentBudgetState.clock.elapsedMonths = 1;
@@ -505,9 +549,9 @@ try {
   reproductionProposer.sex = 'female';
   reproductionPartner.sex = 'male';
   const reproductionAgreementId = 'test-reproduction-window';
-  const reproductionOffer = actionFact('test-reproduction-offer', 1, reproductionProposer.id, { kind: 'communicate', content: { id: reproductionAgreementId, kind: 'offer', summary: '共同尝试生殖', proposal: { kind: 'reproduce', proposerId: reproductionProposer.id, partnerId: reproductionPartner.id, expiresAtMonth: 3 } }, audience: [reproductionPartner.id], channel: 'voice' });
+  const reproductionOffer = actionFact('test-reproduction-offer', 1, reproductionProposer.id, { kind: 'talk', speakerMeaning: { id: reproductionAgreementId, kind: 'offer', summary: '共同尝试生殖', proposal: { kind: 'reproduce', proposerId: reproductionProposer.id, partnerId: reproductionPartner.id, expiresAtMonth: 3 } }, interpreters: [reproductionPartner.id] });
   recordAgreementAction(reproductionAgreementState, reproductionOffer);
-  const reproductionAcceptance = actionFact('test-reproduction-acceptance', 2, reproductionPartner.id, { kind: 'communicate', content: { id: 'test-reproduction-acceptance-content', kind: 'accept', referenceId: reproductionAgreementId }, audience: [reproductionProposer.id], channel: 'voice' });
+  const reproductionAcceptance = actionFact('test-reproduction-acceptance', 2, reproductionPartner.id, { kind: 'talk', speakerMeaning: { id: 'test-reproduction-acceptance-content', kind: 'accept', referenceId: reproductionAgreementId }, interpreters: [reproductionProposer.id] });
   recordAgreementAction(reproductionAgreementState, reproductionAcceptance);
   const noConception = { ...actionFact('test-reproduction-no-conception', 2, reproductionPartner.id, { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: reproductionProposer.id }], authorizationRef: reproductionAgreementId }), diff: { conceived: false } };
   recordAgreementAction(reproductionAgreementState, noConception);
@@ -589,6 +633,53 @@ try {
   assert.ok(violenceFact, '施力伤害应留下带受害者与见证者的真实动作事实');
   for (const observerId of [victim.id, witness.id]) assert.ok(afterViolence.people.find((person) => person.id === observerId)?.memories.some((memory) => memory.sourceEventIds.includes(violenceFact.id)), '受害者与见证者都必须记得同一暴力事件，供后续模型意图使用');
 
+  const witnessedHuntState = createInitialState(321, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const hunter = witnessedHuntState.people[0];
+  const huntWitness = witnessedHuntState.people[1];
+  const distantPerson = witnessedHuntState.people[2];
+  const huntedAnimal = witnessedHuntState.world.animals.find((animal) => animal.speciesId === 'deer');
+  assert.ok(huntedAnimal, '动物死亡感知夹具必须有真实动物');
+  huntedAnimal.position = { ...huntedAnimal.position, cellId: hunter.position.cellId, z: hunter.position.z };
+  huntedAnimal.health = 1;
+  const adjacentCell = hunter.position.cellId % witnessedHuntState.world.grid.width < witnessedHuntState.world.grid.width - 1
+    ? hunter.position.cellId + 1
+    : hunter.position.cellId - 1;
+  huntWitness.position = { ...huntWitness.position, cellId: adjacentCell, z: hunter.position.z };
+  const hunterX = hunter.position.cellId % witnessedHuntState.world.grid.width;
+  const hunterY = Math.floor(hunter.position.cellId / witnessedHuntState.world.grid.width);
+  const distantCell = (hunterX < witnessedHuntState.world.grid.width / 2 ? witnessedHuntState.world.grid.width - 1 : 0)
+    + (hunterY < witnessedHuntState.world.grid.depth / 2 ? witnessedHuntState.world.grid.depth - 1 : 0) * witnessedHuntState.world.grid.width;
+  distantPerson.position = { ...distantPerson.position, cellId: distantCell, z: hunter.position.z };
+  hunter.baselineCapacities.perception = 100;
+  hunter.baselineCapacities.manipulation = 100;
+  hunter.inventory.push({ id: 'test-hunt-tool', materialId: 52, quantity: 1, sourceEventIds: [] });
+  const huntAction = {
+    kind: 'act', operation: 'hunt', toolStackId: 'test-hunt-tool',
+    targets: [{ kind: 'animal', animalId: huntedAnimal.id }],
+  };
+  let huntOrder = 1;
+  while (seededFraction(
+    witnessedHuntState.seed,
+    `human-hunt:1:${hunter.id}:${huntedAnimal.id}:e-1-action-${hunter.id}-${huntOrder}`,
+  ) >= 0.9) huntOrder += 1;
+  const huntFact = executePrimitiveAction(witnessedHuntState, hunter, huntAction, 1, huntOrder, {
+    cause: 'intent', actionTick: 1,
+  });
+  appendFixtureEvents(witnessedHuntState, [huntFact]);
+  assert.equal(huntFact.diff.killed, true, '定向夹具必须真实杀死动物');
+  assert.ok(huntFact.diff.witnessedBy.includes(huntWitness.id), '视野内人物应成为动物死亡事实的见证者');
+  assert.equal(huntFact.diff.witnessedBy.includes(distantPerson.id), false, '视野外人物不得凭空知道动物死亡');
+  assert.ok(hunter.memories.some((memory) => memory.sourceEventIds.includes(huntFact.id)
+    && memory.summary.includes('已经死亡')), '猎人自己的模型记忆必须明确知道目标动物已经死亡');
+  assert.ok(huntWitness.memories.some((memory) => memory.sourceEventIds.includes(huntFact.id)
+    && memory.summary.includes('亲眼看见')
+    && memory.summary.includes('已经死亡')), '视野内见证者必须形成同源的动物死亡经历');
+  assert.equal(distantPerson.memories.some((memory) => memory.sourceEventIds.includes(huntFact.id)), false, '视野外人物不得获得动物死亡经历');
+  const huntWitnessContext = buildDecisionContexts(witnessedHuntState)
+    .find((context) => context.person.id === huntWitness.id);
+  assert.ok(huntWitnessContext, '动物死亡见证者应有后续决策上下文');
+  assert.ok(buildDecisionRequestContext(huntWitnessContext).person.mindMarkdown.includes('已经死亡'), '下一次人物审议必须能读到亲眼见证的死亡事实，再自行改变关切');
+
   let restraintState = createInitialState(314, { endpoint: { kind: 'months', value: 3 }, chaosIntensity: 0 });
   const restrainer = restraintState.people[0];
   const restrainedPerson = restraintState.people[1];
@@ -650,7 +741,7 @@ try {
   waterRequester.position.z = surfaceStandingZ(waterAssistState, waterBank);
   waterHelper.position.z = waterRequester.position.z;
   const waterAssistId = 'test-water-assist';
-  const waterProposal = { ...actionFact('test-water-proposal', 1, waterRequester.id, { kind: 'communicate', content: { id: waterAssistId, kind: 'request', summary: '请帮助我找水', proposal: { kind: 'assist', requesterId: waterRequester.id, helperId: waterHelper.id, need: 'water', expiresAtMonth: 4 } }, audience: [waterHelper.id], channel: 'voice' }), cellId: waterBank };
+  const waterProposal = { ...actionFact('test-water-proposal', 1, waterRequester.id, { kind: 'talk', speakerMeaning: { id: waterAssistId, kind: 'request', summary: '请帮助我找水', proposal: { kind: 'assist', requesterId: waterRequester.id, helperId: waterHelper.id, need: 'water', expiresAtMonth: 4 } }, interpreters: [waterHelper.id] }), cellId: waterBank };
   recordAgreementAction(waterAssistState, waterProposal);
   appendFixtureEvents(waterAssistState, [waterProposal]);
   waterRequester.bornAtMonth = -20 * 12;
@@ -659,7 +750,7 @@ try {
   assert.equal(buildDecisionContexts(waterAssistState).find((context) => context.person.id === waterHelper.id)?.options.some((option) => option.id.startsWith('accept-assist:')), false, '求助者已自行解除缺水时，帮助者不得再接受一项失效需求');
   waterRequester.body.hydration = 20;
   assert.ok(buildDecisionContexts(waterAssistState).find((context) => context.person.id === waterHelper.id)?.options.some((option) => option.id.startsWith('accept-assist:')), '求助者仍然缺水且存在可达水源时，帮助者才能接受');
-  const waterAcceptance = { ...actionFact('test-water-acceptance', 2, waterHelper.id, { kind: 'communicate', content: { id: 'test-water-acceptance-content', kind: 'accept', referenceId: waterAssistId }, audience: [waterRequester.id], channel: 'voice' }), cellId: waterBank };
+  const waterAcceptance = { ...actionFact('test-water-acceptance', 2, waterHelper.id, { kind: 'talk', speakerMeaning: { id: 'test-water-acceptance-content', kind: 'accept', referenceId: waterAssistId }, interpreters: [waterRequester.id] }), cellId: waterBank };
   recordAgreementAction(waterAssistState, waterAcceptance);
   appendFixtureEvents(waterAssistState, [waterAcceptance]);
   const helperWaterIntentId = 'intent-test-water-helper';
@@ -681,8 +772,8 @@ try {
   const companionB = companionState.people[1];
   placeWith(companionB, companionA);
   const companionId = 'test-companion-agreement';
-  const companionProposal = { ...actionFact('test-companion-proposal', 1, companionA.id, { kind: 'communicate', content: { id: companionId, kind: 'offer', summary: '结伴', proposal: { kind: 'companion', proposerId: companionA.id, partnerId: companionB.id, expiresAtMonth: 4 } }, audience: [companionB.id], channel: 'voice' }), cellId: companionA.position.cellId, fromCellId: companionA.position.cellId, toCellId: companionA.position.cellId, fromZ: companionA.position.z, toZ: companionA.position.z, pathSegment: [companionA.position.cellId] };
-  const companionAcceptance = { ...actionFact('test-companion-acceptance', 2, companionB.id, { kind: 'communicate', content: { id: 'test-companion-acceptance-content', kind: 'accept', referenceId: companionId }, audience: [companionA.id], channel: 'voice' }), cellId: companionB.position.cellId, fromCellId: companionB.position.cellId, toCellId: companionB.position.cellId, fromZ: companionB.position.z, toZ: companionB.position.z, pathSegment: [companionB.position.cellId] };
+  const companionProposal = { ...actionFact('test-companion-proposal', 1, companionA.id, { kind: 'talk', speakerMeaning: { id: companionId, kind: 'offer', summary: '结伴', proposal: { kind: 'companion', proposerId: companionA.id, partnerId: companionB.id, expiresAtMonth: 4 } }, interpreters: [companionB.id] }), cellId: companionA.position.cellId, fromCellId: companionA.position.cellId, toCellId: companionA.position.cellId, fromZ: companionA.position.z, toZ: companionA.position.z, pathSegment: [companionA.position.cellId] };
+  const companionAcceptance = { ...actionFact('test-companion-acceptance', 2, companionB.id, { kind: 'talk', speakerMeaning: { id: 'test-companion-acceptance-content', kind: 'accept', referenceId: companionId }, interpreters: [companionA.id] }), cellId: companionB.position.cellId, fromCellId: companionB.position.cellId, toCellId: companionB.position.cellId, fromZ: companionB.position.z, toZ: companionB.position.z, pathSegment: [companionB.position.cellId] };
   recordAgreementAction(companionState, companionProposal);
   recordAgreementAction(companionState, companionAcceptance);
   for (let month = 3; month <= 27; month += 1) advanceAgreementLifecycle(companionState, month);
@@ -694,10 +785,10 @@ try {
   const breachRequester = breachState.people[0];
   const breachHelper = breachState.people[1];
   const breachId = 'test-breach-agreement';
-  const breachProposal = actionFact('test-breach-proposal', 1, breachRequester.id, { kind: 'communicate', content: { id: breachId, kind: 'request', summary: '请帮助我', proposal: { kind: 'assist', requesterId: breachRequester.id, helperId: breachHelper.id, need: 'food', expiresAtMonth: 3 } }, audience: [breachHelper.id], channel: 'voice' });
+  const breachProposal = actionFact('test-breach-proposal', 1, breachRequester.id, { kind: 'talk', speakerMeaning: { id: breachId, kind: 'request', summary: '请帮助我', proposal: { kind: 'assist', requesterId: breachRequester.id, helperId: breachHelper.id, need: 'food', expiresAtMonth: 3 } }, interpreters: [breachHelper.id] });
   recordAgreementAction(breachState, breachProposal);
   appendFixtureEvents(breachState, [breachProposal]);
-  const breachAcceptance = actionFact('test-breach-acceptance', 2, breachHelper.id, { kind: 'communicate', content: { id: 'test-breach-acceptance-content', kind: 'accept', referenceId: breachId }, audience: [breachRequester.id], channel: 'voice' });
+  const breachAcceptance = actionFact('test-breach-acceptance', 2, breachHelper.id, { kind: 'talk', speakerMeaning: { id: 'test-breach-acceptance-content', kind: 'accept', referenceId: breachId }, interpreters: [breachRequester.id] });
   recordAgreementAction(breachState, breachAcceptance);
   appendFixtureEvents(breachState, [breachAcceptance]);
   advanceAgreementLifecycle(breachState, 9);
@@ -788,9 +879,9 @@ try {
   assert.ok(dialogueContext, '测试人物必须拥有决策上下文');
   const collectMaterials = dialogueContext.options.filter((option) => option.id.startsWith('collect:')).map((option) => option.goal.kind === 'inventory-at-least' ? option.goal.materialId : -1);
   assert.equal(new Set(collectMaterials).size, collectMaterials.length, '同一物质只应暴露最近的一项取得机会');
-  assert.ok(dialogueContext.options.filter((option) => option.nextAction.kind === 'communicate')
-    .every((option) => !option.requiresFollowUp || (option.nextAction.content.kind === 'claim'
-      && option.nextAction.content.conversation?.turn === 'opening')), '结构化提议、预测、教学和回应不能被强行拼接无关物理动作');
+  assert.ok(dialogueContext.options.filter((option) => option.nextAction.kind === 'talk')
+    .every((option) => !option.requiresFollowUp || (option.nextAction.speakerMeaning.kind === 'claim'
+      && option.nextAction.speakerMeaning.conversation?.turn === 'opening')), '结构化提议、预测、教学和回应不能被强行拼接无关物理动作');
 
   const groundedDialogueState = createInitialState(318, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const groundedSpeaker = groundedDialogueState.people[0];
@@ -805,12 +896,12 @@ try {
   const groundedContext = buildDecisionContexts(groundedDialogueState, groundedDialogueState.clock.elapsedMonths + 1)
     .find((context) => context.person.id === groundedSpeaker.id);
   const groundedTalk = groundedContext?.options.find((option) => option.id.startsWith('teach:')
-    && option.nextAction.kind === 'communicate'
-    && option.nextAction.content.kind === 'claim'
-    && option.nextAction.content.factId === groundedFact.id);
+    && option.nextAction.kind === 'talk'
+    && option.nextAction.speakerMeaning.kind === 'claim'
+    && option.nextAction.speakerMeaning.factId === groundedFact.id);
   assert.ok(groundedContext && groundedTalk && !groundedTalk.requiresFollowUp && groundedTalk.sourceFactIds.includes('test-grounded-observation'), '分享认识本身是完整沟通动作，并且必须绑定事实身份与来源');
   const groundedPromptOption = buildDecisionRequestContext(groundedContext).options.find((option) => option.id === groundedTalk.id);
-  assert.equal(groundedPromptOption?.communicatesFactId, groundedFact.id, '模型必须看见本次对话固定绑定的事实身份');
+  assert.equal(groundedPromptOption?.talksFactId, groundedFact.id, '模型必须看见本次对话固定绑定的事实身份');
   groundedDialogueState.decisionBudget.credits = groundedDialogueState.people.length;
   groundedDialogueState.decisionBudget.ledgers = [{ atMonth: 1, livingAgents: 60, candidates: 0, modelContexts: 0, inputTokens: 0, outputTokens: 0, chargedTokens: 0 }];
   const groundedAfterTalk = await stepSimulationAsync(groundedDialogueState, {
@@ -826,21 +917,21 @@ try {
   assert.ok((heardFact?.confidence ?? 0) >= 55 && heardFact?.sourceEventIds.some((id) => id.includes('action')), '明确教学可以传递可靠技术，但仍必须保留沟通动作来源');
   const groundedAction = groundedAfterTalk.world.past.find((event) => event.kind === 'action'
     && event.who === groundedSpeaker.id
-    && event.action.kind === 'communicate'
-    && event.action.content.kind === 'claim'
-    && event.action.content.factId === groundedFact.id);
-  assert.equal(groundedAction?.action.kind === 'communicate' ? groundedAction.action.content.summary : undefined,
-    groundedTalk.nextAction.kind === 'communicate' ? groundedTalk.nextAction.content.summary : undefined,
+    && event.action.kind === 'talk'
+    && event.action.speakerMeaning.kind === 'claim'
+    && event.action.speakerMeaning.factId === groundedFact.id);
+  assert.equal(groundedAction?.action.kind === 'talk' ? groundedAction.action.speakerMeaning.summary : undefined,
+    groundedTalk.nextAction.kind === 'talk' ? groundedTalk.nextAction.speakerMeaning.summary : undefined,
     '模型台词必须与权威沟通摘要分离，不能写回 ActionFact 或后续记忆');
-  assert.notEqual(groundedAction?.action.kind === 'communicate' ? groundedAction.action.content.summary : undefined,
+  assert.notEqual(groundedAction?.action.kind === 'talk' ? groundedAction.action.speakerMeaning.summary : undefined,
     '我亲眼见过北边湿土附近有水',
     '模型表层措辞不能取代规则决定的沟通事实');
   const groundedIntent = groundedAfterTalk.intents.find((intent) => intent.ownerId === groundedSpeaker.id
-    && intent.nextAction.kind === 'communicate'
-    && intent.nextAction.content.id === groundedTalk.id);
+    && intent.nextAction.kind === 'talk'
+    && intent.nextAction.speakerMeaning.id === groundedTalk.id);
   assert.equal(groundedIntent?.openingAction, undefined, '事实分享不应伪装成另一个无关目标的开场动作');
   assert.ok(groundedIntent?.actionEventIds.some((eventId) => groundedAfterTalk.world.past.some((event) => event.id === eventId
-    && event.kind === 'action' && event.action.kind === 'communicate')), '事实分享应留下自己的完整沟通动作');
+    && event.kind === 'action' && event.action.kind === 'talk')), '事实分享应留下自己的完整沟通动作');
 
   let harvestState = createInitialState(34, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
   const harvester = harvestState.people[0];
@@ -1235,7 +1326,7 @@ try {
   teachingState.intents.push({
     id: teachingIntentId, ownerId: teacher.id, summary: '向同伴说明技术', domain: 'social',
     goal: { kind: 'representation-made', representationId: 'test-teaching-claim' },
-    nextAction: { kind: 'communicate', content: { id: 'test-teaching-claim', kind: 'claim', factId: taughtTechniqueId, summary: '我这就过去演示一遍，你看着。' }, audience: [learner.id], channel: 'voice' },
+    nextAction: { kind: 'talk', delivery: 'call', speakerMeaning: { id: 'test-teaching-claim', kind: 'claim', factId: taughtTechniqueId, summary: '我这就过去演示一遍，你看着。' } },
     status: 'active', createdAtMonth: 0, lastProgressAtMonth: 0, progress: 0, sourceDecisionEventId: 'decision-test-teaching',
     sourceFactIds: ['teacher-trial'], actionEventIds: [], replanCount: 0,
   });
@@ -1259,8 +1350,8 @@ try {
   const directTeachOption = directContext?.options.find((option) => option.id.startsWith('teach:')
     && option.target?.kind === 'person'
     && option.target.personId === directLearner.id
-    && option.nextAction.kind === 'communicate'
-    && option.nextAction.content.factId === taughtTechniqueId);
+    && option.nextAction.kind === 'talk'
+    && option.nextAction.speakerMeaning.factId === taughtTechniqueId);
   assert.ok(directTeachOption, '可靠技术持有者应能对同地且达到学习年龄的人直接生成教导选项');
   assert.equal(buildDecisionContexts(directTeachingState).flatMap((context) => context.options).some((option) => option.id.startsWith('request-technique:')
     || option.id.startsWith('demonstrate-technique:')
@@ -1471,7 +1562,7 @@ try {
   ignorant.inventory = ignorant.inventory.filter((stack) => stack.id !== 'test-unknown-record-carrier');
 
   recordContext = buildDecisionContexts(recordState).find((context) => context.person.id === authorId);
-  const teachCodebookOption = recordContext?.options.find((option) => option.id.startsWith('teach:') && option.nextAction.kind === 'communicate' && option.nextAction.content.factId === payload.codebookId);
+  const teachCodebookOption = recordContext?.options.find((option) => option.id.startsWith('teach:') && option.nextAction.kind === 'talk' && option.nextAction.speakerMeaning.factId === payload.codebookId);
   recordState = runRecordOption(recordState, authorId, teachCodebookOption, 'teach-record-codebook');
   assert.ok(recordState.people.find((person) => person.id === readerId)?.knowledge.some((fact) => fact.id === payload.codebookId && fact.kind === 'codebook' && fact.confidence >= 55), '作者必须先通过沟通与读者建立共同编码');
 
@@ -1491,20 +1582,20 @@ try {
   founder.personality.baseline.emotionality = 90;
   founder.personality.baseline.extraversion = 90;
   const earlierAssistId = 'test-earlier-fulfilled-assist';
-  const earlierRequest = actionFact('test-earlier-assist-request', 0, founder.id, { kind: 'communicate', content: { id: earlierAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: partner.id, need: 'food', expiresAtMonth: 1 } }, audience: [partner.id], channel: 'voice' });
+  const earlierRequest = actionFact('test-earlier-assist-request', 0, founder.id, { kind: 'talk', speakerMeaning: { id: earlierAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: partner.id, need: 'food', expiresAtMonth: 1 } }, interpreters: [partner.id] });
   recordAgreementAction(collectiveState, earlierRequest);
   appendFixtureEvents(collectiveState, [earlierRequest]);
-  const earlierAcceptance = actionFact('test-earlier-assist-acceptance', 0, partner.id, { kind: 'communicate', content: { id: 'test-earlier-assist-acceptance-content', kind: 'accept', referenceId: earlierAssistId }, audience: [founder.id], channel: 'voice' });
+  const earlierAcceptance = actionFact('test-earlier-assist-acceptance', 0, partner.id, { kind: 'talk', speakerMeaning: { id: 'test-earlier-assist-acceptance-content', kind: 'accept', referenceId: earlierAssistId }, interpreters: [founder.id] });
   recordAgreementAction(collectiveState, earlierAcceptance);
   appendFixtureEvents(collectiveState, [earlierAcceptance]);
   const earlierFulfillment = actionFact('test-earlier-assist-fulfillment', 0, partner.id, { kind: 'transfer', materialId: 21, quantity: 1, from: { kind: 'person', personId: partner.id }, to: { kind: 'person', personId: founder.id }, authorizationRef: earlierAssistId });
   recordAgreementAction(collectiveState, earlierFulfillment);
   appendFixtureEvents(collectiveState, [earlierFulfillment]);
   const priorAssistId = 'test-prior-fulfilled-assist';
-  const priorRequest = actionFact('test-prior-assist-request', 1, founder.id, { kind: 'communicate', content: { id: priorAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: partner.id, need: 'food', expiresAtMonth: 2 } }, audience: [partner.id], channel: 'voice' });
+  const priorRequest = actionFact('test-prior-assist-request', 1, founder.id, { kind: 'talk', speakerMeaning: { id: priorAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: partner.id, need: 'food', expiresAtMonth: 2 } }, interpreters: [partner.id] });
   recordAgreementAction(collectiveState, priorRequest);
   appendFixtureEvents(collectiveState, [priorRequest]);
-  const priorAcceptance = actionFact('test-prior-assist-acceptance', 1, partner.id, { kind: 'communicate', content: { id: 'test-prior-assist-acceptance-content', kind: 'accept', referenceId: priorAssistId }, audience: [founder.id], channel: 'voice' });
+  const priorAcceptance = actionFact('test-prior-assist-acceptance', 1, partner.id, { kind: 'talk', speakerMeaning: { id: 'test-prior-assist-acceptance-content', kind: 'accept', referenceId: priorAssistId }, interpreters: [founder.id] });
   recordAgreementAction(collectiveState, priorAcceptance);
   appendFixtureEvents(collectiveState, [priorAcceptance]);
   const priorFulfillment = actionFact('test-prior-assist-fulfillment', 1, partner.id, { kind: 'transfer', materialId: 21, quantity: 1, from: { kind: 'person', personId: partner.id }, to: { kind: 'person', personId: founder.id }, authorizationRef: priorAssistId });
@@ -1528,14 +1619,14 @@ try {
   assert.equal(formationAgreement?.status, 'proposed', '共同体提议必须等待另一人明确接受，不能由发起者单方面成立');
   assert.ok(formationAgreement?.sourceEventIds.includes(priorFulfillment.id), '共同体提议必须保留使它成为选项的既往合作来源');
   const proposalActions = collectiveState.world.past.filter((event) => event.kind === 'action' && event.intentId === collectiveIntentId);
-  assert.equal(proposalActions[0]?.action.kind, 'communicate', '共同体形成链先发生真实沟通');
-  assert.equal(proposalActions.some((event) => event.action.kind !== 'communicate'), false, '共同体提议不能夹带语义无关的第二行动');
+  assert.equal(proposalActions[0]?.action.kind, 'talk', '共同体形成链先发生真实沟通');
+  assert.equal(proposalActions.some((event) => event.action.kind !== 'talk'), false, '共同体提议不能夹带语义无关的第二行动');
 
   const strategicFollowUp = collectiveContext?.followUpOptions.find((option) => option.domain === 'strategic');
   assert.ok(strategicFollowUp, '独立结构化提议测试需要一个会被忽略的无关战略选项');
   const collectiveChoice = composeIntentChoice(collectiveContext.options, collectiveContext.followUpOptions, collectiveOffer.id, strategicFollowUp.id);
   assert.equal(collectiveChoice?.domain, 'social', '即使调用方传入无关 follow-up，独立提议仍必须保持自己的社会语义');
-  assert.equal(collectiveChoice?.nextAction.kind, 'communicate');
+  assert.equal(collectiveChoice?.nextAction.kind, 'talk');
 
   const collectiveResponseContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === partner.id);
   assert.deepEqual(new Set(collectiveResponseContext?.options.map((option) => option.id.split(':')[0])), new Set(['accept-collective', 'reject-collective']), '收到共同体提议后必须由本人明确接受或拒绝');
@@ -1560,9 +1651,9 @@ try {
   permissionGrantee.inventory.push({ id: 'test-grantee-food', materialId: 21, quantity: 3, sourceEventIds: ['test-grantee-food-source'] });
   let permissionContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
   const offerPermission = permissionContext?.options.find((option) => option.id.startsWith('offer-permission:')
-    && option.nextAction.kind === 'communicate'
-    && option.nextAction.content.proposal?.kind === 'permission'
-    && option.nextAction.content.proposal.materialId === 21);
+    && option.nextAction.kind === 'talk'
+    && option.nextAction.speakerMeaning.proposal?.kind === 'permission'
+    && option.nextAction.speakerMeaning.proposal.materialId === 21);
   collectiveState = runRecordOption(collectiveState, founder.id, offerPermission, 'offer-resource-permission');
   const permissionResponse = buildDecisionContexts(collectiveState).find((context) => context.person.id === partner.id);
   assert.deepEqual(new Set(permissionResponse?.options.map((option) => option.id.split(':')[0])), new Set(['accept-permission', 'reject-permission']), '具体物质取用许可必须由被授权人明确接受或拒绝');
@@ -1620,9 +1711,9 @@ try {
   placeWith(governingPartner, governingFounder);
   let governanceContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
   const offerDecisionRule = governanceContext?.options.find((option) => option.id.startsWith('offer-decision-rule:')
-    && option.nextAction.kind === 'communicate'
-    && option.nextAction.content.proposal?.kind === 'decision-rule'
-    && option.nextAction.content.proposal.materialId === 21);
+    && option.nextAction.kind === 'talk'
+    && option.nextAction.speakerMeaning.proposal?.kind === 'decision-rule'
+    && option.nextAction.speakerMeaning.proposal.materialId === 21);
   collectiveState = runRecordOption(collectiveState, founder.id, offerDecisionRule, 'offer-unanimous-decision-rule');
   const decisionRuleAgreement = collectiveState.agreements.find((agreement) => agreement.proposal.kind === 'decision-rule');
   assert.equal(decisionRuleAgreement?.status, 'proposed', '发起者单方面说出选择规则不能产生共同规则');
@@ -1636,9 +1727,9 @@ try {
 
   governanceContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
   const offerMandate = governanceContext?.options.find((option) => option.id.startsWith('offer-mandate:')
-    && option.nextAction.kind === 'communicate'
-    && option.nextAction.content.proposal?.kind === 'mandate'
-    && option.nextAction.content.proposal.holderId === founder.id);
+    && option.nextAction.kind === 'talk'
+    && option.nextAction.speakerMeaning.proposal?.kind === 'mandate'
+    && option.nextAction.speakerMeaning.proposal.holderId === founder.id);
   collectiveState = runRecordOption(collectiveState, founder.id, offerMandate, 'offer-material-coordinator');
   const mandateAgreement = collectiveState.agreements.find((agreement) => agreement.proposal.kind === 'mandate');
   assert.equal(mandateAgreement?.status, 'proposed', '自荐或提名本身不能直接获得共同体授权');
@@ -1672,10 +1763,10 @@ try {
   placeWith(currentPartner, currentFounder);
   placeWith(candidate, currentFounder);
   const candidateAssistId = 'test-candidate-fulfilled-assist';
-  const candidateRequest = actionFact('test-candidate-assist-request', collectiveState.clock.elapsedMonths, founder.id, { kind: 'communicate', content: { id: candidateAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: candidate.id, need: 'food', expiresAtMonth: collectiveState.clock.elapsedMonths + 2 } }, audience: [candidate.id], channel: 'voice' });
+  const candidateRequest = actionFact('test-candidate-assist-request', collectiveState.clock.elapsedMonths, founder.id, { kind: 'talk', speakerMeaning: { id: candidateAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: candidate.id, need: 'food', expiresAtMonth: collectiveState.clock.elapsedMonths + 2 } }, interpreters: [candidate.id] });
   recordAgreementAction(collectiveState, candidateRequest);
   appendFixtureEvents(collectiveState, [candidateRequest]);
-  const candidateAcceptance = actionFact('test-candidate-assist-acceptance', collectiveState.clock.elapsedMonths, candidate.id, { kind: 'communicate', content: { id: 'test-candidate-assist-acceptance-content', kind: 'accept', referenceId: candidateAssistId }, audience: [founder.id], channel: 'voice' });
+  const candidateAcceptance = actionFact('test-candidate-assist-acceptance', collectiveState.clock.elapsedMonths, candidate.id, { kind: 'talk', speakerMeaning: { id: 'test-candidate-assist-acceptance-content', kind: 'accept', referenceId: candidateAssistId }, interpreters: [founder.id] });
   recordAgreementAction(collectiveState, candidateAcceptance);
   appendFixtureEvents(collectiveState, [candidateAcceptance]);
   const candidateFulfillment = actionFact('test-candidate-assist-fulfillment', collectiveState.clock.elapsedMonths, candidate.id, { kind: 'transfer', materialId: 21, quantity: 1, from: { kind: 'person', personId: candidate.id }, to: { kind: 'person', personId: founder.id }, authorizationRef: candidateAssistId });
@@ -1683,10 +1774,10 @@ try {
   appendFixtureEvents(collectiveState, [candidateFulfillment]);
   collectiveState.clock.elapsedMonths += 1;
   const repeatedCandidateAssistId = 'test-candidate-repeated-fulfilled-assist';
-  const repeatedCandidateRequest = actionFact('test-candidate-repeated-assist-request', collectiveState.clock.elapsedMonths, founder.id, { kind: 'communicate', content: { id: repeatedCandidateAssistId, kind: 'request', summary: '请再给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: candidate.id, need: 'food', expiresAtMonth: collectiveState.clock.elapsedMonths + 2 } }, audience: [candidate.id], channel: 'voice' });
+  const repeatedCandidateRequest = actionFact('test-candidate-repeated-assist-request', collectiveState.clock.elapsedMonths, founder.id, { kind: 'talk', speakerMeaning: { id: repeatedCandidateAssistId, kind: 'request', summary: '请再给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: candidate.id, need: 'food', expiresAtMonth: collectiveState.clock.elapsedMonths + 2 } }, interpreters: [candidate.id] });
   recordAgreementAction(collectiveState, repeatedCandidateRequest);
   appendFixtureEvents(collectiveState, [repeatedCandidateRequest]);
-  const repeatedCandidateAcceptance = actionFact('test-candidate-repeated-assist-acceptance', collectiveState.clock.elapsedMonths, candidate.id, { kind: 'communicate', content: { id: 'test-candidate-repeated-assist-acceptance-content', kind: 'accept', referenceId: repeatedCandidateAssistId }, audience: [founder.id], channel: 'voice' });
+  const repeatedCandidateAcceptance = actionFact('test-candidate-repeated-assist-acceptance', collectiveState.clock.elapsedMonths, candidate.id, { kind: 'talk', speakerMeaning: { id: 'test-candidate-repeated-assist-acceptance-content', kind: 'accept', referenceId: repeatedCandidateAssistId }, interpreters: [founder.id] });
   recordAgreementAction(collectiveState, repeatedCandidateAcceptance);
   appendFixtureEvents(collectiveState, [repeatedCandidateAcceptance]);
   const repeatedCandidateFulfillment = actionFact('test-candidate-repeated-assist-fulfillment', collectiveState.clock.elapsedMonths, candidate.id, { kind: 'transfer', materialId: 21, quantity: 1, from: { kind: 'person', personId: candidate.id }, to: { kind: 'person', personId: founder.id }, authorizationRef: repeatedCandidateAssistId });
@@ -1694,9 +1785,9 @@ try {
   appendFixtureEvents(collectiveState, [repeatedCandidateFulfillment]);
   const membershipContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
   const offerMembership = membershipContext?.options.find((option) => option.id.startsWith('offer-membership:')
-    && option.nextAction.kind === 'communicate'
-    && option.nextAction.content.proposal?.kind === 'membership'
-    && option.nextAction.content.proposal.candidateId === candidate.id);
+    && option.nextAction.kind === 'talk'
+    && option.nextAction.speakerMeaning.proposal?.kind === 'membership'
+    && option.nextAction.speakerMeaning.proposal.candidateId === candidate.id);
   assert.ok(offerMembership, `已有共同体应能吸收有跨月重复合作事实的第三人；options=${JSON.stringify(membershipContext?.options.map((option) => option.id))}`);
   collectiveState = runRecordOption(collectiveState, founder.id, offerMembership, 'offer-third-membership');
   const membershipAgreement = collectiveState.agreements.find((agreement) => agreement.proposal.kind === 'membership');
@@ -1750,7 +1841,7 @@ try {
   offerer.inventory.push({ id: 'exchange-wood', materialId: 13, quantity: 2, sourceEventIds: [] });
   responder.inventory.push({ id: 'exchange-food', materialId: 21, quantity: 2, sourceEventIds: [] });
   const exchangeId = 'test-required-exchange';
-  const exchangeFact = actionFact('test-required-exchange-event', 1, offerer.id, { kind: 'communicate', content: { id: exchangeId, kind: 'offer', summary: '木材换食物', proposal: { kind: 'exchange', offererId: offerer.id, partnerId: responder.id, offererMaterialId: 13, offererQuantity: 1, partnerMaterialId: 21, partnerQuantity: 1, expiresAtMonth: 8 } }, audience: [responder.id], channel: 'voice' });
+  const exchangeFact = actionFact('test-required-exchange-event', 1, offerer.id, { kind: 'talk', speakerMeaning: { id: exchangeId, kind: 'offer', summary: '木材换食物', proposal: { kind: 'exchange', offererId: offerer.id, partnerId: responder.id, offererMaterialId: 13, offererQuantity: 1, partnerMaterialId: 21, partnerQuantity: 1, expiresAtMonth: 8 } }, interpreters: [responder.id] });
   recordAgreementAction(responseState, exchangeFact);
   appendFixtureEvents(responseState, [exchangeFact]);
   responder.position.cellId = separatedCell;
@@ -1762,7 +1853,7 @@ try {
   assert.deepEqual(new Set(responseContext?.options.map((option) => option.id.split(':')[0])), new Set(['accept-exchange', 'reject-exchange']), '收到可履行交换后只能先明确接受或拒绝');
   const acceptExchange = responseContext?.options.find((option) => option.id.startsWith('accept-exchange:'));
   assert.equal(acceptExchange?.nextAction.kind, 'move', '提议后分开时，应先连续追上提议者');
-  assert.equal(acceptExchange?.completionAction?.kind, 'communicate', '跨月会合后必须保留原本的接受回应');
+  assert.equal(acceptExchange?.completionAction?.kind, 'talk', '跨月会合后必须保留原本的接受回应');
   assert.equal(Boolean(acceptExchange?.requiresFollowUp), false, '接受结构化协议后应由协议条款编译行动，不能让模型另选无关后续');
   responseState.decisionBudget.credits = 0;
   responseState.decisionBudget.ledgers = [];
@@ -1779,9 +1870,9 @@ try {
   assert.ok(requiredBatches.flat().includes(responder.id), '明确回应不应被普通模型预算挤掉');
   const acceptanceFact = respondedState.world.past.find((event) => event.kind === 'action'
     && event.who === responder.id
-    && event.action.kind === 'communicate'
-    && event.action.content.kind === 'accept'
-    && event.action.content.referenceId === exchangeId);
+    && event.action.kind === 'talk'
+    && event.action.speakerMeaning.kind === 'accept'
+    && event.action.speakerMeaning.referenceId === exchangeId);
   assert.ok(acceptanceFact, '回应者应以同一跨月意图完成移动后真正说出接受');
   assert.equal(respondedState.agreements.find((agreement) => agreement.id === exchangeId)?.status, 'fulfilled', '真正说出接受后，双方应以已有 transfer 原语继续履行交换');
   const exchangeDeliveries = respondedState.world.past.filter((event) => event.kind === 'action'
@@ -1892,7 +1983,7 @@ try {
 
   const legacy = structuredClone(initial);
   legacy.schemaVersion = 16;
-  assert.throws(() => createSimulation({ state: legacy }), /只接受 schemaVersion 17/, '破坏性人格重构后旧存档必须硬切拒绝');
+  assert.throws(() => createSimulation({ state: legacy }), /只接受 schemaVersion 19/, '破坏性语言重构后旧存档必须硬切拒绝');
 
   let calls = 0;
   const budgetBatches = [];

@@ -25,11 +25,9 @@ const option = (id, nextAction, extra = {}) => ({
   ...extra,
 });
 
-const communicate = (content, audience = ['other']) => ({
-  kind: 'communicate',
-  content,
-  audience,
-  channel: 'voice',
+const talk = (speakerMeaning) => ({
+  kind: 'talk',
+  speakerMeaning,
 });
 
 try {
@@ -57,22 +55,20 @@ try {
     `${pathToFileURL(simulationBundlePath).href}?test=${Date.now()}`
   );
 
-  const opening = option('conversation-opening', communicate({
+  const opening = option('conversation-opening', talk({
     id: 'conversation-opening:representation',
     kind: 'claim',
     summary: '提起一段共同经历',
-    conversation: {
-      version: 'grounded-conversation-v1',
-      basisKey: 'shared-event',
-      topic: 'shared-work',
-      turn: 'opening',
-      speakerId: 'person',
-      listenerId: 'other',
-      sourceFactIds: ['shared-event'],
-    },
+      conversation: {
+        version: 'grounded-conversation-v1',
+        basisKey: 'shared-event',
+        topic: 'shared-work',
+        turn: 'opening',
+        sourceFactIds: ['shared-event'],
+      },
   }));
   const openConversation = {
-    ...option('open-conversation', communicate({
+    ...option('open-conversation', talk({
       id: 'open-conversation:representation',
       kind: 'claim',
       summary: '与对方进行开放交谈',
@@ -81,33 +77,29 @@ try {
         basisKey: 'open-conversation-basis',
         topic: 'open',
         turn: 'opening',
-        speakerId: 'person',
-        listenerId: 'other',
         sourceFactIds: ['shared-event'],
       },
     })),
     openConversationGrounding: {
-      version: 'open-conversation-grounding-v1', listenerId: 'other',
+      version: 'open-conversation-grounding-v1',
       fallbackSourceFactIds: ['shared-event'],
       facts: [{ kind: 'relationship', sourceFactId: 'shared-event', summary: '双方已有相识来源' }],
     },
   };
-  const optionalReply = option('conversation-response', communicate({
+  const optionalReply = option('conversation-response', talk({
     id: 'conversation-response:representation',
     kind: 'claim',
     summary: '决定是否接话',
-    conversation: {
-      version: 'grounded-conversation-v1',
-      basisKey: 'shared-event',
-      topic: 'shared-work',
-      turn: 'response',
-      speakerId: 'person',
-      listenerId: 'other',
-      sourceFactIds: ['shared-event'],
+      conversation: {
+        version: 'grounded-conversation-v1',
+        basisKey: 'shared-event',
+        topic: 'shared-work',
+        turn: 'response',
+        sourceFactIds: ['shared-event'],
       referenceEventId: 'opening-event',
     },
   }));
-  const company = option('request-company', communicate({
+  const company = option('request-company', talk({
     id: 'request-company:representation',
     kind: 'request',
     summary: '问对方是否愿意陪伴',
@@ -115,28 +107,28 @@ try {
       kind: 'assist', requesterId: 'person', helperId: 'other', need: 'company', expiresAtMonth: 5,
     },
   }));
-  const companion = option('offer-companion', communicate({
+  const companion = option('offer-companion', talk({
     id: 'offer-companion:representation',
     kind: 'offer',
     summary: '提议持续共同生活',
     proposal: { kind: 'companion', proposerId: 'person', partnerId: 'other', expiresAtMonth: 6 },
   }));
-  const reproduction = option('offer-reproduce', communicate({
+  const reproduction = option('offer-reproduce', talk({
     id: 'offer-reproduce:representation',
     kind: 'offer',
     summary: '提议共同生育',
     proposal: { kind: 'reproduce', proposerId: 'person', partnerId: 'other', expiresAtMonth: 6 },
   }));
-  const collective = option('offer-collective', communicate({
+  const collective = option('offer-collective', talk({
     id: 'offer-collective:representation',
     kind: 'offer',
     summary: '提议组成共同体',
     proposal: { kind: 'collective', proposerId: 'person', partnerId: 'other', purposeSummary: '继续合作', expiresAtMonth: 6 },
   }));
-  const ordinaryClaim = option('ordinary-claim', communicate({
+  const ordinaryClaim = option('ordinary-claim', talk({
     id: 'ordinary-claim:representation', kind: 'claim', summary: '说出自己的观察',
   }));
-  const prediction = option('ordinary-prediction', communicate({
+  const prediction = option('ordinary-prediction', talk({
     id: 'ordinary-prediction:representation', kind: 'prediction',
     summary: '说出对下个纪元的判断',
     prediction: {
@@ -144,7 +136,7 @@ try {
       predictedEpoch: 'chaotic', predictedByMonth: 3, basisFactIds: ['weather-fact'],
     },
   }));
-  const projectDiscussion = option('project-knowledge-response', communicate({
+  const projectDiscussion = option('project-knowledge-response', talk({
     id: 'project-knowledge-response:representation',
     kind: 'claim',
     summary: '告诉对方项目所需的做法',
@@ -154,10 +146,10 @@ try {
       outputMaterialId: 1, sourceFactIds: ['knowledge-fact'],
     },
   }));
-  const requiredReply = option('accept-company', communicate({
+  const requiredReply = option('accept-company', talk({
     id: 'accept-company:representation', kind: 'accept', referenceId: 'company-proposal',
   }));
-  const waterHelp = option('request-water', communicate({
+  const waterHelp = option('request-water', talk({
     id: 'request-water:representation',
     kind: 'request',
     summary: '请帮助找水',
@@ -165,7 +157,7 @@ try {
       kind: 'assist', requesterId: 'person', helperId: 'other', need: 'water', expiresAtMonth: 5,
     },
   }));
-  const foodHelp = option('request-food', communicate({
+  const foodHelp = option('request-food', talk({
     id: 'request-food:representation',
     kind: 'request',
     summary: '请帮助取得食物',
@@ -255,14 +247,14 @@ try {
       return contexts.map(() => null);
     },
   });
-  assert.equal(requestedContexts, Math.floor(founderCount / 3),
-    '开局允许模型审议，但不得把全部先民当成豁免上下文放大调用');
+  assert.equal(requestedContexts, founderCount,
+    '每位开局先民应各自获得一次普通模型审议，且不得被记为豁免调用');
   assert.equal(failedModelMonth.decisionBudget.ledgers[0].ordinaryModelContexts, requestedContexts);
   assert.equal(failedModelMonth.decisionBudget.ledgers[0].exemptModelContexts, 0);
 
   const isInventedVoluntarySocialAction = (event) => {
-    if (event.kind !== 'action' || event.status !== 'completed' || event.action.kind !== 'communicate') return false;
-    const content = event.action.content;
+    if (event.kind !== 'action' || event.status !== 'completed' || event.action.kind !== 'talk') return false;
+    const content = event.action.speakerMeaning;
     if (content.kind === 'accept' || content.kind === 'reject') return false;
     if ((content.kind === 'request' || content.kind === 'offer')
       && content.proposal?.kind === 'assist'

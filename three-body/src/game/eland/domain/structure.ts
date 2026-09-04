@@ -1,4 +1,5 @@
 import { materialDefinition, materialHas, type MaterialId } from './material';
+import { WORK_SHELTER_COVER_THRESHOLD, workShelterCoverAt } from './works';
 import {
   cellX,
   cellY,
@@ -37,8 +38,7 @@ function solidBuildingAt(world: VoxelWorld, cell: number, z: number): boolean {
 
 /** 结构效果只来自人物所在体素周围的真实物质拓扑，不读取结构标签或预设蓝图。 */
 export function shelterGeometryAt(world: VoxelWorld, position: StandingPosition): ShelterGeometry | null {
-  if (!isStandingPosition(world, position)) return null;
-  const x = cellX(position.cellId);
+  if (!isStandingPosition(world, position)) return null;  const x = cellX(position.cellId);
   const y = cellY(position.cellId);
   const overheadMaterialId = voxelAt(world, x, y, position.z + 2);
   if (!materialHas(overheadMaterialId, 'solid')) return null;
@@ -55,4 +55,27 @@ export function shelterGeometryAt(world: VoxelWorld, position: StandingPosition)
   const weatherProtection = Math.min(100, 58 + enclosedSides * 10 + (overhead.tags.includes('insulating') ? 8 : 0));
   const thermalInsulation = Math.min(100, 16 + enclosedSides * 18 + (overhead.tags.includes('insulating') ? 18 : 0));
   return { position, overheadMaterialId, enclosedSides, openSides, weatherProtection, thermalInsulation };
+}
+
+/**
+ * 生存向住所判定：规则住所（体素几何）优先；没有规则住所时，
+ * 人物亲手搭的 Works（棚架/垒堆/框架）按 cover 提供应急遮蔽。
+ * 时代门槛、项目压力与文明指数仍只读 shelterGeometryAt —— Works 救急不解锁。
+ */
+export function survivalShelterAt(
+  state: { world: { grid: VoxelWorld; works?: import('./works').WorkState[] } },
+  position: StandingPosition,
+): ShelterGeometry | null {
+  const geometry = shelterGeometryAt(state.world.grid, position);
+  if (geometry) return geometry;
+  const cover = workShelterCoverAt(state.world, position);
+  if (cover < WORK_SHELTER_COVER_THRESHOLD) return null;
+  return {
+    position,
+    overheadMaterialId: 0,
+    enclosedSides: 1,
+    openSides: 3,
+    weatherProtection: cover,
+    thermalInsulation: Math.round(cover * 0.45),
+  };
 }

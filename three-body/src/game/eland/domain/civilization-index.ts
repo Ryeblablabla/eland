@@ -9,6 +9,7 @@ import { Material } from './material';
 import { livingPeople } from './state-index';
 import { actionFacts, worldEventById, worldEventFacts } from './event-index';
 import { observeFunctionalBuildings, observeMaterialCapabilities } from './era-progression';
+import { languageInterpreterIds } from './language-perception';
 import {
   WORLD_CELL_COUNT,
   cellId,
@@ -604,16 +605,16 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
   for (const event of events) {
     if (event.kind !== 'action' || event.status !== 'completed') continue;
     if (event.action.kind === 'talk') {
-      const audience = ((event.diff.understoodByPersonIds as string[] | undefined) ?? [])
+      const interpreters = languageInterpreterIds(event.diff, event.action.speakerMeaning.id)
         .filter((personId) => !FILTER_SOCIAL_SELF_DYADS || personId !== event.who);
-      if (audience.length) interactionKinds.add(`communicate:${event.action.speakerMeaning.kind}`);
-      const isDirectedCoordination = ((event.diff.understoodByPersonIds as string[] | undefined) ?? []).length === 1
+      if (interpreters.length) interactionKinds.add(`talk:${event.action.speakerMeaning.kind}`);
+      const isDirectedCoordination = languageInterpreterIds(event.diff, event.action.speakerMeaning.id).length === 1
         || event.action.speakerMeaning.kind === 'request'
         || event.action.speakerMeaning.kind === 'offer'
         || event.action.speakerMeaning.kind === 'accept'
         || event.action.speakerMeaning.kind === 'reject'
         || event.action.speakerMeaning.kind === 'revoke-agreement';
-      if (isDirectedCoordination) audience
+      if (isDirectedCoordination) interpreters
         .forEach((personId) => interactionDyads.add(pairKey(event.who, personId)));
     } else if (event.action.kind === 'transfer') {
       const other = event.action.from.kind === 'person' && event.action.from.personId !== event.who
@@ -676,7 +677,7 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
       && event.action.kind === 'talk'
       && event.action.speakerMeaning.kind === 'claim'
       && event.action.speakerMeaning.factId
-      && ((event.diff.understoodByPersonIds as string[] | undefined) ?? []).length > 0) taughtFactIds.add(event.action.speakerMeaning.factId);
+      && languageInterpreterIds(event.diff, event.action.speakerMeaning.id).length > 0) taughtFactIds.add(event.action.speakerMeaning.factId);
     if (event.kind === 'environment' && typeof event.diff.bornPersonId === 'string') {
       births += 1;
       causalEpisodeAnchors.add(event.id);

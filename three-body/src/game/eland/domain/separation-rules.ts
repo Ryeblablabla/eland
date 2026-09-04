@@ -53,5 +53,9 @@ export function separationTechniqueSummary(rule: VoxelSeparationRule): string {
   const input = materialDefinition(rule.inputMaterialId).name;
   const tool = rule.requiredToolMaterialId ? `用${materialDefinition(rule.requiredToolMaterialId).name}` : '徒手';
   const outputs = rule.outputs.map((output) => `${materialDefinition(output.materialId).name}${output.quantity > 1 ? ` × ${output.quantity}` : ''}`).join('、');
+  if (rule.replacementMaterialId === Material.Air
+    && rule.outputs.some((output) => output.materialId === rule.inputMaterialId)) {
+    return `${tool}从现有位置拆下${input}，原位置会变空，可取回${outputs}`;
+  }
   return `${tool}分离${input}，可得到${outputs}`;
 }

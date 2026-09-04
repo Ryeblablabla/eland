@@ -3,7 +3,7 @@ import type { WorldEvent } from './model';
 import { materialDefinition, materialHas } from './material';
 import type { PersonId, PersonState, RelationshipEvidenceAnchor } from './person';
 import { relationshipEvidenceSourceEventIds } from './relation';
-import { languageBroadcastFromDiff } from './language-perception';
+import { languageBroadcastFromDiff, languageInterpreterIds } from './language-perception';
 
 export const LIVE_PERSON_SOCIAL_EVENT_ID_LIMIT = 4_096;
 export const LIVE_PERSON_SOCIAL_DESCRIPTOR_SOURCE_ID_LIMIT = 4_096;
@@ -207,7 +207,7 @@ export interface LiveSocialGroundedConversationDescriptor {
   topic: string;
   turn: 'opening' | 'response';
   speakerId: PersonId;
-  listenerId: PersonId;
+  interpreterIds: readonly PersonId[];
   sourceFactIds: readonly string[];
   referenceEventId?: string;
   stance?: 'supportive' | 'guarded';
@@ -216,7 +216,7 @@ export interface LiveSocialGroundedConversationDescriptor {
 
 export interface LiveSocialCommunicationDescriptor {
   perceivedByPersonIds: readonly PersonId[];
-  understoodByPersonIds: readonly PersonId[];
+  interpreterIds: readonly PersonId[];
   subjectKey?: string;
   basisSourceEventIds: readonly string[];
   groundedConversation?: LiveSocialGroundedConversationDescriptor;
@@ -342,7 +342,7 @@ export function liveSocialEvidenceDescriptorFromWorldEvent(
         ...(communication ? {
           communication: Object.freeze({
             perceivedByPersonIds: Object.freeze([...(languageBroadcast?.perceivedByPersonIds ?? [])].sort()),
-            understoodByPersonIds: Object.freeze([...(languageBroadcast?.understoodByPersonIds ?? [])].sort()),
+            interpreterIds: Object.freeze(languageInterpreterIds(action.diff, communication.speakerMeaning.id).sort()),
             ...(liveSocialCommunicationSubjectKey(communication)
               ? { subjectKey: liveSocialCommunicationSubjectKey(communication)! } : {}),
             basisSourceEventIds: Object.freeze(actionStaticBasisSourceIds(action)),
@@ -351,8 +351,8 @@ export function liveSocialEvidenceDescriptorFromWorldEvent(
                 basisKey: conversation.basisKey,
                 topic: conversation.topic,
                 turn: conversation.turn,
-                speakerId: conversation.speakerId,
-                listenerId: conversation.listenerId,
+                speakerId: action.who,
+                interpreterIds: Object.freeze(languageInterpreterIds(action.diff, communication.speakerMeaning.id).sort()),
                 sourceFactIds: Object.freeze(canonicalStringIds(
                   conversation.sourceFactIds,
                   `live social conversation ${event.id} sources`,

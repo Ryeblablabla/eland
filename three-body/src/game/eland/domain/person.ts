@@ -152,7 +152,7 @@ export type CognitiveOutcome = 'completed' | 'progressed' | 'blocked' | 'failed'
 export interface CausalMemoryTrace {
   /** Stable across transient option and intent ids. */
   basisKey: string;
-  actionKind: 'move' | 'transfer' | 'act' | 'attend' | 'talk' | 'inscribe';
+  actionKind: 'move' | 'transfer' | 'act' | 'attend' | 'world-interact' | 'talk' | 'inscribe';
   operation?: string;
   goalKind?: string;
   outcome: CognitiveOutcome;

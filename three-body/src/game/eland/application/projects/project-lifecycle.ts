@@ -106,6 +106,17 @@ export function completeProject(
   }
   const completionActor = finalCompletionActor(state, project);
   if (completionActor) recordProjectNeedResolution(completionActor, project, atMonth);
+  for (const person of state.people) {
+    for (const item of person.characterAgenda?.items ?? []) {
+      if (!item.projectIds.includes(project.id)
+        || item.status === 'abandoned'
+        || item.status === 'fulfilled') continue;
+      item.status = 'fulfilled';
+      item.lastReviewedAtMonth = atMonth;
+      delete item.activeIntentId;
+      delete item.activeApproachId;
+    }
+  }
   recordJointProjectSocialLearning(state, project, atMonth);
   recordRecurringDutyProjectCompletion(state, project);
   rememberJointCompletion(state, project);

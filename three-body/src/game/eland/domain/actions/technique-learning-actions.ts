@@ -11,6 +11,7 @@ import {
 } from '../technique-demonstration';
 import { personById, projectById } from '../state-index';
 import { cellX, cellY } from '../../world/grid';
+import { languageInterpreterIds } from '../language-perception';
 
 function canObserveTechniqueDemonstration(observer: PersonState, actor: PersonState): boolean {
   const radius = 4 + Math.floor(observer.baselineCapacities.perception / 25);
@@ -84,7 +85,7 @@ export function validateTechniqueLearningAction(
       : pendingRequest?.requesterId;
     const addressedTeacherIds = historicalRequest && requestEvent?.kind === 'action'
       && requestEvent.action.kind === 'talk'
-      ? ((requestEvent.diff.understoodByPersonIds as string[] | undefined) ?? [])
+      ? languageInterpreterIds(requestEvent.diff, requestEvent.action.speakerMeaning.id)
       : pendingRequest?.teacherIds ?? [];
     if (requesterId !== request.requesterId
       || !addressedTeacherIds.includes(person.id)

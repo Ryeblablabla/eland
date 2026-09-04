@@ -377,7 +377,7 @@ function executeActorControl(
       ));
     }
     if (control.decision.kind === 'idle') {
-      person.currentActionText = control.decision.reason;
+      if (person.lastActionAtMonth !== atMonth) person.currentActionText = control.decision.reason;
       return;
     }
   }

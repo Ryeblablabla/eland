@@ -20,7 +20,9 @@ import { inventoryQuantity } from './person';
 import { addDrop } from './action-executor';
 import { WORLD_CELL_COUNT, cellId, cellX, cellY, cellsInRadius, isStandingPosition, neighbors4, setVoxel, surfaceMaterial, surfaceStandingPosition, topZ, voxelAt } from '../world/grid';
 import { seededFraction } from '../world/generator';
-import { shelterGeometryAt, shelterHeatRelief } from './structure';
+import { shelterGeometryAt, shelterHeatRelief , survivalShelterAt} from './structure';
+import { advanceWorksMonth } from './works';
+import { advanceAnimalBondsMonth } from './animal-bonds';
 import { geneticKinshipRisk, inheritedGeneticLoad, KINSHIP_RISK_KNOWLEDGE_ID } from './kinship';
 import { remember } from './memory';
 import { createNewbornName } from '../naming';
@@ -279,6 +281,31 @@ export function advanceWorldProcesses(state: SimulationState, atMonth: number): 
     }
   }
   if (destroyedContainers.length) state.containers = state.containers.filter((container) => !destroyedContainers.includes(container));
+  const worksOutcome = advanceWorksMonth(state.world, {
+    seed: state.seed,
+    atMonth,
+    weatherKind: state.civilization.weather.kind,
+    makeDropId: (work, component) => `work-collapse:${work.id}:${component.materialId}:${atMonth}`,
+  });
+  for (const collapsed of worksOutcome.collapsed) {
+    const builders = collapsed.builderIds
+      .map((id) => state.people.find((person) => person.id === id)?.name ?? id)
+      .join('、');
+    event(
+      state,
+      atMonth,
+      events,
+      'work-collapse',
+      `${builders}搭的${collapsed.summary}在风化中塌落，残余材料散了一地`,
+      {
+        workId: collapsed.id,
+        arrangement: collapsed.arrangement,
+        builderIds: collapsed.builderIds,
+        components: collapsed.components,
+      },
+    );
+  }
+  advanceAnimalBondsMonth(state.world, atMonth);
   advanceAnimals(state, atMonth, events);
   return events;
 }
@@ -1159,7 +1186,7 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     advanceInheritedSusceptibility(state, person, atMonth, events);
     const hibernationCondition = person.conditions.find((current) => current.kind === 'dehydrated-hibernation');
     const hibernating = Boolean(hibernationCondition && hibernationPhase(hibernationCondition) === 'dormant');
-    const shelter = shelterGeometryAt(state.world.grid, person.position);
+    const shelter = survivalShelterAt(state, person.position);
     const sheltered = Boolean(shelter);
     const fires = nearbyFires(state, person);
     const fireProtected = fires > 0;

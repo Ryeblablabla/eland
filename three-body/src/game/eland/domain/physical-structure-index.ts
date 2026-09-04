@@ -27,6 +27,13 @@ interface StructureComponent {
   sourceEventId: string;
 }
 
+interface ConstructionChange {
+  x: number;
+  y: number;
+  z: number;
+  materialId: MaterialId;
+}
+
 export interface PhysicalStructureFold {
   readonly width: number;
   readonly depth: number;
@@ -56,13 +63,25 @@ function inWorld(fold: PhysicalStructureFold, x: number, y: number, z: number): 
   return x >= 0 && x < fold.width && y >= 0 && y < fold.depth && z >= 0 && z < fold.levels;
 }
 
-function isCompletedConstructionAction(event: WorldEvent): event is ActionFact {
-  return event.kind === 'action'
-    && event.status === 'completed'
-    && event.action.kind === 'act'
-    && event.action.operation === 'combine'
-    && typeof event.diff.outputMaterialId === 'number'
-    && Boolean(event.diff.position);
+function completedConstructionChanges(event: WorldEvent): ConstructionChange[] {
+  if (event.kind !== 'action' || event.status !== 'completed') return [];
+  if (event.action.kind === 'act' && event.action.operation === 'combine'
+    && typeof event.diff.outputMaterialId === 'number' && event.diff.position) {
+    const position = event.diff.position as { x?: unknown; y?: unknown; z?: unknown };
+    if (![position.x, position.y, position.z].every(Number.isInteger)) return [];
+    return [{
+      x: Number(position.x),
+      y: Number(position.y),
+      z: Number(position.z),
+      materialId: Number(event.diff.outputMaterialId) as MaterialId,
+    }];
+  }
+  if (event.action.kind !== 'world-interact') return [];
+  return event.action.adjudication.effects.flatMap((effect) => (
+    effect.kind === 'replace-voxel'
+      ? [{ ...effect.target.position, materialId: effect.materialId }]
+      : []
+  ));
 }
 
 function assertNonNegativeSafeInteger(value: unknown, label: string): asserts value is number {
@@ -148,7 +167,8 @@ export function beginPhysicalStructureFold(
 
 /**
  * Fold a contiguous authoritative segment. Every event advances the absolute
- * seal; only completed combine facts add bounded construction provenance.
+ * seal; completed fixed combines and materialized Plan-Agent voxel placements
+ * add bounded construction provenance.
  */
 export function foldPhysicalStructureEvents(
   fold: PhysicalStructureFold,
@@ -162,16 +182,12 @@ export function foldPhysicalStructureEvents(
   for (let offset = 0; offset < events.length; offset += 1) {
     const event = events[offset];
     const absoluteIndex = startAbsoluteIndex + offset;
-    if (isCompletedConstructionAction(event)) {
+    const constructionChanges = completedConstructionChanges(event)
+      .filter((change) => materialHas(change.materialId, 'solid')
+        && materialHas(change.materialId, 'building'));
+    if (constructionChanges.length) {
       fold.constructionEventCount += 1;
-      const materialId = Number(event.diff.outputMaterialId) as MaterialId;
-      const position = event.diff.position as { x?: unknown; y?: unknown; z?: unknown };
-      if (materialHas(materialId, 'solid')
-        && materialHas(materialId, 'building')
-        && [position.x, position.y, position.z].every(Number.isInteger)) {
-        const x = Number(position.x);
-        const y = Number(position.y);
-        const z = Number(position.z);
+      for (const { x, y, z, materialId } of constructionChanges) {
         if (inWorld(fold, x, y, z)) {
           const key = recordKey(x, y, z, materialId);
           const existing = fold.recordsByPositionAndMaterial.get(key);

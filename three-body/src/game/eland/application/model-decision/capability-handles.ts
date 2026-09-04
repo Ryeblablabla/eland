@@ -12,7 +12,12 @@ export interface DecisionProbeHandleMap {
   visible: DecisionProbeVisibleHandle[];
   voxels: Array<{ handle: string; position: { x: number; y: number; z: number } }>;
   agendas: Array<{ handle: string; itemId: string; basisKey: string }>;
-  memories: Array<{ handle: string; itemId: string; sourceFactIds: string[] }>;
+  memories: Array<{
+    handle: string;
+    itemId: string;
+    sourceFactIds: string[];
+    causalOutcome?: 'completed' | 'progressed' | 'blocked' | 'failed';
+  }>;
   groundingFacts: Array<{
     handle: string;
     optionId: string;
@@ -84,7 +89,10 @@ export function buildDecisionProbeHandleMap(context: DecisionRequestContext): De
     }
   }
   return {
-    held: context.person.inventory.slice(0, 8).map((stack, index) => ({
+    // Every held entity remains addressable for this request. Compacting the
+    // prose view must never make a later stack impossible for the person to
+    // choose as a concrete experiment input.
+    held: context.person.inventory.map((stack, index) => ({
       handle: `h${index + 1}`,
       stackId: stack.stackId,
     })),
@@ -109,11 +117,12 @@ export function buildDecisionProbeHandleMap(context: DecisionRequestContext): De
       basisKey: item.basisKey,
     })),
     memories: context.person.memories
-      .slice(0, 6)
+      .slice(0, 20)
       .map((memory, index) => ({
         handle: `m${index + 1}`,
         itemId: memory.id,
         sourceFactIds: [...memory.sourceEventIds],
+        ...(memory.causalOutcome ? { causalOutcome: memory.causalOutcome } : {}),
       })),
     groundingFacts,
   };
@@ -133,7 +142,7 @@ export function buildCharacterAgendaProbeCandidates(
     return [`${item.kind}:${id}`, item.handle];
   }));
   return {
-    held: context.person.inventory.slice(0, 8).flatMap((stack) => {
+    held: context.person.inventory.flatMap((stack) => {
       const handle = heldById.get(stack.stackId);
       return handle ? [{ handle, name: stack.name, properties: stack.properties, quantity: stack.quantity }] : [];
     }),
@@ -146,9 +155,12 @@ export function buildCharacterAgendaProbeCandidates(
         const handle = visibleByRef.get(`person:${id}`);
         return handle ? [{ handle, kind: 'person', name, ageMonths, sex, cellId, z }] : [];
       }),
-      ...context.visibleAnimals.slice(0, 4).flatMap(({ id, speciesId, cellId, z }) => {
+      ...context.visibleAnimals.slice(0, 4).flatMap(({ id, speciesId, cellId, z, bondTrust }) => {
         const handle = visibleByRef.get(`animal:${id}`);
-        return handle ? [{ handle, kind: 'animal', speciesId, cellId, z }] : [];
+        return handle ? [{
+          handle, kind: 'animal', speciesId, cellId, z,
+          bondTrust,
+        }] : [];
       }),
       ...context.visibleContainers.slice(0, 4).flatMap(({ id, position, capacity, usedCapacity }) => {
         const handle = visibleByRef.get(`container:${id}`);

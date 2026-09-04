@@ -113,8 +113,8 @@ import { productionToolUpgradeTradeCandidate } from './projects/capability-repli
 import {
   conversationalRendezvous,
   crowdingReliefTarget,
-  peopleWithinVoiceRange,
-  positionsWithinVoiceRange,
+  visibleLanguageCandidates,
+  positionsCanShareLanguage,
 } from '../domain/social-space';
 import {
   actionOptionSemantics,
@@ -153,7 +153,7 @@ export function projectKnowledgeTeachingOpportunity(
   atMonth: number,
 ) {
   return openProjectKnowledgeRequestsFor(state, teacher, atMonth).flatMap((requested) => {
-    if (!positionsWithinVoiceRange(teacher.position, requested.requester.position)
+    if (!positionsCanShareLanguage(teacher.position, requested.requester.position)
       || ageMonths(requested.requester, atMonth) < MIN_TEACHING_AGE_MONTHS) return [];
     return teacher.knowledge
       .filter((fact) => fact.kind === 'technique'
@@ -455,7 +455,7 @@ function buildOptions(
   }
   const visible = new Set(visibleCells);
   const localPeople = visiblePeople.filter((other) => sameLocation(other, person));
-  const conversationalPeople = peopleWithinVoiceRange(person, visiblePeople);
+  const conversationalPeople = visibleLanguageCandidates(person, visiblePeople);
   const crowdingRelief = planningStage === 'adult' ? crowdingReliefTarget(state, person) : null;
   if (crowdingRelief) options.push({
     id: `relieve-crowding:${crowdingRelief.position.cellId}:${crowdingRelief.position.z}`,
@@ -1289,7 +1289,7 @@ function buildOptions(
     const representationId = prioritizedProjectTeaching
       ? `teach:${atMonth}:${person.id}:${teachable.id}:${learner.id}:${prioritizedProjectTeaching.request.requestEventId}`
       : `teach:${atMonth}:${person.id}:${teachable.id}:${learner.id}`;
-    const communicate = {
+    const talk = {
       kind: 'talk' as const,
       speakerMeaning: {
         id: representationId,
@@ -1320,7 +1320,7 @@ function buildOptions(
           ? '本人在眼前完成网络上做成过真实负载作业，身边成年人还不会独立操作这类网络'
         : '自己可靠掌握这项技术，而身边达到学习年龄的人还不会；一次明确教导即可传授',
       goal: { kind: 'knowledge', factId: teachable.id, minConfidence: learnedThreshold, personId: learner.id },
-      nextAction: communicate,
+      nextAction: talk,
       target: { kind: 'person', personId: learner.id },
       estimatedDuration: 'one-month',
       sourceFactIds: [...new Set([
@@ -1629,7 +1629,7 @@ export function recompileNextAction(
     const target = personById(state, targetPersonId);
     if (!target || !isAlive(target)) return null;
     if (intent.completionAction.kind === 'talk') {
-      if (positionsWithinVoiceRange(target.position, person.position)) return intent.completionAction;
+      if (positionsCanShareLanguage(target.position, person.position)) return intent.completionAction;
       const rendezvous = conversationalRendezvous(state, person, target);
       return rendezvous
         ? { kind: 'move', toCellId: rendezvous.position.cellId, toZ: rendezvous.position.z }

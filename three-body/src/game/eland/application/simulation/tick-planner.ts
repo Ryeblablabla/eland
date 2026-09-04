@@ -5,6 +5,7 @@ import { inheritPlanningEventOverlay, registerPlanningEventOverlay } from '../..
 import { intentReviewAtMonth, isResumableIntent } from '../../domain/intent';
 import { lifePlanningStage } from '../../domain/life-stage';
 import { Material } from '../../domain/material';
+import { languageInterpreterIds } from '../../domain/language-perception';
 import { strongestBereavementUrgency } from '../../domain/mortuary';
 import type {
   ActionFact,
@@ -122,7 +123,7 @@ interface CurrentMonthPlanningIndex {
   events: WorldEvent[];
   lifeReviewsByPerson: Map<PersonId, DecisionFact[]>;
   groundedOpeningsByListener: Map<PersonId, ActionFact[]>;
-  socialProposalsByAudience: Map<PersonId, ActionFact[]>;
+  socialProposalsByInterpreter: Map<PersonId, ActionFact[]>;
 }
 
 const currentMonthPlanningIndexes = new WeakMap<WorldEvent[], CurrentMonthPlanningIndex>();
@@ -139,7 +140,7 @@ function currentMonthPlanningIndex(events: WorldEvent[], atMonth: number): Curre
       events: [],
       lifeReviewsByPerson: new Map(),
       groundedOpeningsByListener: new Map(),
-      socialProposalsByAudience: new Map(),
+      socialProposalsByInterpreter: new Map(),
     };
     currentMonthPlanningIndexes.set(events, index);
   }
@@ -157,15 +158,17 @@ function currentMonthPlanningIndex(events: WorldEvent[], atMonth: number): Curre
     if (event.kind !== 'action' || event.status !== 'completed' || event.action.kind !== 'talk') continue;
     const content = event.action.speakerMeaning;
     if (content.kind === 'claim' && content.conversation?.turn === 'opening') {
-      const openings = index.groundedOpeningsByListener.get(content.conversation.listenerId) ?? [];
-      openings.push(event);
-      index.groundedOpeningsByListener.set(content.conversation.listenerId, openings);
+      for (const interpreterId of languageInterpreterIds(event.diff, content.id)) {
+        const openings = index.groundedOpeningsByListener.get(interpreterId) ?? [];
+        openings.push(event);
+        index.groundedOpeningsByListener.set(interpreterId, openings);
+      }
     }
     if ((content.kind === 'request' || content.kind === 'offer') && content.proposal) {
-      for (const audienceId of ((event.diff.understoodByPersonIds as string[] | undefined) ?? [])) {
-        const proposals = index.socialProposalsByAudience.get(audienceId) ?? [];
+      for (const interpreterId of languageInterpreterIds(event.diff, content.id)) {
+        const proposals = index.socialProposalsByInterpreter.get(interpreterId) ?? [];
         proposals.push(event);
-        index.socialProposalsByAudience.set(audienceId, proposals);
+        index.socialProposalsByInterpreter.set(interpreterId, proposals);
       }
     }
   }
@@ -354,7 +357,7 @@ export function planLocallyForTick(
       && !project.techniqueDemonstrations?.some((basis) => basis.requestEventId === request.requestEventId)));
   const checkProjectKnowledgeRequest = Boolean(projectKnowledgeTeachingOpportunity(state, person, atMonth));
   const currentMonthGroundedOpenings = planningIndex.groundedOpeningsByListener.get(person.id) ?? [];
-  const currentMonthSocialProposals = planningIndex.socialProposalsByAudience.get(person.id) ?? [];
+  const currentMonthSocialProposals = planningIndex.socialProposalsByInterpreter.get(person.id) ?? [];
   const planningEvidence = planningIndex.events;
   const planningContext = planningEvidence.length
     ? buildCurrentMonthDecisionContext(state, person, atMonth, planningTick, planningEvidence)
@@ -421,7 +424,7 @@ export function planLocallyForTick(
   // Stable plans and genuinely empty affordance sets do not produce repetitive
   // "continue living" facts. The active intent is simply executed below.
   if (decision.kind === 'idle' && !decision.characterAgendaUpdate) {
-    person.currentActionText = decision.reason;
+    if (person.lastActionAtMonth !== atMonth) person.currentActionText = decision.reason;
     return;
   }
   events.push(applyDecision(

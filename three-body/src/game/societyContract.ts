@@ -279,7 +279,7 @@ export interface ElectricalPowerNetworkView {
 }
 
 export interface ActionVisualView {
-  actionKind: 'move' | 'transfer' | 'act' | 'attend' | 'talk' | 'inscribe';
+  actionKind: 'move' | 'transfer' | 'act' | 'attend' | 'world-interact' | 'talk' | 'inscribe';
   /** 仅真实 ActionFact 投影携带；意图预览没有来源事件，装饰层不得把它当成已发生动作。 */
   sourceEventId?: string;
   sourceOrderInMonth?: number;
@@ -428,15 +428,14 @@ export interface GameFrame {
   civilizationEnd: { kind: 'destroyed' | 'boundary' | 'milestones' | 'concluded'; cause: string; summary: string } | null;
   entries: NarrativeEntryView[];
   /**
-   * 已发生沟通的模型原话。它绑定权威 ActionFact，本身不升级为知识、
-   * 关系或行动结果，但说话者与听者会把这句主观话写入可遗忘的对话记忆。
-   * 可选以兼容旧实时快照。
+   * 已发出的模型原话。它绑定权威 DecisionFact 或复用该波的 ActionFact，
+   * 本身不升级为知识、关系或行动结果；语义后果仍依赖逐人解释。
    */
   speechLines?: SpeechLineView[];
   speaker: string | null;
 }
 
-export type SpeechCommunicationKind = 'claim' | 'prediction' | 'request' | 'offer' | 'accept' | 'reject' | 'revoke-agreement' | 'revoke' | 'withdraw';
+export type SpeechCommunicationKind = 'talk' | 'claim' | 'prediction' | 'request' | 'offer' | 'accept' | 'reject' | 'revoke-agreement' | 'revoke' | 'withdraw';
 
 /**
  * 规则动作授权给表达模型的话语行为。这里保存结构化语义，不保存可直接
@@ -477,19 +476,18 @@ export interface SpeechLineView {
   planningTick: number;
   speakerId: string;
   speakerName: string;
-  audienceIds: string[];
-  audienceNames: string[];
-  channel: 'voice';
+  perceivedByPersonIds: string[];
+  perceivedByPersonNames: string[];
   communicationKind: SpeechCommunicationKind;
   speechAct: SpeechActView;
   text: string;
   /** Exact visible parent line when this utterance is a reply. */
   replyToSpeechLineId?: string;
-  /** Optional only for legacy decision-model lines and old stored frames. */
+  /** Optional observer-only conversational metadata. */
   dialogueMove?: DialogueMove;
-  /** Optional only for legacy decision-model lines and old stored frames. */
+  /** Optional observer-only conversational metadata. */
   disposition?: DialogueDisposition;
-  /** 可见台词只允许来自模型；旧快照中的 rule 来源由渲染层忽略。 */
+  /** 可见台词只允许来自模型。 */
   source: 'decision-model' | 'speech-model';
   endpointId?: string;
   model?: string;

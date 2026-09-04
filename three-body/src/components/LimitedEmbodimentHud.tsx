@@ -24,7 +24,7 @@ interface Props {
 
 const OPTION_CATEGORY_ORDER: EmbodimentOptionCategory[] = [
   'build',
-  'communicate',
+  'talk',
   'transfer',
   'attend',
   'survival',
@@ -35,7 +35,7 @@ const OPTION_CATEGORY_ORDER: EmbodimentOptionCategory[] = [
 
 const OPTION_CATEGORY_LABEL: Record<EmbodimentOptionCategory, string> = {
   build: '建造',
-  communicate: '交流',
+  talk: '交流',
   transfer: '交付',
   attend: '照料',
   survival: '生存',

@@ -58,8 +58,8 @@ import {
 } from '../domain/shared-living';
 import {
   conversationalRendezvous,
-  peopleWithinVoiceRange,
-  positionsWithinVoiceRange,
+  visibleLanguageCandidates,
+  positionsCanShareLanguage,
 } from '../domain/social-space';
 import { relationTo } from '../domain/relation';
 import { defineActionOptionSemantics } from '../domain/action-option-semantics';
@@ -239,7 +239,7 @@ function responseOption(state: SimulationState, person: PersonState, referenceId
   const response = { kind: 'talk' as const, speakerMeaning: accept
     ? { id: representationId, kind: 'accept' as const, referenceId }
     : { id: representationId, kind: 'reject' as const, referenceId } };
-  const together = positionsWithinVoiceRange(person.position, other.position);
+  const together = positionsCanShareLanguage(person.position, other.position);
   const rendezvous = conversationalRendezvous(state, person, other);
   const target = rendezvous?.position ?? other.position;
   const distance = Math.max(0, (rendezvous?.path.length ?? 1) - 1);
@@ -295,7 +295,7 @@ function membershipResponseOption(state: SimulationState, person: PersonState, r
   const summary = joining
     ? `${accept ? '接受' : '拒绝'}加入“${state.collectives.find((collective) => collective.id === proposal.collectiveId)?.purposeSummary ?? '这个共同体'}”`
     : `${accept ? '同意' : '反对'}${candidate?.name ?? '候选人'}加入共同体`;
-  const together = positionsWithinVoiceRange(person.position, proposer.position);
+  const together = positionsCanShareLanguage(person.position, proposer.position);
   const rendezvous = conversationalRendezvous(state, person, proposer);
   const target = rendezvous?.position ?? proposer.position;
   return {
@@ -340,7 +340,7 @@ export function buildSocialOptions(
 ): ActionOption[] {
   const options: ActionOption[] = [];
   const localPeople = visiblePeople.filter((other) => sameLocation(other, person));
-  const conversationalPeople = peopleWithinVoiceRange(person, visiblePeople);
+  const conversationalPeople = visibleLanguageCandidates(person, visiblePeople);
   options.push(...buildGroundedConversationOptions(state, person, visiblePeople, atMonth));
   const personCollectives = activeCollectivesFor(state, person.id);
   const recentJointProject = [...state.projects].reverse().find((project) => {
@@ -500,7 +500,7 @@ export function buildSocialOptions(
     && agreement.partyIds.includes(person.id))) {
     const partnerId = companionship.partyIds.find((candidate) => candidate !== person.id);
     const partner = partnerId ? personById(state, partnerId) : undefined;
-    if (partner && positionsWithinVoiceRange(person.position, partner.position)) {
+    if (partner && positionsCanShareLanguage(person.position, partner.position)) {
       const representationId = `withdraw-companion:${atMonth}:${companionship.id}:${person.id}`;
       options.push({
         id: representationId,
@@ -767,7 +767,7 @@ export function buildSocialOptions(
     }
     const allMembersHere = activeMemberIds(state, collective).every((id) => {
       const member = personById(state, id);
-      return Boolean(member && positionsWithinVoiceRange(member.position, person.position));
+      return Boolean(member && positionsCanShareLanguage(member.position, person.position));
     });
     const activeMembers = activeMemberIds(state, collective)
       .flatMap((id) => personById(state, id) ?? []);
@@ -1136,7 +1136,7 @@ export function buildSocialOptions(
         }),
       });
     }
-    if (person.id === permission.grantorId && grantee && positionsWithinVoiceRange(grantee.position, person.position)) {
+    if (person.id === permission.grantorId && grantee && positionsCanShareLanguage(grantee.position, person.position)) {
       const granteeRelation = relationTo(person, grantee.id);
       const adverseRelationship = Boolean(granteeRelation?.sourceEventIds.length
         && granteeRelation.fear > Math.max(granteeRelation.trust, granteeRelation.bond));
@@ -1175,7 +1175,7 @@ export function buildSocialOptions(
     const acuteConditionSources = person.conditions
       .filter((condition) => condition.stage >= 3)
       .flatMap((condition) => condition.sourceEventIds);
-    if (!other || !positionsWithinVoiceRange(person.position, other.position) || (!adverseRelationship && !severeBodyState && !acuteConditionSources.length)) continue;
+    if (!other || !positionsCanShareLanguage(person.position, other.position) || (!adverseRelationship && !severeBodyState && !acuteConditionSources.length)) continue;
     const representationId = `withdraw-company-assist:${atMonth}:${agreement.id}:${person.id}`;
     options.push({
       id: representationId,

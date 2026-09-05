@@ -62,6 +62,8 @@ npm run --silent eland -- run report debug-seed-17
 
 `--months` 是相对推进的兼容模式。`--to-month` 使用绝对终点和完整 expected identity；CLI 默认从当前运行与已有演化路径构造 identity，也可以用 `--expected <file>` 提供冻结的预期身份。
 
+长程演化遵循设置中的演化模式。模型模式通过与实时游戏相同的 Mind / Plan / 世界语义解释链逐月推进，每月保存实际用量与状态；本地模式使用规则规划器。只读行为观察也可使用 `node scripts/observe-society.mjs --months 24 --seed 31`，产物在独立实验目录，不写当前玩家会话。边界和验收见[人物自主性重构](./natural-agent-evolution-2026-09-05.md)。
+
 `run show` 只输出摘要，避免意外把完整体素状态写入上下文。`run state` 与 `run export` 输出完整权威 `SimulationState`。导入通过 `run import --file <json>` 完成。需要显式替换既有运行状态时使用 `run replace-state <id> --file <json>`；它走现有 HTTP 校验与串行保存链，不直接写 SQLite。CLI 不提供删除运行的命令。
 
 `run replace-state` 会选择历史 replace 模式并生成新的 lineage，适用于明确的状态迁移或调试恢复，不属于普通查看步骤。只需要调查问题时应使用 `run show`、`run state` 或 `inspect`。

@@ -28,6 +28,7 @@ import {
   cellY,
   cellsInRadius,
   findStandingPath,
+  isStandingPosition,
   setVoxel,
   standingPathMovementCost,
   standingPathSegmentForEffort,
@@ -41,13 +42,17 @@ import { seededFraction } from '../world/generator';
 import {
   createWork,
   modifyWork,
-  recordWorkUsesFromCompletedAction,
   registerWork,
   workAt,
+  workById,
 } from './works';
 import { applyAnimalBondContact, resetAnimalBond } from './animal-bonds';
+import { prepareWorldAssembly } from './actions/world-assembly';
+import { planWorkLayout, workOccupiedVoxels, type PlannedWorkLayout } from './work-layout';
+import { worldInteractionResult } from './actions/world-interaction-result';
 import { communicationById } from './social-facts';
 import { remember, rememberAction } from './memory';
+import { recordExperiencedProcedure } from './procedural-knowledge';
 import type { LanguageBroadcast } from './language-perception';
 import { recordPersonalityEvidence } from './personality';
 import { recordActionOutcomeBelief } from './cognition';
@@ -56,10 +61,8 @@ import { activeReproductionAgreementBetween, agreementAuthorizesTransfer, agreem
 import { recordCollectiveAction } from './collective';
 import { mandateById, mandateSupportsTransfer, recordGovernanceAction } from './governance';
 import {
-  inferPermissionUseBasis,
   permissionAuthorizesTransfer,
   permissionById,
-  permissionUseBasisIsCurrent,
   recordPermissionAction,
 } from './permission';
 import {
@@ -93,8 +96,9 @@ import {
   canPersonCollectProjectMaterialDrop,
   inspectProjectMaterialContributionRequest,
 } from './project-material-request';
-import { humanReproductionCapacityFactor, HUMAN_SOFT_CARRYING_CAPACITY } from './population-capacity';
-import { hasReproductiveRecoveryCondition, isInfant } from './dependent-care';
+import { conceptionChance, reproductivePairReady } from './reproduction';
+import { positionsCanTouch } from './social-space';
+import { isInfant } from './dependent-care';
 import { lifePlanningStage } from './life-stage';
 import {
   hasKnowledgeFact,
@@ -118,7 +122,6 @@ import {
 } from './mortuary';
 import {
   movementMetabolicMultiplier,
-  reproductiveUpperAgeMonths,
 } from './trait';
 import { addContainedInventory, addContainerInventory, addDrop, addInventory, removeEmptyStacks } from './actions/inventory';
 import {
@@ -830,32 +833,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   const possibleAgreement = action.authorizationRef ? agreementById(state, action.authorizationRef) : undefined;
   const agreementAuthorized = agreementAuthorizesTransfer(possibleAgreement, person.id, action, quantity);
   const possiblePermission = action.authorizationRef ? permissionById(state, action.authorizationRef) : undefined;
-  const permissionStructurallyAuthorized = permissionAuthorizesTransfer(possiblePermission, person.id, action, atMonth, quantity);
-  const permissionBasisCurrent = permissionUseBasisIsCurrent(state, possiblePermission, action);
-  const currentPermissionGrantee = possiblePermission ? personById(state, possiblePermission.granteeId) : undefined;
-  const currentPermissionGrantor = possiblePermission ? personById(state, possiblePermission.grantorId) : undefined;
-  const currentPermissionUseBasis = possiblePermission && currentPermissionGrantee && currentPermissionGrantor
-    ? inferPermissionUseBasis(
-        state,
-        possiblePermission,
-        currentPermissionGrantee,
-        currentPermissionGrantor,
-      )
-    : undefined;
-  if (possiblePermission && permissionStructurallyAuthorized && !permissionBasisCurrent) {
-    return {
-      status: 'blocked' as const,
-      result: '许可仍然有效，但产生本次取用的储备或项目缺口已经变化',
-      diff: {
-        authorized: false,
-        permissionAuthorized: false,
-        permissionUseBasisStale: true,
-        plannedPermissionUseBasis: action.permissionUseBasis,
-        currentPermissionUseBasis,
-      },
-    };
-  }
-  const permissionAuthorized = permissionBasisCurrent && permissionStructurallyAuthorized;
+  const permissionAuthorized = permissionAuthorizesTransfer(possiblePermission, person.id, action, atMonth, quantity);
   const possibleMandate = action.authorizationRef ? mandateById(state, action.authorizationRef) : undefined;
   const mandateUse = mandateSupportsTransfer(state, possibleMandate, person.id, action, atMonth);
   const mandateAuthorized = Boolean(mandateUse);
@@ -1524,7 +1502,7 @@ function executeExert(state: SimulationState, person: PersonState, action: Extra
 function executeReproduce(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'act' }>, atMonth: number, eventId: string) {
   const target = action.targets.find((item): item is Extract<WorldRef, { kind: 'person' }> => item.kind === 'person');
   const other = target ? personById(state, target.personId) : undefined;
-  if (!other || other.id === person.id || !sameLocation(other, person)) return { status: 'blocked' as const, result: '另一参与者不在近身范围', diff: {} };
+  if (!other || other.id === person.id || !positionsCanTouch(state.world.grid, other.position, person.position)) return { status: 'blocked' as const, result: '另一参与者不在无遮挡的身体接触范围', diff: {} };
   const consent = action.authorizationRef
     ? activeReproductionAgreementBetween(state, person.id, other.id, atMonth, action.authorizationRef)
     : undefined;
@@ -1546,7 +1524,6 @@ function executeReproduce(state: SimulationState, person: PersonState, action: E
   }
   const female = person.sex === 'female' ? person : other.sex === 'female' ? other : null;
   const male = person.sex === 'male' ? person : other.sex === 'male' ? other : null;
-  const age = (candidate: PersonState) => atMonth - candidate.bornAtMonth;
   const relationshipSnapshot = [person, other].map((observer) => {
     const observedId = observer.id === person.id ? other.id : person.id;
     const relation = relationTo(observer, observedId);
@@ -1566,32 +1543,21 @@ function executeReproduce(state: SimulationState, person: PersonState, action: E
     agreementId: consent.id,
     relationshipSnapshot,
   };
-  if (!female || !male
-    || age(female) < 16 * 12
-    || age(male) < 16 * 12
-    || age(female) > reproductiveUpperAgeMonths(female)
-    || hasReproductiveRecoveryCondition(female)
-    || Math.min(
-      female.body.health, female.body.hydration, female.body.nutrition,
-      male.body.health, male.body.hydration, male.body.nutrition,
-    ) < 55) {
+  if (!female || !male || !reproductivePairReady(person, other, atMonth)) {
     return { status: 'blocked' as const, result: '当前身体条件不能开始妊娠过程', diff: consentDiff };
   }
-  const livingPopulation = livingPeople(state).length;
-  const capacityFactor = humanReproductionCapacityFactor(livingPopulation);
-  const chance = 0.28 * Math.min(female.body.health, female.body.nutrition, female.body.hydration) / 100 * capacityFactor;
+  const chance = conceptionChance(person, other, atMonth);
   const sampleKey = `reproduce:${eventId}:${atMonth}:${female.id}:${male.id}`;
   const sample = seededFraction(state.seed, sampleKey);
   const kinshipRisk = geneticKinshipRisk(state, female, male);
-  const capacityDiff = { livingPopulation, softCarryingCapacity: HUMAN_SOFT_CARRYING_CAPACITY, capacityFactor };
-  if (sample >= chance) return { status: 'completed' as const, result: '生殖过程发生，但本次没有进入妊娠', diff: { conceived: false, chance, sample, sampleKey, kinshipRisk, ...capacityDiff, ...consentDiff } };
+  if (sample >= chance) return { status: 'completed' as const, result: '生殖过程发生，但本次没有进入妊娠', diff: { conceived: false, chance, sample, sampleKey, kinshipRisk, ...consentDiff } };
   female.conditions.push({
     id: `condition-pregnancy-${female.id}-${atMonth}`,
     kind: 'pregnancy', stage: 1, sinceMonth: atMonth, dueAtMonth: atMonth + 9,
     sourceEventIds: [consent.proposalEventId, ...(consent.responseEventId ? [consent.responseEventId] : []), eventId],
     otherPersonId: male.id,
   });
-  return { status: 'completed' as const, result: `${female.name}进入妊娠过程`, diff: { conceived: true, femaleId: female.id, maleId: male.id, dueAtMonth: atMonth + 9, chance, sample, sampleKey, kinshipRisk, ...capacityDiff, ...consentDiff } };
+  return { status: 'completed' as const, result: `${female.name}进入妊娠过程`, diff: { conceived: true, femaleId: female.id, maleId: male.id, dueAtMonth: atMonth + 9, chance, sample, sampleKey, kinshipRisk, ...consentDiff } };
 }
 
 function executeDehydrate(
@@ -2124,6 +2090,11 @@ function hibernationRecoveryActionAllowed(
 
 function worldInteractionTargetCell(state: SimulationState, person: PersonState, target: WorldRef): number | undefined {
   if (target.kind === 'voxel') return cellId(target.position.x, target.position.y);
+  if (target.kind === 'work') {
+    const work = workById(state.world, target.workId);
+    return work && voxelAt(state.world.grid, work.position.x, work.position.y, work.position.z) === work.anchorMaterialId
+      ? cellId(work.position.x, work.position.y) : undefined;
+  }
   if (target.kind === 'inventory-stack') {
     return target.personId === person.id
       && person.inventory.some((stack) => stack.id === target.stackId && stack.quantity > 0)
@@ -2142,6 +2113,7 @@ function worldInteractionTargetCell(state: SimulationState, person: PersonState,
 
 function worldInteractionTargetZ(state: SimulationState, person: PersonState, target: WorldRef): number | undefined {
   if (target.kind === 'voxel') return target.position.z;
+  if (target.kind === 'work') return workById(state.world, target.workId)?.position.z;
   if (target.kind === 'inventory-stack') return target.personId === person.id ? person.position.z : undefined;
   if (target.kind === 'drop') return state.world.drops.find((drop) => drop.id === target.dropId && drop.quantity > 0)?.z;
   if (target.kind === 'container') return containerById(state, target.containerId)?.position.z;
@@ -2178,12 +2150,19 @@ function worldInteractionApproachPosition(
   state: SimulationState,
   person: PersonState,
   target: WorldRef,
+  excluded?: StandingPosition,
+  withinDistance = 2,
 ): StandingPosition | null {
   const targetCell = worldInteractionTargetCell(state, person, target);
   if (targetCell === undefined) return null;
-  const candidates = cellsInRadius(targetCell, 2)
+  const targetZ = worldInteractionTargetZ(state, person, target) ?? person.position.z;
+  const candidates = cellsInRadius(targetCell, Math.ceil(withinDistance))
     .flatMap((id) => standingPositions(state.world.grid, id))
+    .filter((position) => Math.abs(cellX(position.cellId) - cellX(targetCell))
+      + Math.abs(cellY(position.cellId) - cellY(targetCell))
+      + Math.max(0, Math.abs(position.z - targetZ) - 1) <= withinDistance)
     .filter((position) => position.cellId !== person.position.cellId || position.z !== person.position.z)
+    .filter((position) => !excluded || position.cellId !== excluded.cellId || position.z !== excluded.z)
     .filter((position) => !state.people.some((other) => other.id !== person.id
       && isAlive(other)
       && other.position.cellId === position.cellId
@@ -2226,9 +2205,57 @@ function executeWorldInteraction(
     return { status: 'blocked' as const, result: '世界裁决试图把物件移到人物没有点名的位置', diff: {} };
   }
   const plannedMove = verdict.effects.find((effect) => effect.kind === 'move-self');
-  const interactionCellId = plannedMove
-    ? cellId(plannedMove.target.position.x, plannedMove.target.position.y)
-    : person.position.cellId;
+  let movementDestination: StandingPosition | undefined;
+  if (plannedMove) {
+    const withinDistance = plannedMove.withinDistance ?? 2;
+    if (!Number.isFinite(withinDistance) || withinDistance < 0) return {
+      status: 'blocked' as const, result: '移动缺少可用的抵达距离条件', diff: {},
+    };
+    const targetCellId = worldInteractionTargetCell(state, person, plannedMove.target)!;
+    const target = plannedMove.target.kind === 'voxel'
+      ? plannedMove.target.position
+      : { x: cellX(targetCellId), y: cellY(targetCellId), z: worldInteractionTargetZ(state, person, plannedMove.target) ?? person.position.z };
+    const exact = {
+      cellId: targetCellId,
+      z: target.z + (plannedMove.target.kind !== 'voxel'
+        || voxelAt(state.world.grid, target.x, target.y, target.z) === Material.Air ? 0 : 1),
+    };
+    const constructionSlot = verdict.effects.flatMap((effect) => {
+      if (effect.kind !== 'assemble') return [];
+      const anchor = assembleAnchorPosition(state, effect.target.position);
+      return anchor && cellId(anchor.x, anchor.y) === exact.cellId && anchor.z === exact.z ? [exact] : [];
+    })[0];
+    const occupied = Boolean(constructionSlot) || state.people.some((other) => other.id !== person.id && isAlive(other)
+      && other.position.cellId === exact.cellId && other.position.z === exact.z);
+    const alreadyBeside = !(constructionSlot && person.position.cellId === exact.cellId && person.position.z === exact.z)
+      && Math.abs(target.x - cellX(person.position.cellId))
+      + Math.abs(target.y - cellY(person.position.cellId))
+      + Math.max(0, Math.abs(target.z - person.position.z) - 1) <= withinDistance;
+    movementDestination = plannedMove.withinDistance !== undefined && alreadyBeside
+      ? { cellId: person.position.cellId, z: person.position.z }
+      : isStandingPosition(state.world.grid, exact) && !occupied
+      && findStandingPath(state.world.grid, person.position, exact).length
+      ? exact
+      : alreadyBeside ? { cellId: person.position.cellId, z: person.position.z }
+        : worldInteractionApproachPosition(state, person, plannedMove.target, constructionSlot, withinDistance) ?? undefined;
+    if (!movementDestination) return {
+      status: 'blocked' as const,
+      result: '目前找不到能靠近该处的通路，需要另找路线或落脚点',
+      diff: { worldAdjudicatedNoPath: true },
+    };
+    if (movementDestination.cellId !== person.position.cellId || movementDestination.z !== person.position.z) {
+      const movement = executeMove(state, person, {
+        kind: 'move', toCellId: movementDestination.cellId, toZ: movementDestination.z,
+      }, eventId, atMonth);
+      return {
+        ...movement,
+        status: movement.status === 'blocked' ? movement.status : 'progressed' as const,
+        result: `${movement.result}（正在接近目标，后续操作尚未发生）`,
+        diff: { ...movement.diff, worldAdjudicatedApproach: true },
+      };
+    }
+  }
+  const interactionCellId = person.position.cellId;
   // 人物在近身作业区（自身与邻格、以及伸手可及的再外一格）可以直接操作；
   // 搭建天然是"脚边材料 + 坡面/水面"的跨格协作，操作半径过小会扼杀建造。
   const MANIPULATION_REACH = 2;
@@ -2339,10 +2366,11 @@ function executeWorldInteraction(
   if (verdict.status === 'blocked') {
     return {
       status: 'blocked' as const,
-      result: verdict.result,
+      result: `本次没有执行。世界解释器给出的原因是：${verdict.result}`,
       diff: {
         worldAdjudicated: true,
         appliedEffects: 0,
+        resolverInterpretation: verdict.result,
         ...(planFeedback ? { planFeedback } : {}),
       },
     };
@@ -2400,12 +2428,6 @@ function executeWorldInteraction(
         return { status: 'blocked' as const, result: '人物点名的放置位置当前无法承载物件', diff: {} };
       }
     }
-    if (effect.kind === 'move-self') {
-      const destination = { cellId: cellId(effect.target.position.x, effect.target.position.y), z: effect.target.position.z + 1 };
-      if (!findStandingPath(state.world.grid, person.position, destination).length) {
-        return { status: 'blocked' as const, result: '世界裁决指定的移动位置当前不可达', diff: {} };
-      }
-    }
     if (effect.kind === 'body' && effect.target && !personById(state, effect.target.personId)) {
       return { status: 'blocked' as const, result: '世界裁决指定的身体对象已经不存在', diff: {} };
     }
@@ -2418,35 +2440,120 @@ function executeWorldInteraction(
       if (!anchor) {
         return { status: 'blocked' as const, result: '人物点名的成型位置当前没有受支撑的空位', diff: {} };
       }
-      if (state.people.some((other) => isAlive(other)
-        && other.position.cellId === cellId(anchor.x, anchor.y) && other.position.z === anchor.z)) {
-        return { status: 'blocked' as const, result: '人物点名的成型位置正被人占着', diff: {} };
+      const occupants = state.people.filter((other) => isAlive(other)
+        && other.position.cellId === cellId(anchor.x, anchor.y) && other.position.z === anchor.z);
+      const others = occupants.filter((other) => other.id !== person.id);
+      if (others.length) {
+        return {
+          status: 'blocked' as const,
+          result: `${others.map((other) => other.name).join('、')}正站在准备搭建的位置，需要等其离开或另选位置`,
+          diff: { blockingPersonIds: others.map((other) => other.id), assemblyPosition: anchor },
+        };
+      }
+      if (occupants.length) {
+        const beside = worldInteractionApproachPosition(state, person, effect.target, {
+          cellId: cellId(anchor.x, anchor.y), z: anchor.z,
+        });
+        if (!beside) return { status: 'blocked' as const, result: '身旁暂时没有可落脚的施工位置', diff: {} };
+        const movement = executeMove(state, person, { kind: 'move', toCellId: beside.cellId, toZ: beside.z }, eventId, atMonth);
+        return {
+          ...movement,
+          status: movement.status === 'blocked' ? movement.status : 'progressed' as const,
+          result: `${movement.result}（先让出构件位置，再继续搭建）`,
+          diff: { ...movement.diff, worldAdjudicatedApproach: true },
+        };
       }
       if (!verdict.effects.some((candidate) => candidate.kind === 'consume')) {
         return { status: 'blocked' as const, result: '没有真实投入材料的东西不能凭空成型', diff: {} };
       }
     }
     if (effect.kind === 'modify-structure') {
-      if (!workAt(state.world, effect.target.position)) {
+      if (!(effect.target.kind === 'work' ? workById(state.world, effect.target.workId) : workAt(state.world, effect.target.position))) {
         return { status: 'blocked' as const, result: '人物点名的地方没有可以加件的结构', diff: {} };
       }
     }
   }
 
+  const assembly = prepareWorldAssembly(state, person, verdict);
+  if (!assembly.ok) return { status: 'blocked' as const, result: assembly.reason, diff: {} };
+  // Anchor normalization must use the same pre-action world as validation.
+  const assemblyPositions = new Map(verdict.effects.flatMap((effect) => effect.kind === 'assemble'
+    ? [[effect, assembleAnchorPosition(state, effect.target.position)!] as const]
+    : []));
+  const assemblyChanges = new Map<object, {
+    work: ReturnType<typeof createWork>;
+    previousWork?: ReturnType<typeof createWork>;
+    layout: Extract<PlannedWorkLayout, { ok: true }>;
+  }>();
+  const consumedVoxels = verdict.effects.flatMap((effect) => effect.kind === 'consume' && effect.target.kind === 'voxel'
+    ? [effect.target.position] : []);
+  const layoutGrid = consumedVoxels.length ? {
+    ...state.world.grid,
+    voxels: Uint16Array.from({ length: state.world.grid.width * state.world.grid.depth * state.world.grid.levels },
+      (_, index) => state.world.grid.voxels[index] ?? 0),
+  } : state.world.grid;
+  for (const position of consumedVoxels) setVoxel(layoutGrid, position.x, position.y, position.z, Material.Air);
+  for (const effect of verdict.effects) {
+    if (effect.kind !== 'assemble' && effect.kind !== 'modify-structure') continue;
+    const existing = effect.kind === 'modify-structure'
+      ? (effect.target.kind === 'work' ? workById(state.world, effect.target.workId) : workAt(state.world, effect.target.position))
+      : undefined;
+    const work = effect.kind === 'assemble' ? createWork({
+      position: assemblyPositions.get(effect)!, arrangement: effect.arrangement,
+      components: assembly.components, summary: effect.summary,
+      builderId: person.id, atMonth, sourceEventId: eventId,
+      ...(effect.layout ? { layout: effect.layout } : {}),
+    }) : modifyWork(existing!, {
+      components: assembly.components, arrangement: effect.arrangement, summary: effect.summary,
+      builderId: person.id, atMonth, sourceEventId: eventId,
+      ...(effect.layout ? { layout: effect.layout } : {}),
+    });
+    const layout = planWorkLayout({
+      grid: layoutGrid, position: work.position, anchorMaterialId: work.anchorMaterialId,
+      components: work.components, layout: work.layout, existingWork: existing,
+      otherWorks: state.world.works, people: state.people,
+    });
+    if (!layout.ok) {
+      if (layout.conflict === 'occupied-person' && layout.blockingPersonIds?.every((id) => id === person.id)) {
+        const footprint = new Set(workOccupiedVoxels(work).map(({ position }) => `${position.x}:${position.y}:${position.z}`));
+        const places = cellsInRadius(person.position.cellId, 2).flatMap((id) => standingPositions(state.world.grid, id))
+          .filter((position) => ![position.z, position.z + 1].some((z) => footprint.has(`${cellX(position.cellId)}:${cellY(position.cellId)}:${z}`)))
+          .filter((position) => !state.people.some((other) => other.id !== person.id && isAlive(other)
+            && other.position.cellId === position.cellId && other.position.z === position.z))
+          .map((position) => ({ position, path: findStandingPath(state.world.grid, person.position, position) }))
+          .filter((candidate) => candidate.path.length > 1)
+          .sort((left, right) => left.path.length - right.path.length);
+        if (places[0]) {
+          const movement = executeMove(state, person, { kind: 'move', toCellId: places[0].position.cellId, toZ: places[0].position.z }, eventId, atMonth);
+          return { ...movement, status: movement.status === 'blocked' ? 'blocked' as const : 'progressed' as const,
+            result: `${movement.result}（先让出计划中的构件布局，再继续施工）`,
+            diff: { ...movement.diff, worldAdjudicatedApproach: true, assemblyPosition: work.position } };
+        }
+      }
+      return { status: 'blocked' as const, result: layout.reason, diff: {
+        layoutConflict: layout.conflict, blockingPositions: layout.blockingPositions,
+        blockingPersonIds: layout.blockingPersonIds, blockingWorkIds: layout.blockingWorkIds,
+      } };
+    }
+    work.layout = layout.layout;
+    work.anchorMaterialId = layout.anchorMaterialId;
+    assemblyChanges.set(effect, { work, ...(existing ? { previousWork: structuredClone(existing) } : {}), layout });
+  }
   const applied: Record<string, unknown>[] = [];
   let movementPath: number[] | undefined;
   for (const effect of verdict.effects) {
     if (effect.kind === 'knowledge') {
       const factId = `observation:world-agent:${eventId}:${applied.length + 1}`;
+      const summary = `本人对这次尝试的判断：${effect.summary}`;
       person.knowledge.push({
         id: factId,
-        kind: 'observation',
-        summary: effect.summary,
+        kind: 'claim',
+        summary,
         confidence: 68,
         learnedAtMonth: atMonth,
         sourceEventIds: [eventId],
       });
-      applied.push({ kind: effect.kind, factId, summary: effect.summary });
+      applied.push({ kind: effect.kind, factId, summary });
     } else if (effect.kind === 'consume') {
       if (effect.target.kind === 'inventory-stack') {
         const stackId = effect.target.stackId;
@@ -2525,58 +2632,35 @@ function executeWorldInteraction(
       setVoxel(state.world.grid, effect.target.position.x, effect.target.position.y, effect.target.position.z, effect.materialId);
       applied.push({ kind: effect.kind, target: effect.target, previousMaterialId, materialId: effect.materialId });
     } else if (effect.kind === 'assemble' || effect.kind === 'modify-structure') {
-      // 组件 = 本次裁决真实消耗掉的材料；实体与锚点体素由规则提交，
-      // 模型只提供了排布意图与材料清单。
-      const components: { materialId: number; quantity: number }[] = [];
-      for (const candidate of verdict.effects) {
-        if (candidate.kind !== 'consume') continue;
-        if (candidate.target.kind === 'inventory-stack') {
-          const stack = person.inventory.find((entry) => entry.id === (candidate.target as { stackId: string }).stackId);
-          if (stack) components.push({ materialId: stack.materialId, quantity: candidate.quantity });
-        } else if (candidate.target.kind === 'drop') {
-          const drop = state.world.drops.find((entry) => entry.id === (candidate.target as { dropId: string }).dropId);
-          if (drop) components.push({ materialId: drop.materialId, quantity: candidate.quantity });
-        } else if (candidate.target.kind === 'voxel') {
-          const position = (candidate.target as { position: { x: number; y: number; z: number } }).position;
-          components.push({ materialId: voxelAt(state.world.grid, position.x, position.y, position.z), quantity: 1 });
+      const change = assemblyChanges.get(effect)!;
+      for (const voxel of change.layout.clearVoxels) {
+        if (voxelAt(state.world.grid, voxel.position.x, voxel.position.y, voxel.position.z) === voxel.materialId) {
+          setVoxel(state.world.grid, voxel.position.x, voxel.position.y, voxel.position.z, Material.Air);
         }
       }
+      for (const voxel of change.layout.placeVoxels) {
+        setVoxel(state.world.grid, voxel.position.x, voxel.position.y, voxel.position.z, voxel.materialId);
+      }
       if (effect.kind === 'assemble') {
-        const position = assembleAnchorPosition(state, effect.target.position)!;
-        const work = createWork({
-          position,
-          arrangement: effect.arrangement,
-          components,
-          summary: effect.summary,
-          builderId: person.id,
-          atMonth,
-          sourceEventId: eventId,
-        });
+        const work = change.work;
         registerWork(state.world, work);
-        setVoxel(state.world.grid, position.x, position.y, position.z, work.anchorMaterialId);
         applied.push({
           kind: effect.kind,
           workId: work.id,
+          target: effect.target,
+          position: work.position,
           arrangement: work.arrangement,
           components: work.components,
           anchorMaterialId: work.anchorMaterialId,
           profile: work.profile,
+          layout: work.layout,
+          occupiedVoxels: change.layout.occupiedVoxels,
         });
       } else {
-        const existing = workAt(state.world, effect.target.position)!;
+        const existing = change.previousWork!;
         const priorBuilderIds = existing.builderIds.filter((id) => id !== person.id);
-        const updated = modifyWork(existing, {
-          components,
-          ...(effect.arrangement ? { arrangement: effect.arrangement } : {}),
-          ...(effect.summary ? { summary: effect.summary } : {}),
-          builderId: person.id,
-          atMonth,
-          sourceEventId: eventId,
-        });
+        const updated = change.work;
         registerWork(state.world, updated);
-        if (updated.anchorMaterialId !== existing.anchorMaterialId) {
-          setVoxel(state.world.grid, effect.target.position.x, effect.target.position.y, effect.target.position.z, updated.anchorMaterialId);
-        }
         // 在别人的造物上继续添砖加瓦是最具体的协作：每一次真实加件都在
         // 建造者之间留下双向关系证据，共同造物由此成为社会纽带的载体。
         const collaborationPartnerIds: string[] = [];
@@ -2590,28 +2674,31 @@ function executeWorldInteraction(
         applied.push({
           kind: effect.kind,
           workId: updated.id,
+          target: effect.target,
+          position: updated.position,
+          anchorMaterialId: updated.anchorMaterialId,
           arrangement: updated.arrangement,
           components: updated.components,
           profile: updated.profile,
           condition: updated.condition,
+          layout: updated.layout,
+          occupiedVoxels: change.layout.occupiedVoxels,
+          previousWork: { arrangement: existing.arrangement, components: existing.components, layout: existing.layout,
+            profile: existing.profile, position: existing.position, anchorMaterialId: existing.anchorMaterialId },
           ...(collaborationPartnerIds.length ? { collaborationPartnerIds } : {}),
         });
       }
     } else if (effect.kind === 'move-self') {
-      const destination = { cellId: cellId(effect.target.position.x, effect.target.position.y), z: effect.target.position.z + 1 };
-      const path = findStandingPath(state.world.grid, person.position, destination);
-      person.position.previousCellId = person.position.cellId;
-      person.position.previousZ = person.position.z;
-      person.position.cellId = destination.cellId;
-      person.position.z = destination.z;
-      person.position.lastPath = path.map((position) => position.cellId);
-      person.position.tickPath.push(...path.slice(1).map((position) => position.cellId));
-      movementPath = person.position.lastPath;
-      applied.push({ kind: effect.kind, target: effect.target });
+      // Movement was executed, with normal effort and path receipts, before
+      // this interaction. Reaching water means its bank, not standing in it.
+      movementPath = [person.position.cellId];
+      applied.push({ kind: effect.kind, target: effect.target, position: movementDestination });
     } else if (effect.kind === 'body') {
       const target = effect.target ? personById(state, effect.target.personId) : person;
+      const previous = target?.body[effect.field];
       if (target) target.body[effect.field] = clamp(target.body[effect.field] + effect.delta);
-      applied.push({ kind: effect.kind, personId: target?.id, field: effect.field, delta: effect.delta });
+      applied.push({ kind: effect.kind, personId: target?.id, field: effect.field,
+        delta: target && previous !== undefined ? target.body[effect.field] - previous : 0 });
     } else if (effect.kind === 'relation') {
       applyRelationEvidence(person, effect.target.personId, eventId, { [effect.field]: effect.delta });
       applied.push({ kind: effect.kind, personId: effect.target.personId, field: effect.field, delta: effect.delta });
@@ -2650,6 +2737,18 @@ function executeWorldInteraction(
         applied.push({ kind: effect.kind, animalId, trust: bond.trust, contacts: bond.contacts, fed });
       }
     } else {
+      // An open description of a person's will or identity is the actor's
+      // interpretation. Only that person's own actions can establish consent
+      // or commitment; physical body changes have their separate primitive.
+      if (effect.target?.kind === 'person') {
+        const subject = personById(state, effect.target.personId);
+        const summary = `本人对${subject?.name ?? '对方'}的判断：${effect.summary}`;
+        const factId = `claim:world-agent:${eventId}:${applied.length + 1}`;
+        person.knowledge.push({ id: factId, kind: 'claim', summary, confidence: 68,
+          learnedAtMonth: atMonth, sourceEventIds: [eventId] });
+        applied.push({ kind: 'knowledge', factId, summary });
+        continue;
+      }
       state.world.openFacts ??= [];
       if (effect.target && effect.stateKey) {
         state.world.openFacts = state.world.openFacts.filter((fact) => (
@@ -2677,7 +2776,6 @@ function executeWorldInteraction(
         ...(effect.stateValue ? { stateValue: effect.stateValue } : {}),
         sourceEventId: eventId,
       });
-      if (state.world.openFacts.length > 256) state.world.openFacts.splice(0, state.world.openFacts.length - 256);
       applied.push({
         kind: effect.kind,
         summary: effect.summary,
@@ -2692,10 +2790,11 @@ function executeWorldInteraction(
   return {
     status: verdict.status,
     ...(movementPath ? { path: movementPath } : {}),
-    result: verdict.result,
+    result: worldInteractionResult(state, applied),
     diff: {
       worldAdjudicated: true,
       request: verdict.request,
+      resolverInterpretation: verdict.result,
       appliedEffects: applied,
       ...(planFeedback ? { planFeedback } : {}),
     },
@@ -2782,9 +2881,9 @@ export function executePrimitiveAction(
   recordCollectiveAction(state, fact);
   recordGovernanceAction(state, fact);
   recordPermissionAction(state, fact);
-  recordWorkUsesFromCompletedAction(state.world, fact);
   recordInteractionFailureKnowledge(state, fact);
   recordWitnessedDeclarationFulfillment(state, fact);
+  recordExperiencedProcedure(state, person, fact);
   rememberAction(state, fact);
   recordPersonalityEvidence(state, fact);
   recordActionOutcomeBelief(state, fact);

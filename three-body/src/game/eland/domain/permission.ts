@@ -192,24 +192,7 @@ export function inferPermissionUseBasis(
   };
 }
 
-export function permissionUseBasisIsCurrent(
-  state: SimulationState,
-  permission: ResourcePermission | undefined,
-  action: Extract<PrimitiveAction, { kind: 'transfer' }>,
-): boolean {
-  const basis = action.permissionUseBasis;
-  if (!permission || !basis || basis.permissionId !== permission.id) return false;
-  const grantee = personById(state, permission.granteeId);
-  const grantor = personById(state, permission.grantorId);
-  if (!grantee || !grantor) return false;
-  const current = inferPermissionUseBasis(state, permission, grantee, grantor);
-  return Boolean(current
-    && current.basisKey === basis.basisKey
-    && current.kind === basis.kind
-    && current.materialId === basis.materialId
-    && current.requiredQuantity === basis.requiredQuantity);
-}
-
+/** Permission terms authorize access; an inferred motive is not another grant. */
 export function permissionAuthorizesTransfer(
   permission: ResourcePermission | undefined,
   actorId: PersonId,
@@ -227,7 +210,6 @@ export function permissionAuthorizesTransfer(
     && action.to.kind === 'person'
     && action.to.personId === permission.granteeId
     && action.materialId === permission.materialId
-    && action.permissionUseBasis?.permissionId === permission.id
     && actualQuantity > 0
     && actualQuantity <= permission.maxQuantityPerTransfer);
 }

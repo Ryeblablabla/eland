@@ -5,10 +5,7 @@ import { isAlive, type PersonState } from '../person';
 import { broadcastLanguage, type LanguageBroadcast } from '../language-perception';
 import { addInventory } from './inventory';
 import { personById, projectById } from '../state-index';
-
-function clamp(value: number, minimum = 0, maximum = 100): number {
-  return Math.max(minimum, Math.min(maximum, Number.isFinite(value) ? value : minimum));
-}
+import { heardKnowledgeFactId, knownWritingConvention } from '../record';
 
 /**
  * Talk is only a physical vocal act. It does not create knowledge, agreement,
@@ -46,21 +43,20 @@ export function executeTalk(
     const source = person.knowledge.find((knowledge) => knowledge.id === meaning.factId);
     if (source) {
       for (const listener of understoodPeople) {
-        const existing = listener.knowledge.find((knowledge) => knowledge.id === source.id);
-        const learnedConfidence = Math.max(55, Math.min(90, Math.round(source.confidence * 0.82)));
-        if (existing) {
-          existing.confidence = Math.max(existing.confidence, learnedConfidence);
-          existing.sourceEventIds = [...new Set([...existing.sourceEventIds, ...source.sourceEventIds, eventId])].slice(-24);
-        } else listener.knowledge.push({
-          ...structuredClone(source),
-          confidence: learnedConfidence,
+        const pendingId = heardKnowledgeFactId(eventId, source.id);
+        if (!listener.knowledge.some((knowledge) => knowledge.id === pendingId)) listener.knowledge.push({
+          id: pendingId,
+          kind: 'claim',
+          summary: `听到${person.name}谈及“${action.speakerMeaning.summary ?? source.summary}”，尚未亲自理解和核验其中内容`,
+          confidence: 40,
           learnedAtMonth: atMonth,
-          sourceEventIds: [...new Set([...source.sourceEventIds, eventId])].slice(-24),
+          sourceEventIds: [eventId],
         });
       }
       interpretationDiff.assertedFactSourceEventIds = [...source.sourceEventIds];
-      interpretationDiff.interpretedFactId = source.id;
-      interpretationDiff.interpretedByPersonIds = understoodPeople.map((listener) => listener.id);
+      interpretationDiff.offeredKnowledge = structuredClone(source);
+      interpretationDiff.offeredFactId = source.id;
+      interpretationDiff.knowledgeHeardByPersonIds = understoodPeople.map((listener) => listener.id);
     }
   }
 
@@ -200,13 +196,14 @@ export function executeInscribe(
   if (!knowledge) {
     return { status: 'blocked' as const, result: '本人并不知道要刻写的内容', diff: {} };
   }
-  if (knowledge.kind === 'codebook') {
-    return { status: 'blocked' as const, result: '编码约定不能作为自己的记录内容再次刻写', diff: {} };
-  }
+  const writingConvention = knownWritingConvention(person, action.codebookId);
+  if (action.codebookId && !writingConvention) return {
+    status: 'blocked' as const, result: '本人还不理解点名的符号约定，需要先学习它或使用自己已知的写法', diff: {},
+  };
   const priorVersion = state.records
     .filter((record) => record.knowledgeId === knowledge.id && record.authorId === person.id)
     .reduce((maximum, record) => Math.max(maximum, record.version), 0);
-  const codebookId = `codebook:record:${person.id}:${knowledge.id}`;
+  const codebookId = writingConvention?.id ?? `codebook:signs:${person.id}`;
   const payload = {
     id: `record:${atMonth}:${person.id}:${state.records.length}`,
     authorId: person.id,
@@ -214,20 +211,21 @@ export function executeInscribe(
     codebookId,
     kind: knowledge.kind,
     summary: knowledge.summary,
+    confidence: knowledge.confidence,
     version: priorVersion + 1,
     createdAtMonth: atMonth,
     sourceEventIds: [...new Set([...knowledge.sourceEventIds, eventId])],
+    ...(knowledge.procedural ? { procedural: structuredClone(knowledge.procedural) } : {}),
   };
   state.records.push(payload);
   const knownCodebook = person.knowledge.find((fact) => fact.id === codebookId);
   if (knownCodebook) {
-    knownCodebook.confidence = clamp(knownCodebook.confidence + 16);
     knownCodebook.sourceEventIds = [...new Set([...knownCodebook.sourceEventIds, eventId, payload.id])].slice(-24);
   } else {
     person.knowledge.push({
       id: codebookId,
       kind: 'codebook',
-      summary: `这组刻痕表示“${knowledge.summary}”`,
+      summary: `${person.name}使用的刻写符号及其表示约定`,
       confidence: 100,
       learnedAtMonth: atMonth,
       sourceEventIds: [eventId, payload.id],

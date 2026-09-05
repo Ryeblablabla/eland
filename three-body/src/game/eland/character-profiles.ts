@@ -1,7 +1,7 @@
 import { CHARACTERS, type CharacterProfile as ArchiveCharacter } from "../../data/characters";
 import type { BiologicalSex } from './population';
 import { inferFamilyName, type NamingTradition } from './naming';
-import { compileFounderPersonaPrior, type FounderPersonaPrior } from './founder-persona';
+import { compileFounderPersonaPrior, type FounderPersonaPrior } from './domain/founder-persona';
 import type { PrototypeReactionPattern } from './domain/person';
 
 export interface CharacterProfile {

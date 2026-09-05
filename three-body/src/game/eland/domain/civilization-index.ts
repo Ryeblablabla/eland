@@ -379,7 +379,7 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
   const peopleIds = new Set(state.people.map((person) => person.id));
   const structureUseReceipts = new Map(state.derived.structures.map((structure) => [
     structure.id,
-    observePhysicalStructureUseReceipts(structure, actions),
+    observePhysicalStructureUseReceipts(structure, events.filter((event) => event.kind === 'action' || event.kind === 'environment')),
   ]));
   const demonstratedStructures = state.derived.structures.filter((structure) => (
     structure.complete
@@ -389,7 +389,7 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
   ));
   const workAdoptions = (state.world.works ?? [])
     .filter((work) => work.condition > WORK_COLLAPSE_CONDITION)
-    .map((work) => ({ work, observation: observeWorkAdoption(work, actions, state.clock.elapsedMonths) }))
+    .map((work) => ({ work, observation: observeWorkAdoption(work, events.filter((event) => event.kind === 'action' || event.kind === 'environment'), state.clock.elapsedMonths) }))
     .filter(({ observation }) => observation.active && observation.receipts.length > 0);
   const workReceipts = workAdoptions.flatMap(({ observation }) => observation.receipts);
   const workUserIds = new Set(workAdoptions.flatMap(({ observation }) => observation.userIds)

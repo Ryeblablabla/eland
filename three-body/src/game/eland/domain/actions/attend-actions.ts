@@ -21,16 +21,55 @@ import {
   projectLeadershipInspectionFactId,
   validateProjectLeadershipSuccessionAction,
 } from '../project-leadership';
-import { intentById, personById, projectById } from '../state-index';
+import { personById, projectById } from '../state-index';
 import { rememberMaterialPlace } from '../spatial-knowledge';
 import { cellId, cellX, cellY, voxelAt } from '../../world/grid';
 import { executeElectricalPowerFaultAttend } from './electrical-power-actions';
 import { clamp, distanceToPosition, samePosition } from './execution-helpers';
 import { executeMeasurementAttend } from './measurement-actions';
+import { transmittedProcedure } from '../procedural-knowledge';
+import { heardKnowledgeSource, knownWritingConvention, recordInspectionFactId, type RecordPayload } from '../record';
+import { lifePlanningStage } from '../life-stage';
+import { workById, WORK_ARRANGEMENT_NAMES, WORK_COLLAPSE_CONDITION } from '../works';
+import { workOccupiedVoxels } from '../work-layout';
 
 type AttendAction = Extract<PrimitiveAction, { kind: 'attend' }>;
 
+function inspectRecord(person: PersonState, record: RecordPayload, atMonth: number, eventId: string) {
+  const understood = Boolean(knownWritingConvention(person, record.codebookId));
+  const factId = recordInspectionFactId(record, understood);
+  const summary = understood ? `阅读了实体记录：${record.summary}` : '看见记录板上的规则刻痕，但还不知道这些符号表示什么';
+  const inspection = person.knowledge.find((fact) => fact.id === factId);
+  if (inspection) inspection.sourceEventIds = [...new Set([...inspection.sourceEventIds, record.id, eventId])].slice(-24);
+  else person.knowledge.push({ id: factId, kind: 'observation', summary, confidence: 68, learnedAtMonth: atMonth, sourceEventIds: [record.id, eventId] });
+  if (!understood) return {
+    status: 'completed' as const, result: summary,
+    diff: { factId, recordPayloadId: record.id, understood: false, unknownCodebookId: record.codebookId },
+  };
+  const known = person.knowledge.find((fact) => fact.id === record.knowledgeId);
+  const confidence = Math.min(record.confidence ?? 46, 46);
+  if (known) {
+    // Reading neither proves the method nor erases the reader's own experience.
+    known.confidence = Math.max(known.confidence, confidence);
+    known.sourceEventIds = [...new Set([...known.sourceEventIds, record.id, eventId])].slice(-24);
+    if (record.procedural) known.procedural = transmittedProcedure(record.procedural, eventId, known.procedural);
+  } else person.knowledge.push({
+    id: record.knowledgeId,
+    kind: record.kind === 'codebook' || record.kind === 'technique' ? record.kind : 'claim',
+    summary: record.summary, confidence, learnedAtMonth: atMonth, sourceEventIds: [record.id, eventId],
+    ...(record.procedural ? { procedural: transmittedProcedure(record.procedural, eventId) } : {}),
+  });
+  return {
+    status: 'completed' as const, result: summary,
+    diff: { factId, recordPayloadId: record.id, learnedFactId: record.knowledgeId, understood: true, personallyVerified: false },
+  };
+}
+
 function targetCell(state: SimulationState, target: WorldRef): number | null {
+  if (target.kind === 'work') {
+    const work = workById(state.world, target.workId);
+    return work ? cellId(work.position.x, work.position.y) : null;
+  }
   if (target.kind === 'voxel') return cellId(target.position.x, target.position.y);
   if (target.kind === 'drop') return state.world.drops.find((drop) => drop.id === target.dropId)?.cellId ?? null;
   if (target.kind === 'container') {
@@ -49,10 +88,41 @@ export function executeAttend(
   action: AttendAction,
   atMonth: number,
   eventId: string,
-  intentId?: string,
+  _intentId?: string,
 ) {
   const cell = targetCell(state, action.target);
   if (cell === null || Math.abs(cellX(cell) - cellX(person.position.cellId)) + Math.abs(cellY(cell) - cellY(person.position.cellId)) > 7) return { status: 'blocked' as const, result: '观察目标超出感知范围', diff: {} };
+  if (action.learning) {
+    const source = heardKnowledgeSource(state, person, action.learning.sourceEventId, action.learning.factId);
+    if (!source || lifePlanningStage(person, atMonth) === 'dependent-child') return {
+      status: 'blocked' as const,
+      result: source ? '婴儿目前只能感知声音，还不能独立理解并复述这套方法或符号' : '本人没有听到过这项解释，不能凭空取得别人的知识',
+      diff: { learningSourceEventId: action.learning.sourceEventId, understood: false },
+    };
+    const knowledge = source.knowledge;
+    const existing = person.knowledge.find((fact) => fact.id === knowledge.id);
+    const learnedConfidence = Math.min(knowledge.confidence, 46);
+    if (existing) {
+      existing.confidence = Math.max(existing.confidence, learnedConfidence);
+      existing.sourceEventIds = [...new Set([...existing.sourceEventIds, source.event.id, eventId])].slice(-24);
+      if (knowledge.procedural) existing.procedural = transmittedProcedure(
+        transmittedProcedure(knowledge.procedural, source.event.id), eventId, existing.procedural,
+      );
+    } else person.knowledge.push({
+      id: knowledge.id,
+      kind: knowledge.kind === 'codebook' || knowledge.kind === 'technique' ? knowledge.kind : 'claim',
+      summary: knowledge.summary,
+      confidence: learnedConfidence,
+      learnedAtMonth: atMonth,
+      sourceEventIds: [source.event.id, eventId],
+      ...(knowledge.procedural ? { procedural: transmittedProcedure(transmittedProcedure(knowledge.procedural, source.event.id), eventId) } : {}),
+    });
+    return {
+      status: 'completed' as const,
+      result: `整理并理解了此前听到的解释：${knowledge.summary}；这是来源说法，仍需亲自尝试和核验`,
+      diff: { factId: knowledge.id, learnedFactId: knowledge.id, learningSourceEventId: source.event.id, understood: true, personallyVerified: false },
+    };
+  }
   if (action.projectLeadershipSuccession) {
     const succession = validateProjectLeadershipSuccessionAction(state, person, action, atMonth);
     if (!succession) return {
@@ -203,12 +273,41 @@ export function executeAttend(
   }
   let factId = `target:${JSON.stringify(action.target)}`;
   let summary = '持续观察了一个对象';
+  if (action.target.kind === 'work') {
+    const work = workById(state.world, action.target.workId);
+    if (!work || work.condition < WORK_COLLAPSE_CONDITION
+      || voxelAt(state.world.grid, work.position.x, work.position.y, work.position.z) !== work.anchorMaterialId) {
+      return { status: 'blocked' as const, result: '这件造物已经不在原处或已经解体', diff: {} };
+    }
+    factId = `observation:work:${work.id}`;
+    const occupiedVoxels = workOccupiedVoxels(work).filter((voxel) => voxelAt(state.world.grid,
+      voxel.position.x, voxel.position.y, voxel.position.z) === voxel.materialId);
+    summary = `检查了${work.summary}：${work.components.map((part) => `${part.quantity}份${materialDefinition(part.materialId).name}`).join('、')}，${WORK_ARRANGEMENT_NAMES[work.arrangement]}，实际占据${occupiedVoxels.length}个体素；材料遮蔽潜力${work.profile.cover}、抗形变${work.profile.rigidity}、抗倾倒${work.profile.stability}、保存状态${work.condition}。能否遮蔽身体要看实际墙顶和开口位置`;
+    const existing = person.knowledge.find((fact) => fact.id === factId);
+    if (existing) {
+      existing.summary = summary;
+      existing.sourceEventIds = [...new Set([...existing.sourceEventIds, eventId])].slice(-24);
+    } else person.knowledge.push({ id: factId, kind: 'observation', summary, confidence: 68, learnedAtMonth: atMonth, sourceEventIds: [eventId] });
+    return { status: 'completed' as const, result: summary, diff: {
+      factId, workId: work.id, observedWork: {
+        position: { ...work.position }, arrangement: work.arrangement,
+        components: structuredClone(work.components), profile: { ...work.profile }, condition: work.condition,
+        occupiedVoxels,
+      },
+    } };
+  }
   if (action.target.kind === 'animal') {
     const animalId = action.target.animalId;
     const animal = state.world.animals.find((candidate) => candidate.id === animalId && isAnimalAlive(candidate));
     if (!animal) return { status: 'blocked' as const, result: '要观察的动物已经不在', diff: {} };
     factId = `animal:${animal.speciesId}`;
     summary = `观察并辨认了${animalSpecies(animal.speciesId).name}的行为`;
+  }
+  if (action.target.kind === 'drop') {
+    const dropId = action.target.dropId;
+    const drop = state.world.drops.find((candidate) => candidate.id === dropId && candidate.quantity > 0);
+    const record = drop?.recordPayloadId ? state.records.find((candidate) => candidate.id === drop.recordPayloadId) : undefined;
+    if (record) return inspectRecord(person, record, atMonth, eventId);
   }
   if (action.target.kind === 'inventory-stack' && action.target.personId === person.id) {
     const attendedStackId = action.target.stackId;
@@ -242,89 +341,7 @@ export function executeAttend(
       };
     }
     const record = stack.recordPayloadId ? state.records.find((candidate) => candidate.id === stack.recordPayloadId) : undefined;
-    if (record) {
-      let codebook = person.knowledge.find((fact) => fact.id === record.codebookId
-        && fact.kind === 'codebook'
-        && fact.confidence >= 55);
-      let selfDecodedCodebook = false;
-      const recordUseIntent = intentId ? intentById(state, intentId) : undefined;
-      const selfDecodeBasis = recordUseIntent?.status === 'active'
-        && (recordUseIntent.recordUseBasis?.version === 'record-use-basis-v2'
-          || recordUseIntent.recordUseBasis?.version === 'record-use-basis-v3')
-        && recordUseIntent.recordUseBasis.readerId === person.id
-        && recordUseIntent.recordUseBasis.recordId === record.id
-        && recordUseIntent.recordUseBasis.knowledgeId === record.knowledgeId
-        && recordUseIntent.recordUseBasis.codebookId === record.codebookId
-        ? recordUseIntent.recordUseBasis
-        : undefined;
-      if (!codebook
-        && selfDecodeBasis
-        && record.kind === 'technique'
-        && record.authorId !== person.id) {
-        const existingCodebook = person.knowledge.find((fact) => fact.id === record.codebookId);
-        if (!existingCodebook) {
-          person.knowledge.push({
-            id: record.codebookId,
-            kind: 'codebook',
-            summary: `能辨认“${record.summary}”所用实体刻痕的符号约定`,
-            confidence: 58,
-            learnedAtMonth: atMonth,
-            sourceEventIds: [...new Set([record.id, ...record.sourceEventIds, eventId])].slice(-24),
-          });
-          codebook = person.knowledge.at(-1);
-          selfDecodedCodebook = true;
-        } else if (existingCodebook.kind === 'codebook') {
-          existingCodebook.confidence = Math.max(existingCodebook.confidence, 58);
-          existingCodebook.sourceEventIds = [...new Set([
-            ...existingCodebook.sourceEventIds,
-            record.id,
-            ...record.sourceEventIds,
-            eventId,
-          ])].slice(-24);
-          codebook = existingCodebook;
-          selfDecodedCodebook = true;
-        }
-      }
-      if (!codebook) return {
-        status: 'completed' as const,
-        result: '看见木制记录板上的规则刻痕，但还不知道这些符号表示什么',
-        diff: { recordPayloadId: record.id, understood: false },
-      };
-      const known = person.knowledge.find((fact) => fact.id === record.knowledgeId);
-      const preservesReliableTechnique = selfDecodeBasis?.version === 'record-use-basis-v3'
-        && selfDecodeBasis.purpose === 'replicate'
-        && known?.kind === 'technique'
-        && known.confidence >= 55;
-      if (known) {
-        known.confidence = known.kind === 'technique'
-          ? preservesReliableTechnique
-            ? known.confidence
-            : Math.min(54, Math.max(46, known.confidence + 8))
-          : clamp(known.confidence + 8);
-        known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId, record.id])].slice(-24);
-      } else person.knowledge.push({
-        id: record.knowledgeId,
-        kind: record.kind === 'technique' ? 'technique' : 'claim',
-        summary: record.summary,
-        confidence: record.kind === 'technique' ? 46 : 52,
-        learnedAtMonth: atMonth,
-        sourceEventIds: [record.id, eventId],
-      });
-      return {
-        status: 'completed' as const,
-        result: `${selfDecodedCodebook ? '辨认刻痕并' : ''}阅读木制记录板：${record.summary}`,
-        diff: {
-          recordPayloadId: record.id,
-          learnedFactId: record.knowledgeId,
-          understood: true,
-          ...(selfDecodedCodebook ? {
-            selfDecodedCodebook: true,
-            learnedCodebookId: codebook.id,
-            learnedCodebookConfidence: codebook.confidence,
-          } : {}),
-        },
-      };
-    }
+    if (record) return inspectRecord(person, record, atMonth, eventId);
     const tentativeTechnique = person.knowledge.find((fact) => fact.kind === 'technique' && fact.confidence < 55 && fact.sourceEventIds.some((sourceId) => {
       const source = worldEventById(state, sourceId);
       return source?.kind === 'action'

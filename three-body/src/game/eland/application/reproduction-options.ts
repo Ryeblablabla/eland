@@ -3,45 +3,25 @@ import {
   agreementsForPerson,
   reproductionAttemptedBetweenInMonth,
 } from '../domain/agreement';
-import { hasReproductiveRecoveryCondition } from '../domain/dependent-care';
 import type { SimulationState } from '../domain/model';
-import { ageMonths, isAlive, sameLocation, type PersonState } from '../domain/person';
+import { isAlive, type PersonState } from '../domain/person';
 import {
   buildRelationshipCausalBasis,
   canOfferRelationshipProposal,
 } from '../domain/relationship-evidence';
 import { openReproductionOfferFor } from '../domain/social-facts';
 import { personById } from '../domain/state-index';
-import { reproductiveUpperAgeMonths } from '../domain/trait';
+import { reproductivePairPossible, reproductivePairReady } from '../domain/reproduction';
 import { defineActionOptionSemantics } from '../domain/action-option-semantics';
 import { perceivedKinshipRisk } from './reproductive-risk';
+import { conversationalRendezvous, physicalRendezvous, positionsCanShareLanguage, positionsCanTouch } from '../domain/social-space';
 
-function reproductivePairEligible(first: PersonState, second: PersonState, atMonth: number): boolean {
-  if (first.sex === second.sex) return false;
-  const female = first.sex === 'female' ? first : second;
-  const male = first.sex === 'male' ? first : second;
-  if (ageMonths(female, atMonth) < 16 * 12
-    || ageMonths(female, atMonth) > reproductiveUpperAgeMonths(female)
-    || ageMonths(male, atMonth) < 16 * 12) return false;
-  if (hasReproductiveRecoveryCondition(female)) return false;
-  return Math.min(
-    first.body.health, first.body.hydration, first.body.nutrition,
-    second.body.health, second.body.hydration, second.body.nutrition,
-  ) >= 55;
-}
-
-/**
- * A formal proposal needs two living adults with a biologically possible
- * pairing. Temporary reserves, pregnancy, and recovery belong to execution:
- * people may still discuss the future while their bodies are not ready now.
- */
-function reproductiveProposalPairEligible(first: PersonState, second: PersonState, atMonth: number): boolean {
-  if (!isAlive(first) || !isAlive(second) || first.id === second.id || first.sex === second.sex) return false;
-  const female = first.sex === 'female' ? first : second;
-  const male = first.sex === 'male' ? first : second;
-  return ageMonths(female, atMonth) >= 16 * 12
-    && ageMonths(female, atMonth) <= reproductiveUpperAgeMonths(female)
-    && ageMonths(male, atMonth) >= 16 * 12;
+/** Discussing an intimate choice uses the same language channel as any other proposal. */
+function conversationRoute(state: SimulationState, person: PersonState, other: PersonState) {
+  return {
+    canSpeak: positionsCanShareLanguage(person.position, other.position),
+    position: conversationalRendezvous(state, person, other)?.position ?? other.position,
+  };
 }
 
 export function buildReproductionOptions(
@@ -64,7 +44,9 @@ export function buildReproductionOptions(
     ? activeReproductionPartnerCandidate
     : undefined;
   if (activeReproductionAgreement?.proposal.kind === 'reproduce' && activeReproductionPartner) {
-    const together = sameLocation(activeReproductionPartner, person);
+    const together = positionsCanTouch(state.world.grid, activeReproductionPartner.position, person.position);
+    const contact = physicalRendezvous(state, person, activeReproductionPartner);
+    const speech = conversationRoute(state, person, activeReproductionPartner);
     const revokeId = `revoke-reproduce:${activeReproductionAgreement.id}:${person.id}:${atMonth}`;
     const revokeAction = {
       kind: 'talk' as const,
@@ -80,12 +62,12 @@ export function buildReproductionOptions(
       summary: `向${activeReproductionPartner.name}撤回生殖尝试窗口的同意`,
       reason: '已经接受的多月生殖尝试窗口仍可依据身体、关系或家庭准备变化重新评估并撤回',
       goal: { kind: 'representation-made', representationId: revokeId },
-      nextAction: together
+      nextAction: speech.canSpeak
         ? revokeAction
-        : { kind: 'move', toCellId: activeReproductionPartner.position.cellId, toZ: activeReproductionPartner.position.z },
-      ...(!together ? { completionAction: revokeAction } : {}),
+        : { kind: 'move', toCellId: speech.position.cellId, toZ: speech.position.z },
+      ...(!speech.canSpeak ? { completionAction: revokeAction } : {}),
       target: { kind: 'person', personId: activeReproductionPartner.id },
-      estimatedDuration: together ? 'one-month' : 'several-months',
+      estimatedDuration: speech.canSpeak ? 'one-month' : 'several-months',
       sourceFactIds: [...activeReproductionAgreement.sourceEventIds],
       semantics: defineActionOptionSemantics({
         obligation: 'optional',
@@ -101,7 +83,8 @@ export function buildReproductionOptions(
       }),
     });
     if (!reproductionAttemptedBetweenInMonth(state, person.id, activeReproductionPartner.id, atMonth)
-      && reproductivePairEligible(person, activeReproductionPartner, atMonth)) {
+      && reproductivePairReady(person, activeReproductionPartner, atMonth)
+      && contact) {
       const female = person.sex === 'female' ? person : activeReproductionPartner;
       options.push({
         id: `reproduce:${activeReproductionAgreement.id}:${activeReproductionPartner.id}`,
@@ -110,7 +93,7 @@ export function buildReproductionOptions(
         goal: { kind: 'condition', personId: female.id, condition: 'pregnancy', present: true },
         nextAction: together
           ? { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: activeReproductionPartner.id }], authorizationRef: activeReproductionAgreement.id }
-          : { kind: 'move', toCellId: activeReproductionPartner.position.cellId, toZ: activeReproductionPartner.position.z },
+          : { kind: 'move', toCellId: contact.position.cellId, toZ: contact.position.z },
         ...(!together ? { completionAction: { kind: 'act' as const, operation: 'reproduce' as const, targets: [{ kind: 'person' as const, personId: activeReproductionPartner.id }], authorizationRef: activeReproductionAgreement.id } } : {}),
         target: { kind: 'person', personId: activeReproductionPartner.id },
         estimatedDuration: together ? 'one-month' : 'several-months',
@@ -125,7 +108,8 @@ export function buildReproductionOptions(
     if (proposer) {
       const responseBasis = buildRelationshipCausalBasis(state, person, proposer, 'reproduce', atMonth);
       const representationId = `accept:${incomingOffer.content.id}:${person.id}`;
-      const together = sameLocation(proposer, person);
+      const speech = conversationRoute(state, person, proposer);
+      const together = speech.canSpeak;
       const acceptAction = { kind: 'talk' as const, speakerMeaning: { id: representationId, kind: 'accept' as const, referenceId: incomingOffer.content.id } };
       const perceivedRisk = perceivedKinshipRisk(state, person, proposer);
       const learnedRisk = perceivedRisk.cost > 0;
@@ -134,7 +118,7 @@ export function buildReproductionOptions(
         ...responseBasis.sourceFactIds,
         ...perceivedRisk.sourceFactIds,
       ])];
-      const bodiesReadyNow = reproductivePairEligible(person, proposer, atMonth);
+      const bodiesReadyNow = reproductivePairReady(person, proposer, atMonth);
       options.push({
         id: `accept-reproduce:${incomingOffer.content.id}`,
         summary: `接受${proposer.name}的共同生殖提议`,
@@ -144,7 +128,7 @@ export function buildReproductionOptions(
             ? '本人将依据有来源经历、人格和当前责任自行判断是否接受'
             : '同意只形成可撤回的共同尝试窗口；当前身体不适合执行，但不替本人决定是否谈论未来',
         goal: { kind: 'representation-made', representationId },
-        nextAction: together ? acceptAction : { kind: 'move', toCellId: proposer.position.cellId, toZ: proposer.position.z },
+        nextAction: together ? acceptAction : { kind: 'move', toCellId: speech.position.cellId, toZ: speech.position.z },
         ...(!together ? { completionAction: acceptAction } : {}),
         target: { kind: 'person', personId: proposer.id },
         estimatedDuration: together ? 'one-month' : 'several-months',
@@ -172,7 +156,7 @@ export function buildReproductionOptions(
             ? '本人将依据这段有来源关系和当前责任自行判断是否拒绝'
             : '本人没有自己的共同经历，但仍须明确回应对方的提议',
         goal: { kind: 'representation-made', representationId: rejectId },
-        nextAction: together ? rejectAction : { kind: 'move', toCellId: proposer.position.cellId, toZ: proposer.position.z },
+        nextAction: together ? rejectAction : { kind: 'move', toCellId: speech.position.cellId, toZ: speech.position.z },
         ...(!together ? { completionAction: rejectAction } : {}),
         target: { kind: 'person', personId: proposer.id },
         estimatedDuration: together ? 'one-month' : 'several-months',
@@ -194,14 +178,15 @@ export function buildReproductionOptions(
 
   const reproductiveCandidates = visiblePeople.filter((other) => {
     if (activeReproductionAgreement) return false;
-    return reproductiveProposalPairEligible(person, other, atMonth);
+    return reproductivePairPossible(person, other, atMonth);
   }).map((other) => ({
     other,
     basis: buildRelationshipCausalBasis(state, person, other, 'reproduce', atMonth),
   })).filter((candidate) => canOfferRelationshipProposal(state, person, candidate.other, candidate.basis))
     .sort((a, b) => a.other.id.localeCompare(b.other.id));
   for (const { other: reproductivePartner, basis } of reproductiveCandidates) {
-    const together = sameLocation(reproductivePartner, person);
+    const speech = conversationRoute(state, person, reproductivePartner);
+    const together = speech.canSpeak;
     if (!incomingOffer) {
       const representationId = `offer-reproduce:${atMonth}:${person.id}:${reproductivePartner.id}`;
       const perceivedRisk = perceivedKinshipRisk(state, person, reproductivePartner);
@@ -217,7 +202,7 @@ export function buildReproductionOptions(
         nextAction: together ? {
           kind: 'talk',
           speakerMeaning: { id: representationId, kind: 'offer', summary: '是否愿意共同生育后代', proposal: { kind: 'reproduce', proposerId: person.id, partnerId: reproductivePartner.id, expiresAtMonth: atMonth + 4, basis } },
-        } : { kind: 'move', toCellId: reproductivePartner.position.cellId, toZ: reproductivePartner.position.z },
+        } : { kind: 'move', toCellId: speech.position.cellId, toZ: speech.position.z },
         ...(!together ? { completionAction: {
           kind: 'talk' as const,
           speakerMeaning: { id: representationId, kind: 'offer' as const, summary: '是否愿意共同生育后代', proposal: { kind: 'reproduce' as const, proposerId: person.id, partnerId: reproductivePartner.id, expiresAtMonth: atMonth + 4, basis } },

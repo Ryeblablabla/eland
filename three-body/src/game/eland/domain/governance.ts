@@ -8,10 +8,9 @@ import type { PersonId } from './person';
 import type { ProjectProgressEvidence, ProjectState, RecurringProjectDutySubject } from './project';
 import { projectProgressKindPriority } from './project';
 import {
-  coordinationPracticeBasisFor,
   recordMandateCoordinationClosureSocialLearning,
 } from './social-learning';
-import { personById, projectById } from './state-index';
+import { projectById } from './state-index';
 
 interface DecisionRuleBase {
   id: string;
@@ -375,19 +374,14 @@ export function recordGovernanceAction(state: SimulationState, fact: ActionFact)
     dutyProject = mandateAgreement.proposal.projectId
       ? projectById(state, mandateAgreement.proposal.projectId)
       : undefined;
-    const proposer = personById(state, mandateAgreement.proposal.proposerId);
     const holderHasExistingProjectStep = Boolean(dutyProject
       && dutyProject.status === 'active'
       && recurringDutyProjectMatchesSubject(dutyProject, rule.projectDuty)
       && (dutyProject.ownerId === mandateAgreement.proposal.holderId
         || dutyProject.contributorIds.includes(mandateAgreement.proposal.holderId)));
-    const supportedDuty = proposer ? coordinationPracticeBasisFor(
-      proposer,
-      mandateAgreement.proposal.holderId,
-      `joint-project-${rule.projectDuty.projectKind}`,
-      rule.projectDuty,
-    ) : undefined;
-    if (!holderHasExistingProjectStep || supportedDuty?.support !== 'supported') return;
+    // Voters may choose an inexperienced participant. Past performance is
+    // evidence for their decision, not an extra approval after they have voted.
+    if (!holderHasExistingProjectStep) return;
   }
   for (const mandate of match.collective.mandates.filter((candidate) => candidate.status === 'active' && candidate.decisionRuleId === rule.id)) {
     mandate.status = 'ended';

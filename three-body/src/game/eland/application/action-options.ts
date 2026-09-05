@@ -70,11 +70,12 @@ import {
 } from './project-options';
 import {
   buildDemandBoundRecordUseOptions,
+  buildKnowledgeLearningOptions,
   recompileRecordUseNextAction,
 } from './record-use-options';
 import { cloneProjectForPlanning } from '../domain/project';
 import { lifePlanningStage } from '../domain/life-stage';
-import { optionAllowedForLearningChildCareRadius, optionAllowedForLifeStage } from './age-planning';
+import { optionAllowedForLifeStage } from './age-planning';
 import { followUpSemanticallyMatches, isGroundedConversationOpening } from '../domain/intent-follow-up';
 import { agreementById, reproductionAttemptedBetweenInMonth } from '../domain/agreement';
 import {
@@ -900,16 +901,15 @@ function buildOptions(
 
   const blankRecord = person.inventory.find((stack) => stack.materialId === Material.WoodTablet && !stack.recordPayloadId && stack.quantity > 0);
   const recordableKnowledge = person.knowledge
-    .filter((fact) => fact.kind !== 'codebook'
-      && fact.confidence >= 55
+    .filter((fact) => (fact.confidence >= 55 || fact.procedural || fact.kind === 'codebook')
       && !state.records.some((record) => record.authorId === person.id && record.knowledgeId === fact.id))
     .sort((a, b) => b.confidence - a.confidence || a.id.localeCompare(b.id))[0];
   if (blankRecord && recordableKnowledge) {
     const representationId = `write-record:${atMonth}:${person.id}:${recordableKnowledge.id}`;
     options.push({
       id: representationId,
-      summary: `把已核验知识刻写到木制记录板`,
-      reason: '持有空白实体载体，可以让个人知识在记忆之外持续存在',
+      summary: `把所知内容及其来源刻写到木制记录板`,
+      reason: '持有空白实体载体，可以保留自己的经验、来源说法或符号约定；写下内容不等于验证其正确',
       goal: { kind: 'representation-made', representationId },
       nextAction: { kind: 'inscribe', inscriptionMeaning: { id: representationId, kind: 'claim', summary: recordableKnowledge.summary, factId: recordableKnowledge.id }, carrierStackId: blankRecord.id },
       target: { kind: 'inventory-stack', personId: person.id, stackId: blankRecord.id },
@@ -1006,6 +1006,7 @@ function buildOptions(
   const projectOptions = buildProjectOptions(state, person, visibleCells, visibleDrops, visiblePeople);
   options.push(...projectOptions);
   options.push(...buildDemandBoundRecordUseOptions(state, person, visibleDrops));
+  options.push(...buildKnowledgeLearningOptions(state, person, visibleDrops));
 
   const carriedFood = person.inventory.find((stack) => stack.materialId === Material.Food && stack.quantity >= 2);
   const hungry = visiblePeople.filter((other) => other.body.nutrition < 45).sort((a, b) => a.body.nutrition - b.body.nutrition)[0];
@@ -1308,9 +1309,8 @@ function buildOptions(
     : undefined;
   const ordinaryTeachableFacts = person.knowledge
     .filter((fact) => (fact.kind === 'codebook' || fact.kind === 'technique')
-      && fact.confidence >= 55
       && conversationalPeople.some((other) => ageMonths(other, atMonth) >= MIN_TEACHING_AGE_MONTHS
-        && !hasKnowledgeFact(other, fact.id, (known) => known.confidence >= 55)))
+        && !hasKnowledgeFact(other, fact.id, (known) => known.confidence >= Math.min(fact.confidence, 46))))
     .sort((a, b) => b.confidence - a.confidence || a.id.localeCompare(b.id));
   const teachableFacts = [
     ...(projectTeaching ? [projectTeaching.fact] : []),
@@ -1319,7 +1319,7 @@ function buildOptions(
       && fact.id !== mechanicalOperationTeaching?.fact.id),
   ].slice(0, 3);
   for (const teachable of teachableFacts) {
-    const learnedThreshold = 55;
+    const learnedThreshold = Math.min(teachable.confidence, 46);
     const prioritizedProjectTeaching = projectTeaching?.fact.id === teachable.id ? projectTeaching : undefined;
     const prioritizedMechanicalTeaching = mechanicalOperationTeaching?.fact.id === teachable.id
       ? mechanicalOperationTeaching
@@ -1360,8 +1360,8 @@ function buildOptions(
           ? `本人实际收到“${prioritizedProjectTeaching.project.summary}”对${materialDefinition(prioritizedProjectTeaching.request.outputMaterialId).name}制作知识的请求，并可靠掌握匹配技术`
         : prioritizedMechanicalTeaching
           ? '本人在眼前完成网络上做成过真实负载作业，身边成年人还不会独立操作这类网络'
-        : '自己可靠掌握这项技术，而身边达到学习年龄的人还不会；一次明确教导即可传授',
-      goal: { kind: 'knowledge', factId: teachable.id, minConfidence: learnedThreshold, personId: learner.id },
+        : '自己保存了这项技术的经验或来源说法，可以说明做法；对方是否理解、相信和试做由对方自己决定',
+      goal: { kind: 'representation-made', representationId },
       nextAction: talk,
       target: { kind: 'person', personId: learner.id },
       estimatedDuration: 'one-month',
@@ -1525,7 +1525,6 @@ export function buildDecisionContext(
         && action.operation === 'ingest');
     })
     .filter((option) => optionAllowedForLifeStage(stage, option))
-    .filter((option) => stage !== 'learning-child' || optionAllowedForLearningChildCareRadius(state, person, option))
     .sort((a, b) => decisionOptionPriority(a) - decisionOptionPriority(b) || a.id.localeCompare(b.id));
   const followUpOptions = allOptions.filter((option) => !option.recordUseBasis
     && option.nextAction.kind !== 'talk');
@@ -1580,6 +1579,16 @@ export function recompileNextAction(
 ): PrimitiveAction | null {
   if (reproductionIntentAttemptedThisMonth(state, person, intent, atMonth)) return null;
   if (intent.recordUseBasis) return recompileRecordUseNextAction(state, person, intent);
+  if (intent.completionAction?.kind === 'attend' && intent.target?.kind === 'drop') {
+    const dropId = intent.target.dropId;
+    const drop = state.world.drops.find((candidate) => candidate.id === dropId && candidate.quantity > 0);
+    if (!drop) return null;
+    const horizontal = Math.abs(cellX(person.position.cellId) - cellX(drop.cellId))
+      + Math.abs(cellY(person.position.cellId) - cellY(drop.cellId));
+    return horizontal <= 1 && Math.abs(person.position.z - drop.z) <= 1
+      ? intent.completionAction
+      : { kind: 'move', toCellId: drop.cellId, toZ: dropStandingZ(state, drop) };
+  }
   if (intent.goal.kind === 'death-mourned'
     || intent.goal.kind === 'remains-interred'
     || intent.goal.kind === 'memorial-marked') return recompileMortuaryNextAction(state, person, intent);

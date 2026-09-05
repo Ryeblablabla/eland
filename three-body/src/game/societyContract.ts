@@ -310,7 +310,7 @@ export interface ActionVisualView {
   measurementMode?: 'calibrate-mass' | 'measure-mass';
   operation?: 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce' | 'hunt' | 'dehydrate' | 'rehydrate' | 'inter';
   mortuaryPhase?: 'mourn' | 'lift' | 'prepare-grave' | 'place-in-grave' | 'cover-grave' | 'mark';
-  targetKind?: 'voxel' | 'drop' | 'container' | 'inventory-stack' | 'animal' | 'remains' | 'person';
+  targetKind?: 'voxel' | 'work' | 'drop' | 'container' | 'inventory-stack' | 'animal' | 'remains' | 'person';
   targetPersonId?: string;
   targetAnimalId?: string;
   /** 已完成分离动作的权威来源材质；动作后目标体素可能已经改变。 */

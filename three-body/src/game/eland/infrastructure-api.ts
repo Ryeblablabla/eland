@@ -23,6 +23,23 @@ export {
   isRequiredSocialOption,
 } from './application/rule-planner';
 export { characterAgendaModelReviewDue } from './application/simulation/model-review';
+/** Model adapters receive compiled requests and request-scoped capabilities. */
+export {
+  buildDecisionRequestContext,
+  type DecisionRequestContext,
+} from './application/model-decision/decision-context';
+export {
+  buildDecisionProbeHandleMap,
+  type DecisionProbeHandleMap,
+} from './application/model-decision/capability-handles';
+export {
+  buildMindIntentionRequestContext,
+  buildMentalActRequestContext,
+  type MindIntentionDraft,
+  type MindIntentionOrientation,
+  type MindIntentionRequestContext,
+  type MentalActRequestContext,
+} from './application/model-decision/mental-act-context';
 export {
   type ObservationProjectionMode,
   type ObservationProjector,
@@ -54,3 +71,5 @@ export {
   type LanguageMemoryInput,
   type PlayerInteractionMemoryInput,
 } from './domain/agent-memory';
+export { compileModelPlanCompletion, sanitizeBoundPlanCompletion } from './application/model-decision/plan-completion';
+export { compileMindSpeechIntent, describeMindSpeechIntent, speechIntentAllowsOption, SPEECH_PROPOSAL_KINDS } from './application/model-decision/speech-intent';

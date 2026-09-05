@@ -11,8 +11,8 @@ import {
 import { logPerf, perfElapsed, perfNow } from './perf';
 import { loadServerEnvValue } from './env';
 import type { EvolutionExecutionStore } from './run-persistence';
+import { resolveEvolutionDecisionRuntime, type EvolutionDecisionRuntime } from './evolution-decision-runtime';
 
-const RULE_PLANNER_MODEL = 'rule-planner-v1';
 const DEFAULT_LONG_EVOLUTION_CHECKPOINT_MONTHS = 12;
 
 export function longEvolutionCheckpointMonths(): number {
@@ -31,7 +31,7 @@ export async function completeLongEvolution(
 ): Promise<EvolutionPath> {
   const running = evolvePath(state, {
     runId: id,
-    provider: 'local',
+    provider: previous.provider,
     model: previous.model,
     fromMonth: previous.fromMonth,
     requestedEndMonth,
@@ -46,7 +46,7 @@ export async function completeLongEvolution(
   await store.saveEvolutionReport(id, report);
   const completed = evolvePath(state, {
     runId: id,
-    provider: 'local',
+    provider: running.provider,
     model: running.model,
     fromMonth: running.fromMonth,
     requestedEndMonth,
@@ -78,7 +78,7 @@ export async function persistLongEvolutionFailure(
   const state = authoritative.state;
   const failed = evolvePath(state, {
     runId: id,
-    provider: 'local',
+    provider: previous.provider,
     model: previous.model,
     fromMonth: initialPath.fromMonth,
     requestedEndMonth,
@@ -118,20 +118,32 @@ export async function executeLongEvolutionFromOwnedState(
   requestedEndMonth: number,
   initialPath: EvolutionPath,
   initialState: SimulationState,
+  runtime: EvolutionDecisionRuntime = resolveEvolutionDecisionRuntime(),
 ): Promise<void> {
   const controller = createSimulationFromOwnedState(initialState);
   let persisted = controller.ownedState();
   let path = initialPath;
-  const inputTokens = path.checkpoints.at(-1)?.inputTokens ?? 0;
-  const outputTokens = path.checkpoints.at(-1)?.outputTokens ?? 0;
-  const checkpointMonths = longEvolutionCheckpointMonths();
+  let inputTokens = path.checkpoints.at(-1)?.inputTokens ?? 0;
+  let outputTokens = path.checkpoints.at(-1)?.outputTokens ?? 0;
+  // A model month can take minutes. Commit it immediately so resuming a run
+  // never throws away a year of paid decisions or relabels them as rule work.
+  const checkpointMonths = runtime.decider ? 1 : longEvolutionCheckpointMonths();
   try {
     while (persisted.clock.elapsedMonths < requestedEndMonth && persisted.civilization.status === 'running') {
       const batchMonths = Math.min(checkpointMonths, requestedEndMonth - persisted.clock.elapsedMonths);
       const previousMonth = persisted.clock.elapsedMonths;
       const batchStartedAt = perfNow();
       const simulationStartedAt = perfNow();
-      const state = controller.stepOwned(batchMonths);
+      const state = runtime.decider
+        ? await controller.stepAsyncOwned(runtime.decider, batchMonths)
+        : controller.stepOwned(batchMonths);
+      if (runtime.decider) {
+        const ledger = state.decisionBudget.ledgers.at(-1);
+        if (ledger && ledger.atMonth > previousMonth) {
+          inputTokens += ledger.inputTokens;
+          outputTokens += ledger.outputTokens;
+        }
+      }
       const simulationMs = perfElapsed(simulationStartedAt);
       if (state.clock.elapsedMonths <= previousMonth && state.civilization.status === 'running') {
         throw new Error(`演化未向前推进：仍在第 ${state.clock.elapsedMonths} 月`);
@@ -141,8 +153,8 @@ export async function executeLongEvolutionFromOwnedState(
       await store.save(id, persisted, undefined, { historyMode: 'append' });
       path = evolvePath(persisted, {
         runId: id,
-        provider: 'local',
-        model: RULE_PLANNER_MODEL,
+        provider: runtime.provider,
+        model: runtime.model,
         fromMonth: initialPath.fromMonth,
         requestedEndMonth,
         previous: path,

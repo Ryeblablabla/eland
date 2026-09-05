@@ -21,7 +21,7 @@ import { addDrop } from './action-executor';
 import { WORLD_CELL_COUNT, cellId, cellX, cellY, cellsInRadius, isStandingPosition, neighbors4, setVoxel, surfaceMaterial, surfaceStandingPosition, topZ, voxelAt } from '../world/grid';
 import { seededFraction } from '../world/generator';
 import { shelterHeatRelief, survivalShelterAt } from './structure';
-import { advanceWorksMonth } from './works';
+import { advanceWorksMonth, recordWorkShelterUse } from './works';
 import { advanceAnimalBondsMonth } from './animal-bonds';
 import { geneticKinshipRisk, inheritedGeneticLoad, KINSHIP_RISK_KNOWLEDGE_ID } from './kinship';
 import { remember } from './memory';
@@ -42,7 +42,6 @@ import {
   traitDefinition,
   type TraitBirthResult,
 } from './trait';
-import { humanResourceCompetitionMultiplier } from './population-capacity';
 import { intentById, intentsOwnedBy, livingPeople, personById, projectById } from './state-index';
 import {
   advanceEraPredictions,
@@ -1180,9 +1179,6 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
   // further actions, but must still enter this settlement pass exactly once
   // so death, remains, estate and intent outcomes become authoritative facts.
   const peopleAtStart = state.people.filter((person) => person.diedAtMonth === undefined);
-  const resourceCompetition = humanResourceCompetitionMultiplier(
-    peopleAtStart.filter(isAlive).length,
-  );
   for (const person of peopleAtStart) {
     if (person.diedAtMonth !== undefined) continue;
     if (person.body.health <= 0) {
@@ -1213,6 +1209,25 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     const heatLoad = climate.kind === 'heat' || climate.kind === 'fire'
       ? Math.max(0, climate.severity + weatherHeat - heatReliefFromShelter + (fireProtected ? 0.6 : 0) + (clothed ? 0.25 : 0)) * hibernationRelief * heatTraitMultiplier
       : 0;
+    const coldLoadWithoutShelter = climate.kind === 'cold'
+      ? Math.max(0, climate.severity + weatherCold - (fireProtected ? 2.2 : 0) - (clothed ? 0.9 : 0)) * hibernationRelief * coldTraitMultiplier
+      : 0;
+    const heatLoadWithoutShelter = climate.kind === 'heat' || climate.kind === 'fire'
+      ? Math.max(0, climate.severity + weatherHeat + (fireProtected ? 0.6 : 0) + (clothed ? 0.25 : 0)) * hibernationRelief * heatTraitMultiplier
+      : 0;
+    if (shelter && (coldLoadWithoutShelter > coldLoad || heatLoadWithoutShelter > heatLoad)) {
+      const shelterUse = event(state, atMonth, events, 'body',
+        `${person.name}所在的实际庇护减轻了本月${coldLoadWithoutShelter > coldLoad ? '严寒' : '暑热'}负荷`, {
+          shelterUse: {
+            workIds: [...shelter.workIds],
+            position: { cellId: person.position.cellId, z: person.position.z },
+            weatherProtection: shelter.weatherProtection,
+            thermalInsulation: shelter.thermalInsulation,
+            coldLoadWithoutShelter, coldLoad, heatLoadWithoutShelter, heatLoad,
+          },
+        }, person);
+      recordWorkShelterUse(state.world, shelterUse);
+    }
     if (coldLoad > 0) clearOppositeExposure(state, person, atMonth, 'cold', events);
     else if (heatLoad > 0) clearOppositeExposure(state, person, atMonth, 'heat', events);
     upsertExposureCondition(state, person, atMonth, 'cold', coldLoad, coldLoad <= 0 && (sheltered || fireProtected), fireProtected, events);
@@ -1233,11 +1248,10 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     const coldNutritionExtra = cold ? 1.25 * ([1, 1.25, 1.5, 1.8][cold] - 1) * coldTraitMultiplier : 0;
     const hydrationCost = (hibernating
       ? HIBERNATION_HYDRATION_COST
-      : 1.35 + heatHydrationExtra * heatHydrationMultiplier(person) + illness * 0.35 + pregnancy * 0.22 + postpartum * 0.12) * resourceCompetition;
+      : 1.35 + heatHydrationExtra * heatHydrationMultiplier(person) + illness * 0.35 + pregnancy * 0.22 + postpartum * 0.12);
     const nutritionCost = (hibernating
       ? HIBERNATION_NUTRITION_COST
       : 1.25 + coldNutritionExtra + illness * 0.38 + pregnancy * 0.28 + postpartum * 0.18)
-      * resourceCompetition
       * nutritionMetabolicMultiplier(person);
     person.body.hydration = clamp(person.body.hydration - hydrationCost);
     person.body.nutrition = clamp(person.body.nutrition - nutritionCost);
@@ -1323,7 +1337,6 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
         ...(aging >= 2 && (person.body.hydration < 45 || person.body.nutrition < 45) ? ['aging'] : []),
         ...(pregnancy > 0 ? ['pregnancy'] : []),
         ...(postpartum > 0 ? ['postpartum-recovery'] : []),
-        ...(resourceCompetition > 1 ? ['resource-competition'] : []),
         ...(favorableRecoveryApplied ? ['favorable-recovery'] : []),
       ];
       event(state, atMonth, events, 'body', `${person.name}的身体储备发生显著变化`, {

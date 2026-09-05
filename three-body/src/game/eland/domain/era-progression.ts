@@ -3,6 +3,7 @@ import {
   actionFacts,
   compareWorldEventsInCanonicalOrder,
   worldEventById,
+  worldEventFacts,
 } from './event-index';
 import type {
   ActionFact,
@@ -325,15 +326,17 @@ function adoptedCapabilityObservation(
 export function observeAdoptedWorkPractices(
   state: SimulationState,
 ): AdoptedWorkPracticeObservation[] {
-  const actions = actionFacts(state);
-  const actionsById = new Map(actions.map((event) => [event.id, event]));
+  const events = worldEventFacts(state).filter((event) => event.kind === 'action' || event.kind === 'environment');
+  const eventsById = new Map(events.map((event) => [event.id, event]));
   return (state.world.works ?? []).map((work) => {
-    const adoption = observeWorkAdoption(work, actions, state.clock.elapsedMonths);
+    const adoption = observeWorkAdoption(work, events, state.clock.elapsedMonths);
     const receiptsByCapability = new Map<AdoptedWorkCapabilityKey, WorkUseReceipt[]>();
     for (const receipt of adoption.receipts) {
-      const event = actionsById.get(receipt.sourceEventId);
+      const event = eventsById.get(receipt.sourceEventId);
       if (!event) continue;
-      for (const key of workCapabilityKeysForEvent(event)) {
+      const capabilityKeys: AdoptedWorkCapabilityKey[] = event.kind === 'action'
+        ? workCapabilityKeysForEvent(event) : ['durable-shared-use'];
+      for (const key of capabilityKeys) {
         const receipts = receiptsByCapability.get(key) ?? [];
         receipts.push(receipt);
         receiptsByCapability.set(key, receipts);

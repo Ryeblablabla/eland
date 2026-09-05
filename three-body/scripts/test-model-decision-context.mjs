@@ -92,22 +92,14 @@ try {
   assert.ok(mindRequest.origin, 'a founder should receive one founding orientation on the first decision');
   assert.ok(mindRequest.origin.background.some((line) => line.includes('共同开始生活')),
     'the founding background should explain the shared arrival without prescribing an action');
-  assert.ok(mindRequest.origin.initialIntention,
-    'the founding orientation should give the person a broad initial intention');
+  assert.equal('initialIntention' in mindRequest.origin, false,
+    'the first intention belongs to Mind and must not be authored by a personality regex');
   assert.match(mindRequest.personalityPreset.type, /^[IE][NS][FT][JP]$/u,
     'every person should receive one derived MBTI writing type');
   assert.equal('speechExamples' in mindRequest.personalityPreset, false,
     'content-bearing example lines must not seed a shared topic into every character voice');
   assert.ok(mindRequest.personalityPreset.speechTendency,
     'the Mind preset should retain abstract voice guidance without lexical imitation bait');
-  const founderIntentions = simulation.buildDecisionContexts(state, 1).map((founderContext) => {
-    const founderRequest = decisionContext.buildDecisionRequestContext(founderContext);
-    return gateway.buildDecisionModelRequestProtocol(founderRequest, {
-      characterAgendaProposal: false,
-    }).mindContext.origin?.initialIntention;
-  }).filter(Boolean);
-  assert.ok(new Set(founderIntentions).size > 1,
-    'founder initial intentions should vary with their character attention, not form one shared task');
   const founderTypes = simulation.buildDecisionContexts(state, 1).map((founderContext) => {
     const founderRequest = decisionContext.buildDecisionRequestContext(founderContext);
     return gateway.buildDecisionModelRequestProtocol(founderRequest, {
@@ -194,6 +186,20 @@ try {
   )), 'a recent successful action should remain available as short-term lived evidence');
   assert.ok(feedbackProtocol.mindContext.mind.relatedRecall.length <= 4,
     'focused recall must not grow beyond its independent four-memory budget');
+  const agedConcernRequest = decisionContext.buildDecisionRequestContext({ ...context, decisionMonth: 14 });
+  const agedConcernProtocol = gateway.buildDecisionModelRequestProtocol(agedConcernRequest);
+  const agedConcern = agedConcernProtocol.mindContext.current.concernHistory
+    .find((concern) => concern.aim === '让两种食物结合产生变化');
+  assert.equal(agedConcern.elapsedMonths, 13,
+    'an old concern must retain its actual elapsed calendar time across model decisions');
+  assert.equal(agedConcern.approaches[0].recentFeedback[0].note, '没有观察到物质变化',
+    'the recent real feedback must accompany the old question instead of being lost in compact projection');
+  const visiblePositions = agedConcernProtocol.requestContext.visible.surfaces;
+  assert.equal(visiblePositions.length, agedConcernRequest.visibleVoxels.length,
+    'different visible locations of the same material must not be deduplicated into one remote target');
+  assert(visiblePositions.every((surface) => Number.isInteger(surface.position.cellId)
+    && Number.isFinite(surface.relativePosition.horizontalDistance)),
+  'Plan must see factual positions and relative distances for the visible surfaces it can name');
 
   const achievementState = simulation.createInitialState(9_732, {
     endpoint: { kind: 'months', value: 200 }, chaosIntensity: 0,
@@ -314,25 +320,56 @@ try {
   assert.equal(stagedDecision.mentalAct.goal, executionEntry.action);
   assert.equal(stagedDecision.mentalAct.strategy, executionEntry.action,
     'the persisted strategy must name the concrete selected action instead of conflicting plan prose');
-  const unrelatedPhysicalStep = request.availableSteps.find((step) => (
-    step.purpose !== '与人交谈'
-      && step.purpose !== '协调共同事务'
-      && step.purpose !== '照顾他人'
-      && step.purpose !== '处理生育关系'
-  ));
-  assert(unrelatedPhysicalStep, 'the intention-alignment test requires one non-social executable step');
-  const rejectedSubstitution = gateway.normalizeMindPlanModelOutput(
+  const crossCategoryPlan = gateway.normalizeMindPlanModelOutput(
     projected,
     {
-      utterance: '我想先听清楚眼前的人是否愿意和我继续交谈。', delivery: 'normal',
-      goal: '听见对方自己的回答', orientation: 'social', horizon: 'ongoing',
+      utterance: 'I want to make something for the people here.', delivery: 'normal',
+      goal: 'Create something useful together', orientation: 'social', horizon: 'ongoing',
     },
-    { steps: ['先去做一件当前合法但与交谈无关的事'], disposition: 'act', firstStepHandle: unrelatedPhysicalStep.handle },
+    { steps: ['Obtain what I need before discussing the design'], disposition: 'act', firstStepHandle: executionEntry.handle },
     protocol,
   );
-  assert.equal(rejectedSubstitution?.kind, 'idle',
-    'Plan must preserve the Mind intention as no action instead of substituting an unrelated legal step');
-  assert.match(rejectedSubstitution?.mentalAct.strategy ?? '', /不采取行动.*保留/u);
+  assert.equal(crossCategoryPlan?.kind, 'start',
+    'model-authored intermediate work must not be vetoed by direction categories or Chinese word overlap');
+  const companionOptionIndex = projected.options.findIndex((option) => option.communicationMeaning?.proposal?.kind === 'companion');
+  assert(companionOptionIndex >= 0, 'founders must retain an executable companion proposal as a choice');
+  const companionOption = projected.options[companionOptionIndex];
+  const companionHandle = `o${companionOptionIndex + 1}`;
+  const ordinaryStatement = {
+    utterance: '我先把这里的木料摆正，再看看顶上还缺哪一块。', delivery: 'normal',
+    goal: '把眼前的施工继续做下去', orientation: 'construction', horizon: 'ongoing', speechIntent: { kind: 'expression' },
+  };
+  const mistakenCompanion = gateway.normalizeMindPlanModelOutput(projected, ordinaryStatement, {
+    steps: ['说清自己接下来的施工打算'], disposition: 'act', firstStepHandle: companionHandle,
+  }, protocol);
+  assert.equal(mistakenCompanion?.kind, 'idle', 'ordinary construction expression must not become a companion contract');
+  assert.equal(mistakenCompanion.mentalAct.utterance, ordinaryStatement.utterance,
+    'correcting Plan semantic escalation must preserve the exact independent Mind expression');
+  const physicalAfterStatement = gateway.normalizeMindPlanModelOutput(projected, ordinaryStatement, {
+    steps: ['说清自己的打算', '继续实际操作'], disposition: 'act', firstStepHandle: companionHandle,
+    continuationHandle: executionEntry.handle,
+  }, protocol);
+  assert.equal(physicalAfterStatement?.optionId, projected.options[Number(executionEntry.handle.slice(1)) - 1].id,
+    'a physical continuation remains executable after a mistaken social menu entry is removed');
+  const companionPartnerIds = companionOption.semantics.socialContext.counterpartIds;
+  const companionSpeech = {
+    kind: 'proposal', proposalKind: 'companion', commitment: '我愿意和你开始共同生活，想听你的决定。',
+    counterpartHandles: companionPartnerIds.map((id) => protocol.handles.visible.find((item) => item.kind === 'person' && item.personId === id).handle),
+  };
+  const actualCompanion = gateway.normalizeMindPlanModelOutput(projected, {
+    ...ordinaryStatement, utterance: 'I want to share my life with you. What do you think?', speechIntent: companionSpeech,
+  }, { steps: ['提出本人愿意共同生活的想法'], disposition: 'act', firstStepHandle: companionHandle }, protocol);
+  assert.equal(actualCompanion?.optionId, companionOption.id,
+    'a model-authored proposal must remain executable without Chinese keywords or utterance overlap gates');
+  assert.equal(actualCompanion.mentalAct.speechIntent.kind, 'proposal');
+  assert.deepEqual(actualCompanion.mentalAct.speechIntent.counterpartIds, companionPartnerIds);
+  const lateCompanionContext = { ...projected, options: [
+    ...Array.from({ length: 20 }, (_, index) => ({ ...projected.options[Number(executionEntry.handle.slice(1)) - 1], id: `ordinary-${index}` })),
+    companionOption,
+  ] };
+  const lateCompanionProtocol = gateway.buildDecisionModelRequestProtocol(lateCompanionContext, { characterAgendaProposal: false });
+  assert(lateCompanionProtocol.requestContext.availableSteps.some((step) => step.handle === 'o21'),
+    'compression must preserve a real companion choice beyond eight ordinary choices');
   const agendaProtocol = gateway.buildDecisionModelRequestProtocol(projected, {
     characterAgendaProposal: true,
   });
@@ -348,108 +385,15 @@ try {
   assert.equal(preservedOngoingGoal?.kind, 'idle');
   assert.equal(preservedOngoingGoal?.characterAgendaUpdate?.kind, 'create',
     'an ongoing Mind goal should remain in the character agenda even when no matching action exists');
-  const physicalTemplate = projected.options.find((option) => !option.communicationKind);
-  assert(physicalTemplate, 'fine-grained intention alignment requires one physical option template');
-  const {
-    communicationKind: _communicationKind,
-    communicationMeaning: _communicationMeaning,
-    speechAct: _speechAct,
-    expressesFactId: _expressesFactId,
-    openConversationGrounding: _openConversationGrounding,
-    ...physicalOnlyTemplate
-  } = physicalTemplate;
-  const dismantleContext = {
-    ...projected,
-    options: [{
-      ...physicalOnlyTemplate,
-      id: 'test:dismantle-plank',
-      summary: '徒手从现有位置拆下木板，原位置会变空，可取回木板',
-      semantics: { ...physicalOnlyTemplate.semantics, obligation: 'optional', purpose: 'resource' },
-    }],
+  const ballotMeaning = { id: 'ballot', kind: 'accept', referenceId: 'leader-vote' };
+  assert.deepEqual(spokenMeaning.withSpokenUtterance('我投阿山一票。', ballotMeaning), {
+    ...ballotMeaning, summary: '我投阿山一票。',
+  }, 'a model-interpreted vote preserves its semantics without needing scripted agreement keywords');
+  const teachingMeaning = {
+    id: 'teaching', kind: 'claim', summary: '加工并安装木板', factId: 'technique:test',
   };
-  const dismantleProtocol = gateway.buildDecisionModelRequestProtocol(dismantleContext, {
-    characterAgendaProposal: false,
-  });
-  const rejectedDismantle = gateway.normalizeMindPlanModelOutput(
-    dismantleContext,
-    {
-      utterance: '把现有木板铺在草皮上，继续搭成挡雨的架子。', delivery: 'normal',
-      goal: '继续搭建遮雨结构', orientation: 'construction', horizon: 'momentary',
-    },
-    { steps: ['铺设木板'], disposition: 'act', firstStepHandle: 'o1' },
-    dismantleProtocol,
-  );
-  assert.equal(rejectedDismantle?.kind, 'idle',
-    'placing a plank must not execute as dismantling that plank merely because both mention the same material');
-  const shelterVerificationContext = {
-    ...projected,
-    options: [{
-      ...physicalOnlyTemplate,
-      id: 'test:verify-shelter-technique',
-      summary: '复查项目试验“搭建时可把木材加工并安装为木板”',
-      projectId: 'test-shelter-project',
-      executionProjectFunction: 'weather-shelter',
-      semantics: { ...physicalOnlyTemplate.semantics, obligation: 'optional', purpose: 'inquiry' },
-    }],
-  };
-  const shelterVerificationProtocol = gateway.buildDecisionModelRequestProtocol(shelterVerificationContext, {
-    characterAgendaProposal: false,
-  });
-  const rejectedProjectScopeSwap = gateway.normalizeMindPlanModelOutput(
-    shelterVerificationContext,
-    {
-      utterance: '我想把石头和湿土铺平，看看地面能否站稳。', delivery: 'normal',
-      goal: '验证石土铺设效果', orientation: 'inquiry', horizon: 'momentary',
-    },
-    { steps: ['检查石土地面'], disposition: 'act', firstStepHandle: 'o1' },
-    shelterVerificationProtocol,
-  );
-  assert.equal(rejectedProjectScopeSwap?.kind, 'idle',
-    'a project verification step must still match the actual project scope named by Mind');
-  const harvestContext = {
-    ...projected,
-    options: [{
-      ...physicalOnlyTemplate,
-      id: 'test:harvest-wood',
-      summary: '从树木取得木材（对象：树叶）',
-      semantics: { ...physicalOnlyTemplate.semantics, obligation: 'optional', purpose: 'resource' },
-    }],
-  };
-  const harvestProtocol = gateway.buildDecisionModelRequestProtocol(harvestContext, {
-    characterAgendaProposal: false,
-  });
-  const rejectedHarvest = gateway.normalizeMindPlanModelOutput(
-    harvestContext,
-    {
-      utterance: '把手中剩下的纤维编成能挡雨的架子。', delivery: 'normal',
-      goal: '用已有纤维完成遮雨结构', orientation: 'construction', horizon: 'momentary',
-    },
-    { steps: ['编好已有纤维'], disposition: 'act', firstStepHandle: 'o1' },
-    harvestProtocol,
-  );
-  assert.equal(rejectedHarvest?.kind, 'idle',
-    'using an already held material must not silently turn into harvesting a different material');
-  const inquiryEntry = request.availableSteps.find((step) => step.purpose === '观察或验证问题' && step.target?.name);
-  assert(inquiryEntry, 'observation alignment requires one targeted inquiry entry');
-  const rejectedObservationSwap = gateway.normalizeMindPlanModelOutput(
-    projected,
-    {
-      utterance: '我只想确认风向是否稳定。', delivery: 'normal',
-      goal: '确认风向是否稳定', orientation: 'inquiry', horizon: 'momentary',
-    },
-    { steps: ['改看一个无关对象'], disposition: 'act', firstStepHandle: inquiryEntry.handle },
-    protocol,
-  );
-  assert.equal(rejectedObservationSwap?.kind, 'idle',
-    'a targeted inquiry must not observe an unrelated visible object');
-  assert.equal(spokenMeaning.spokenTextSupportsMeaning(
-    '我们应该把木材变成能够遮雨的东西。',
-    { id: 'prediction', kind: 'prediction', summary: '第 16 月前后将进入乱纪元', prediction: { targetEpoch: 'chaotic', predictedStartMonth: 16, toleranceMonths: 2, expiresAtMonth: 20 } },
-  ), false, 'an unrelated utterance must not silently create a typed prediction');
-  assert.equal(spokenMeaning.spokenTextSupportsMeaning(
-    '搭建时可以把木材加工并安装为木板。',
-    { id: 'teaching', kind: 'claim', summary: '搭建时可把木材加工并安装为木板', factId: 'technique:test' },
-  ), true, 'a spoken explanation should still be able to carry matching knowledge');
+  assert.equal(spokenMeaning.withSpokenUtterance('Let me show you how I fitted these planks.', teachingMeaning).factId,
+    'technique:test', 'speaker meaning must survive translation and ordinary paraphrase');
 
   const extendedInventory = Array.from({ length: 10 }, (_, index) => ({
     ...projected.person.inventory[index % projected.person.inventory.length],
@@ -467,40 +411,6 @@ try {
     'every held entity must remain selectable instead of truncating the inventory at six or eight items');
   assert.ok(fullInventoryProtocol.mindContext.visible.heldPossessions.some((item) => item.name === '木炭'),
     'Mind must receive a complete identity-free possession overview');
-  const wrongNamedResourceContext = {
-    ...fullInventoryProjected,
-    options: [{
-      ...physicalOnlyTemplate,
-      id: 'test:collect-tin-instead-of-charcoal',
-      summary: '取得锡矿石',
-      semantics: { ...physicalOnlyTemplate.semantics, obligation: 'optional', purpose: 'resource' },
-    }],
-  };
-  const wrongNamedResourceProtocol = gateway.buildDecisionModelRequestProtocol(wrongNamedResourceContext, {
-    characterAgendaProposal: false,
-  });
-  const rejectedNamedResourceSwap = gateway.normalizeMindPlanModelOutput(
-    wrongNamedResourceContext,
-    {
-      utterance: '我需要找到木炭来做下一次尝试。', delivery: 'normal',
-      goal: '取得木炭', orientation: 'acquisition', horizon: 'momentary',
-    },
-    { steps: ['取得另一种矿石'], disposition: 'act', firstStepHandle: 'o1' },
-    wrongNamedResourceProtocol,
-  );
-  assert.equal(rejectedNamedResourceSwap?.kind, 'idle',
-    'an acquisition plan must not replace an explicitly named material with a different resource');
-  const rejectedDuplicateAcquisition = gateway.normalizeMindPlanModelOutput(
-    wrongNamedResourceContext,
-    {
-      utterance: '手里已有锡矿石，我想先看它能不能参与下一次尝试。', delivery: 'normal',
-      goal: '使用已有锡矿石', orientation: 'construction', horizon: 'momentary',
-    },
-    { steps: ['再次取得锡矿石'], disposition: 'act', firstStepHandle: 'o1' },
-    wrongNamedResourceProtocol,
-  );
-  assert.equal(rejectedDuplicateAcquisition?.kind, 'idle',
-    'using an already held material must not silently become another acquisition unless Mind says more is needed');
   const directExperiment = gateway.normalizeMindPlanModelOutput(
     fullInventoryProjected,
     {
@@ -521,21 +431,6 @@ try {
   assert.deepEqual(directExperiment?.executionProbe, {
     kind: 'combine', ownStackIds: ['full-inventory-stack-9', 'full-inventory-stack-10'],
   }, 'a direct model experiment must preserve the exact late-inventory entities it selected');
-  const rejectedExperimentMaterialSwap = gateway.normalizeMindPlanModelOutput(
-    fullInventoryProjected,
-    {
-      utterance: '我只想看看木炭和锡矿接触会怎样。', delivery: 'normal',
-      goal: '验证木炭与锡矿的接触结果', orientation: 'inquiry', horizon: 'momentary',
-    },
-    {
-      steps: ['改拿眼前另外两件东西试验'],
-      disposition: 'act',
-      experiment: { kind: 'combine', stackHandles: ['h1', 'h2'] },
-    },
-    fullInventoryProtocol,
-  );
-  assert.equal(rejectedExperimentMaterialSwap?.executionProbe, undefined,
-    'Plan must not replace a material explicitly named by Mind with different held entities');
   const visibleSurface = fullInventoryProtocol.requestContext.visible.surfaces[0];
   assert(visibleSurface, 'the movement probe test requires one visible surface');
   const movement = gateway.normalizeMindPlanModelOutput(
@@ -557,6 +452,29 @@ try {
   assert.equal(movement?.executionProbe?.kind, 'move',
     'a character must be able to choose visible movement without wrapping it in a production project');
 
+  const targetMoveAction = { description: '走近眼前的位置', targetHandles: [visibleSurface.ref] };
+  const targetMoveResolution = gateway.sanitizePlanAgentWorldVerdict({
+    status: 'completed', result: '正在走近目标', effects: [{ kind: 'move-self', targetHandle: visibleSurface.ref, withinDistance: 2 }],
+  }, targetMoveAction, fullInventoryProtocol);
+  const exactArrival = gateway.normalizeMindPlanModelOutput(fullInventoryProjected, {
+    ...ordinaryStatement, goal: '实际抵达一次眼前的位置',
+  }, {
+    steps: ['走到目标一格之内'], disposition: 'act', worldAction: targetMoveAction,
+    completion: {
+      step: { description: '抵达一步范围', conditions: [{ kind: 'reached-target', targetHandle: visibleSurface.ref, maxDistance: 1 }] },
+      goal: { description: '已经到访该地', conditions: [{ kind: 'reached-target', targetHandle: visibleSurface.ref, maxDistance: 1 }] },
+    },
+  }, fullInventoryProtocol, targetMoveResolution);
+  assert.equal(exactArrival?.executionProbe?.adjudication.effects[0].withinDistance, 1,
+    'the executed movement must honor the stricter same-target completion distance');
+  const physicalLayout = gateway.sanitizePlanAgentWorldVerdict({
+    status: 'completed', result: '把木料组成两个实际相邻体素',
+    effects: [{ kind: 'assemble', targetHandle: visibleSurface.ref, arrangement: 'support', summary: '自己命名的构件',
+      layout: [{ offset: { x: 0, y: 0, z: 0 }, materialKey: 'wood' }, { offset: { x: 0, y: 0, z: 1 }, materialKey: 'wood' }] }],
+  }, { description: '排布木料', targetHandles: [visibleSurface.ref] }, fullInventoryProtocol);
+  assert.equal(physicalLayout?.probe?.adjudication.effects[0].layout?.version, 'work-layout-v1');
+  assert.equal(physicalLayout?.probe?.adjudication.effects[0].layout?.voxels.length, 2,
+    'model layout must survive as physical occupancy for the executor to settle');
   const worldAction = {
     description: '用指甲在自己手里的锡矿石表面划出一道浅痕，并亲手确认痕迹是否留下',
     targetHandles: ['h9'],
@@ -666,51 +584,22 @@ try {
   }, relocateAction, fullInventoryProtocol);
   assert.equal(relocateResolution?.probe?.adjudication.effects[0]?.kind, 'relocate',
     'moving an existing object must compile to a conserving relocation effect');
-  const visiblePersonForAgency = fullInventoryProtocol.requestContext.visible.nearbyObjects
-    .find((item) => item.kind === '人物');
-  if (visiblePersonForAgency) {
-    const agencyAction = {
-      description: `询问${visiblePersonForAgency.name}是否同意`,
-      targetHandles: [visiblePersonForAgency.ref],
-      expectedResult: '听见对方自己的回答',
-    };
-    assert.equal(gateway.sanitizePlanAgentWorldVerdict({
-      status: 'completed',
-      result: `${visiblePersonForAgency.name}点头同意并走了过来`,
-      effects: [{ kind: 'knowledge', summary: '对方表示同意' }],
-    }, agencyAction, fullInventoryProtocol), undefined,
-    'a world verdict must not author another person\'s voluntary answer or movement');
-  }
-  const plantingProjected = {
-    ...fullInventoryProjected,
-    person: {
-      ...fullInventoryProjected.person,
-      inventory: fullInventoryProjected.person.inventory.map((stack, index) => (
-        index === 0 ? { ...stack, name: '种子' } : stack
-      )),
-    },
-  };
-  const plantingProtocol = gateway.buildDecisionModelRequestProtocol(plantingProjected, {
-    characterAgendaProposal: false,
-  });
-  const plantingSurface = plantingProtocol.requestContext.visible.surfaces[0];
-  assert(plantingSurface, 'planting materialization test requires one visible surface');
+  const plantingProtocol = fullInventoryProtocol;
+  const plantingSurface = visibleSurface;
   const plantingAction = {
     description: '把手里的种子播进眼前土壤',
     targetHandles: ['h1', plantingSurface.ref],
     expectedResult: '种子进入土壤并成为可继续生长的幼苗',
   };
-  assert.equal(gateway.sanitizePlanAgentWorldVerdict({
-    status: 'completed', result: '种子已经埋入土壤',
+  const unnamedAssembly = gateway.sanitizePlanAgentWorldVerdict({
+    status: 'completed', result: '搭成了一个叫作风声琴的小棚，放在了身旁',
     effects: [
       { kind: 'consume', targetHandle: 'h1', quantity: 1 },
-      {
-        kind: 'world-state', targetHandle: plantingSurface.ref,
-        stateKey: 'planted-seed', stateValue: '已埋入一颗种子', summary: '土中埋有种子',
-      },
+      { kind: 'assemble', targetHandle: visibleSurface.ref, arrangement: 'lash', summary: '风声琴' },
     ],
-  }, plantingAction, plantingProtocol), undefined,
-  'planting must not stop at an open-text seed fact that monthly crop growth cannot read');
+  }, { description: '把材料连接成风声琴', targetHandles: ['h1', visibleSurface.ref] }, fullInventoryProtocol);
+  assert.equal(unnamedAssembly?.probe?.adjudication.effects[1]?.kind, 'assemble',
+    'an independently adjudicated new facility must not require a catalog name, Chinese construction keyword or extra relocation effect');
   const materializedPlanting = gateway.sanitizePlanAgentWorldVerdict({
     status: 'completed', result: '种子已经播入土壤，形成了作物幼苗',
     effects: [
@@ -785,6 +674,32 @@ try {
   assert.deepEqual(appraisalDecision?.mentalAct?.relationshipAppraisal?.meanings,
     ['gratitude', 'uncertainty'],
     'Mind-authored relationship meaning must survive without becoming a numeric score');
+  const ungroundedAppraisalIntention = gateway.normalizeMindPlanModelOutput(
+    relationshipProjected,
+    {
+      utterance: '我想把手头的问题想清楚。', delivery: 'normal',
+      goal: '想清楚手头的问题', orientation: 'inquiry', horizon: 'momentary',
+      relationshipAppraisal: { otherPersonHandle: 'not-visible', meanings: ['invented-feeling'] },
+    },
+    { steps: ['短暂思考'], disposition: 'stay' },
+    relationshipProtocol,
+  );
+  assert.equal(ungroundedAppraisalIntention?.mentalAct?.goal, '想清楚手头的问题',
+    'an invalid optional appraisal must not discard a valid Mind intention');
+  assert.equal(ungroundedAppraisalIntention?.mentalAct?.relationshipAppraisal, undefined,
+    'a dropped appraisal must not install a relationship without real sources');
+  const ungroundedStagedAppraisal = gateway.normalizeDecisionModelOutput(
+    relationshipProjected,
+    {
+      kind: 'wait', utterance: '我在这里歇一会。', delivery: 'normal',
+      goal: '歇一会', strategy: '暂时停留', assumptions: [],
+      relationshipAppraisal: { otherPersonId: relationshipOther.id, sourceEventIds: ['invented-fact'] },
+    },
+    relationshipProtocol,
+  );
+  assert.equal(ungroundedStagedAppraisal?.mentalAct?.goal, '歇一会',
+    'the later MentalAct adapter must also isolate invalid optional relationship data');
+  assert.equal(ungroundedStagedAppraisal?.mentalAct?.relationshipAppraisal, undefined);
   intentExecution.applyDecision(
     relationshipState, relationshipObserver, relationshipContext, appraisalDecision, true, 2, 1, 1,
   );
@@ -878,7 +793,7 @@ try {
     'signals', 'optionAppraisals', 'addressedNeeds',
     'motivation', 'aspiration', 'urgency', 'expectedSuccess', 'uncertainty',
     'socialRepetition', 'score', 'personality', 'motiveSensitivity',
-    'characterNote', 'experience', 'ageMonths', 'cellId', 'z',
+    'characterNote', 'experience', 'ageMonths',
     'properties', 'experiencedOutcomes', 'semantics', 'possibleExperiments',
   ]) {
     assert.equal(keys.has(forbidden), false, `model request must not expose local appraisal field ${forbidden}`);

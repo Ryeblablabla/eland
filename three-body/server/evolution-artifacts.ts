@@ -46,7 +46,7 @@ export interface EvolutionTurningPoint {
 export interface EvolutionPath {
   schemaVersion: 2;
   runId: string;
-  provider: 'local' | 'kimi';
+  provider: 'local' | 'model' | 'kimi';
   model: string;
   status: 'running' | 'completed' | 'failed';
   startedAt: string;

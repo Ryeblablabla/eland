@@ -154,11 +154,7 @@ export function prepareMonth(
     else if (exemption === 'agenda-revision') reasons.push('长期关切的一项办法刚被现实否定，需要重新考虑');
     if (interactionReview) reasons.push('本人准备落实对话中已经定下的下一步');
     if (reviewDue) reasons.push('持续状态目标到达复核月份');
-    const naturallyMeaningful = !context.activeIntent
-      || exemption !== null
-      || reviewDue
-      || (context.activeIntent && atMonth - context.activeIntent.lastProgressAtMonth >= 2);
-    const naturallyTriggered = naturallyMeaningful && (exemption !== null || reviewDue || sample < probability);
+    const naturallyTriggered = exemption !== null || reviewDue || sample < probability;
     const triggered = interactionReview || naturallyTriggered;
     const opportunity: DecisionOpportunityFact = {
       id: `e-${atMonth}-opportunity-${context.person.id}`,

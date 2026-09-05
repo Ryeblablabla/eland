@@ -15,7 +15,7 @@ import {
   goalOutcomeBeliefFor,
   outcomeBeliefFor,
 } from '../../domain/cognition';
-import { speechActFromRepresentation } from '../../projection/speech-act';
+import { speechActFromRepresentation } from '../../domain/speech-act';
 import type {
   SpeechActView,
   SpeechLineView,
@@ -35,8 +35,9 @@ import {
   recentDialogueForDecision,
   type RecentDialogueContextLine,
 } from './recent-dialogue';
-import { mbtiTypeForPersonality, type MbtiType } from '../../mbti-persona-presets';
+import { mbtiTypeForPersonality, type MbtiType } from '../../domain/mbti-persona-presets';
 import { animalBondTrust } from '../../domain/animal-bonds';
+import { observeWorkAdoption } from '../../domain/works';
 
 function perceivedProperties(profile: PerceivedMaterialProfile): string[] {
   return [...new Set([
@@ -58,6 +59,10 @@ function openWorldFactCurrentCell(
   if (target.kind === 'drop') return state.world.drops.find((drop) => drop.id === target.dropId)?.cellId;
   if (target.kind === 'person') return state.people.find((person) => person.id === target.personId)?.position.cellId;
   if (target.kind === 'animal') return state.world.animals.find((animal) => animal.id === target.animalId)?.position.cellId;
+  if (target.kind === 'work') {
+    const work = state.world.works?.find((work) => work.id === target.workId);
+    return work ? work.position.x + work.position.y * state.world.grid.width : undefined;
+  }
   if (target.kind === 'container') {
     const container = state.containers.find((candidate) => candidate.id === target.containerId);
     return container ? container.position.x + container.position.y * state.world.grid.width : undefined;
@@ -95,6 +100,7 @@ export interface DecisionRequestContext {
       perception: PerceivedMaterialProfile; quantity: number;
     }>;
     knowledge: Array<{ id: string; kind: string; summary: string; confidence: number }>;
+    procedures?: Array<{ id: string; summary: string; confidence: number; method: NonNullable<DecisionContext['person']['knowledge'][number]['procedural']> }>;
     knownPlaces: Array<{ name: string; position: { x: number; y: number; z: number }; lastConfirmedAtMonth: number }>;
     /** The person's only model-visible memory document. */
     mindMarkdown: string;
@@ -123,6 +129,11 @@ export interface DecisionRequestContext {
     };
   };
   clock: { elapsedMonths: number; planningTick?: number };
+  /** A current-month plan continuation reuses this exact, already spoken intention. */
+  continuingPlan?: NonNullable<DecisionContext['continuingPlan']> & {
+    recentResults: string[];
+    recentEffects: Array<{ atMonth: number; effects: unknown[] }>;
+  };
   climate: DecisionContext['state']['civilization']['climate'];
   epoch: DecisionContext['state']['civilization']['epoch'];
   weather: DecisionContext['state']['civilization']['weather'];
@@ -152,6 +163,14 @@ export interface DecisionRequestContext {
       maintainUntilMonth?: number;
     };
   };
+  /** Finished executable episodes retain the author's larger plan for the next decision. */
+  recentCompletedWork?: Array<{
+    summary: string;
+    status: string;
+    atMonth: number;
+    plan: { steps: string[]; disposition: string };
+    recentOutcomes: Array<{ execution: string; goalProgress: string; evidence: string; atMonth: number }>;
+  }>;
   activeProject?: {
     id: string;
     summary: string;
@@ -174,6 +193,8 @@ export interface DecisionRequestContext {
     summary: string;
     progress: number;
     nextActionKind: string;
+    planSourceDecisionEventId: string;
+    requiresNewSpeech: boolean;
     createdAtMonth: number;
     lastProgressAtMonth: number;
     waitingFor?: 'world-change';
@@ -182,6 +203,8 @@ export interface DecisionRequestContext {
   }>;
   agreements: Array<{
     id: string; kind: string; status: string; partyIds: string[]; dueAtMonth?: number;
+    proposedAtMonth: number;
+    pendingResponderNames: string[];
     requiredResponderIds: string[]; acceptedByPersonIds: string[]; fulfilledByPersonIds: string[];
     rejectedByPersonIds: string[];
   }>;
@@ -274,11 +297,19 @@ export interface DecisionRequestContext {
   }>;
   /** Nearby person-built composite entities (works) with their builders and state. */
   visibleWorks?: Array<{
+    id: string;
+    position: { x: number; y: number; z: number };
     summary: string;
     arrangement: string;
     condition: string;
+    conditionValue: number;
+    profile: { cover: number; rigidity: number; stability: number };
+    createdAtMonth: number;
+    lastTouchedAtMonth: number;
     builders: string[];
-    components: Array<{ name: string; quantity: number }>;
+    components: Array<{ name: string; materialKey: string; quantity: number }>;
+    layout?: Array<{ offset: { x: number; y: number; z: number }; materialKey: string }>;
+    recentUse: Array<{ atMonth: number; kind: string; by: string; result: string; shelterUse?: Record<string, unknown> }>;
   }>;
   /** Bounded, currently visible surfaces for proposal probes; no material ids leave this projection. */
   visibleVoxels: Array<{
@@ -299,6 +330,7 @@ export interface CharacterAgendaSummary {
   importance: number;
   horizonMonths: number;
   targetAtMonth: number;
+  createdAtMonth: number;
   status: CharacterAgendaItem['status'];
   lastReviewedAtMonth: number;
   approaches: Array<{
@@ -306,6 +338,7 @@ export interface CharacterAgendaSummary {
     disposition: CharacterAgendaItem['approaches'][number]['disposition'];
     latestOutcome?: CharacterAgendaItem['approaches'][number]['latestOutcome'];
     evaluationCount: number;
+    recentEvaluations: Array<{ atMonth: number; outcome: string; note?: string }>;
   }>;
 }
 
@@ -386,6 +419,7 @@ function characterAgendaSummary(items: readonly CharacterAgendaItem[] = []): Cha
       importance: item.importance,
       horizonMonths: item.horizonMonths,
       targetAtMonth: item.targetAtMonth,
+      createdAtMonth: item.createdAtMonth,
       status: item.status,
       lastReviewedAtMonth: item.lastReviewedAtMonth,
       approaches: [...item.approaches]
@@ -396,8 +430,28 @@ function characterAgendaSummary(items: readonly CharacterAgendaItem[] = []): Cha
           disposition: approach.disposition,
           ...(approach.latestOutcome ? { latestOutcome: approach.latestOutcome } : {}),
           evaluationCount: approach.evaluations.length,
+          recentEvaluations: approach.evaluations.slice(-3).map(({ atMonth, outcome, note }) => ({
+            atMonth, outcome, ...(note ? { note } : {}),
+          })),
         })),
     }));
+}
+
+function intentRequiresNewSpeech(
+  state: DecisionContext['state'],
+  intent: DecisionContext['state']['intents'][number],
+): boolean {
+  let current: typeof intent | undefined = intent;
+  const seen = new Set<string>();
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    if (current.nextAction.kind === 'talk' || current.completionAction?.kind === 'talk'
+      || (!current.openingActionCompleted && current.openingAction?.kind === 'talk')) return true;
+    const parentId: string | undefined = current.returnToIntentId;
+    current = parentId ? state.intents.find((candidate) => candidate.id === parentId
+      && (candidate.status === 'active' || candidate.status === 'suspended')) : undefined;
+  }
+  return false;
 }
 
 
@@ -475,6 +529,22 @@ export function buildDecisionRequestContext(
       : [])
     .slice(0, 4);
   return {
+    ...(context.continuingPlan ? {
+      continuingPlan: {
+        ...structuredClone(context.continuingPlan),
+        recentResults: context.continuingPlan.outcomeReceipts.slice(-4).flatMap((receipt) => {
+          const event = context.currentMonthEvents?.find((event) => event.id === receipt.actionEventId)
+            ?? state.world.past.find((event) => event.id === receipt.actionEventId);
+          return event?.kind === 'action' ? [event.result] : [];
+        }),
+        recentEffects: context.continuingPlan.outcomeReceipts.slice(-4).flatMap((receipt) => {
+          const event = context.currentMonthEvents?.find((event) => event.id === receipt.actionEventId)
+            ?? state.world.past.find((event) => event.id === receipt.actionEventId);
+          return event?.kind === 'action' && Array.isArray(event.diff.appliedEffects)
+            ? [{ atMonth: event.atMonth, effects: structuredClone(event.diff.appliedEffects) }] : [];
+        }),
+      },
+    } : {}),
     person: {
       id: person.id,
       name: person.name,
@@ -509,6 +579,9 @@ export function buildDecisionRequestContext(
         };
       }),
       knowledge: projectedKnowledge.map(({ id, kind, summary, confidence }) => ({ id, kind, summary, confidence })),
+      procedures: person.knowledge.filter((fact) => fact.procedural)
+        .sort((left, right) => (right.procedural!.experiences.at(-1)?.atMonth ?? 0) - (left.procedural!.experiences.at(-1)?.atMonth ?? 0))
+        .slice(0, 8).map((fact) => ({ id: fact.id, summary: fact.summary, confidence: fact.confidence, method: structuredClone(fact.procedural!) })),
       knownPlaces: [...person.knownPlaces]
         .sort((a, b) => b.lastConfirmedAtMonth - a.lastConfirmedAtMonth || a.id.localeCompare(b.id))
         .slice(0, 8)
@@ -580,6 +653,24 @@ export function buildDecisionRequestContext(
           : {}),
       } } : {}),
     } } : {}),
+    recentCompletedWork: state.intents
+      .filter((intent) => intent.ownerId === person.id && intent.plan
+        && (intent.status === 'completed' || intent.status === 'failed' || intent.status === 'blocked'))
+      .sort((left, right) => right.lastProgressAtMonth - left.lastProgressAtMonth
+        || right.createdAtMonth - left.createdAtMonth)
+      .slice(0, 3)
+      .map((intent) => ({
+        summary: intent.summary,
+        status: intent.status,
+        atMonth: intent.lastProgressAtMonth,
+        plan: { steps: [...intent.plan!.steps], disposition: intent.plan!.disposition },
+        recentOutcomes: (intent.outcomeReceipts ?? []).slice(-4).map((receipt) => ({
+          execution: receipt.execution,
+          goalProgress: receipt.goalProgress,
+          evidence: receipt.evidence,
+          atMonth: receipt.atMonth,
+        })),
+      })),
     ...(activeProject ? { activeProject: {
       id: activeProject.id,
       summary: activeProject.summary,
@@ -612,6 +703,8 @@ export function buildDecisionRequestContext(
         summary: intent.summary,
         progress: intent.progress,
         nextActionKind: intent.nextAction.kind,
+        planSourceDecisionEventId: intent.planSourceDecisionEventId ?? intent.sourceDecisionEventId,
+        requiresNewSpeech: intentRequiresNewSpeech(state, intent),
         createdAtMonth: intent.createdAtMonth,
         lastProgressAtMonth: intent.lastProgressAtMonth,
         ...(intent.waitingFor ? { waitingFor: intent.waitingFor } : {}),
@@ -631,7 +724,20 @@ export function buildDecisionRequestContext(
       .filter((agreement) => agreement.partyIds.includes(person.id) && (agreement.status === 'proposed' || agreement.status === 'active' || (agreement.resolvedAtMonth ?? -99) >= state.clock.elapsedMonths - 6))
       .sort((a, b) => (b.acceptedAtMonth ?? b.proposedAtMonth) - (a.acceptedAtMonth ?? a.proposedAtMonth))
       .slice(0, 6)
-      .map((agreement) => ({ id: agreement.id, kind: agreement.proposal.kind, status: agreement.status, partyIds: agreement.partyIds, ...(agreement.dueAtMonth !== undefined ? { dueAtMonth: agreement.dueAtMonth } : {}), requiredResponderIds: agreement.requiredResponderIds, acceptedByPersonIds: agreement.acceptedByPersonIds, rejectedByPersonIds: agreement.rejectedByPersonIds, fulfilledByPersonIds: agreement.fulfilledByPersonIds })),
+      .map((agreement) => ({
+        id: agreement.id, kind: agreement.proposal.kind, status: agreement.status,
+        partyIds: agreement.partyIds, proposedAtMonth: agreement.proposedAtMonth,
+        pendingResponderNames: agreement.status === 'proposed'
+          ? agreement.requiredResponderIds
+            .filter((id) => !agreement.acceptedByPersonIds.includes(id) && !agreement.rejectedByPersonIds.includes(id))
+            .map((id) => state.people.find((person) => person.id === id)?.name ?? '未知人物')
+          : [],
+        ...(agreement.dueAtMonth !== undefined ? { dueAtMonth: agreement.dueAtMonth } : {}),
+        requiredResponderIds: agreement.requiredResponderIds,
+        acceptedByPersonIds: agreement.acceptedByPersonIds,
+        rejectedByPersonIds: agreement.rejectedByPersonIds,
+        fulfilledByPersonIds: agreement.fulfilledByPersonIds,
+      })),
     collectives: state.collectives.flatMap((collective) => {
       const own = collective.memberships.find((membership) => membership.personId === person.id && membership.status === 'active');
       return own ? [{
@@ -803,20 +909,52 @@ export function buildDecisionRequestContext(
         ...(fact.targetRef ? { targetKind: fact.targetRef.kind } : {}),
       })),
     visibleWorks: (state.world.works ?? [])
-      .filter((work) => Math.abs(work.position.x - cellX(person.position.cellId))
-        + Math.abs(work.position.y - cellY(person.position.cellId)) <= 7)
-      .slice(-6)
+      .filter((work) => context.visibleCells.includes(work.position.x + work.position.y * state.world.grid.width))
       .map((work) => ({
+        id: work.id,
+        position: { ...work.position },
         summary: work.summary,
         arrangement: work.arrangement,
-        condition: work.condition >= 75 ? '结实' : work.condition >= 40 ? '开始老旧' : '摇摇欲坠',
+        condition: work.condition >= 75 ? '材料保存完好' : work.condition >= 40 ? '材料已有磨损' : '材料明显破损',
+        conditionValue: work.condition,
+        profile: { ...work.profile },
+        ...(work.layout ? { layout: work.layout.voxels.map((voxel) => ({ offset: { ...voxel.offset }, materialKey: materialDefinition(voxel.materialId).key })) } : {}),
+        createdAtMonth: work.createdAtMonth,
+        lastTouchedAtMonth: work.lastTouchedAtMonth,
         builders: work.builderIds
           .map((id) => state.people.find((person) => person.id === id)?.name ?? id)
           .slice(0, 3),
-        components: work.components.slice(0, 6).map((component) => ({
+        components: work.components.map((component) => ({
           name: materialDefinition(component.materialId).name,
+          materialKey: materialDefinition(component.materialId).key,
           quantity: component.quantity,
         })),
+        recentUse: (() => {
+          const sources = (work.useReceipts ?? []).flatMap((receipt) => {
+            const event = context.currentMonthEvents?.find((event) => event.id === receipt.sourceEventId)
+              ?? state.world.past.find((event) => event.id === receipt.sourceEventId);
+            return event?.kind === 'action' || event?.kind === 'environment' ? [event] : [];
+          });
+          return observeWorkAdoption(work, sources, state.clock.elapsedMonths).receipts.slice(-3).flatMap((receipt) => {
+            const event = sources.find((event) => event.id === receipt.sourceEventId);
+            if (!event) return [];
+            const shelterUse = event.kind === 'environment' ? event.diff.shelterUse as Record<string, unknown> | undefined : undefined;
+            return [{
+              atMonth: receipt.atMonth,
+              kind: receipt.kind,
+              by: state.people.find((person) => person.id === receipt.actorId)?.name ?? '未知人物',
+              result: event.result,
+              ...(shelterUse ? { shelterUse: {
+                coldLoadWithoutShelter: shelterUse.coldLoadWithoutShelter,
+                coldLoad: shelterUse.coldLoad,
+                heatLoadWithoutShelter: shelterUse.heatLoadWithoutShelter,
+                heatLoad: shelterUse.heatLoad,
+                weatherProtection: shelterUse.weatherProtection,
+                thermalInsulation: shelterUse.thermalInsulation,
+              } } : {}),
+            }];
+          });
+        })(),
       })),
     visibleVoxels,
   };

@@ -1,9 +1,9 @@
-import { buildDecisionRequestContext } from "../src/game/eland/application/model-decision/decision-context";
 import type { BatchDecider, Decision, DecisionContext, TokenUsage } from "../src/game/eland/simulation";
 import type { SpeechLineView } from '../src/game/societyContract';
 import { isModelOwnedVoluntarySocialOption } from '../src/game/eland/domain/action-option-semantics';
 import { intentReviewAtMonth } from '../src/game/eland/domain/intent';
 import {
+  buildDecisionRequestContext,
   hasFulfillmentOpportunity,
   isPlayerInteractionEmergencyContext,
   isFulfillmentOption,
@@ -12,7 +12,7 @@ import {
   validatePlayerInteractionChoice,
   type PlayerInteractionChoiceFailure,
 } from '../src/game/eland/infrastructure-api';
-import { handleDecide } from "./model-decision-gateway";
+import { handleContinuePlans, handleDecide } from "./model-decision-gateway";
 
 const MAX_REMOTE_CONTEXTS_PER_REQUEST = 12;
 
@@ -58,6 +58,7 @@ export interface PlayerInteractionDecisionAttempt {
 
 export interface ServerLlmDecider extends BatchDecider {
   takeInteractionAttempts(): PlayerInteractionDecisionAttempt[];
+  takeDiagnostics(): Array<{ personId: string; reason: string }>;
 }
 
 function blockedChoiceDetail(failure: PlayerInteractionChoiceFailure, summary: string): string {
@@ -155,6 +156,7 @@ export function createServerLlmDecider(
   let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
   let metadata: { endpointId: string; protocol: string; model: string; providerRequests?: number } | null = null;
   let interactionAttempts: PlayerInteractionDecisionAttempt[] = [];
+  let diagnostics: Array<{ personId: string; reason: string }> = [];
   const interactions = new Map<string, PendingPlayerInteraction>();
   for (const interaction of options.interactions ?? []) interactions.set(interaction.agentId, interaction);
   const interactionFor = (context: DecisionContext) => interactions.get(context.person.id);
@@ -221,12 +223,14 @@ export function createServerLlmDecider(
           protocol?: string;
           model?: string;
           providerRequests?: number;
+          failures?: Array<{ personId: string; reason: string }>;
         };
         if (!Array.isArray(body.decisions) || body.decisions.length !== chunk.length) {
           if (hasDirectInteraction) return decisions;
           throw new Error("模型没有返回与关键决策上下文一一对应的结果");
         }
         remoteDecisions.push(...body.decisions);
+        if (body.failures?.length) diagnostics = [...diagnostics, ...body.failures].slice(-128);
         remoteUsage = addTokenUsage(remoteUsage, body.usage);
         providerRequests += body.providerRequests ?? 1;
         if (body.endpointId && body.protocol && body.model) {
@@ -245,6 +249,55 @@ export function createServerLlmDecider(
         : metadata;
       return decisions;
     },
+    async continuePlans(contexts: DecisionContext[]): Promise<(Decision | null)[]> {
+      const decisions: (Decision | null)[] = contexts.map(() => null);
+      if (!endpointId || options.pendingOnly) return decisions;
+      // A continuation executes the existing intention. New language and new
+      // consent need a Mind turn; physically fulfilling an agreement does not.
+      const requiresNewSpeech = (option: DecisionContext['options'][number]) => (
+        option.nextAction.kind === 'talk' || option.completionAction?.kind === 'talk'
+      );
+      const projected = contexts.flatMap((context, index) => context.continuingPlan ? [{
+        index,
+        context: buildDecisionRequestContext({
+          ...context,
+          options: context.options.filter((option) => !requiresNewSpeech(option)),
+          followUpOptions: context.followUpOptions.filter((option) => !requiresNewSpeech(option)),
+        }, { committedSpeechLines: options.priorSpeechLines }),
+      }] : []);
+      for (let start = 0; start < projected.length; start += MAX_REMOTE_CONTEXTS_PER_REQUEST) {
+        const chunk = projected.slice(start, start + MAX_REMOTE_CONTEXTS_PER_REQUEST);
+        const response = await handleContinuePlans({ contexts: chunk.map((item) => item.context) }, endpointId);
+        if (response.status !== 200) {
+          const detail = response.body as { error?: string };
+          throw new Error(detail.error ?? `计划续编失败（${response.status}）`);
+        }
+        const body = response.body as {
+          decisions?: (Decision | null)[];
+          usage?: TokenUsage;
+          endpointId?: string;
+          protocol?: string;
+          model?: string;
+          providerRequests?: number;
+          failures?: Array<{ personId: string; reason: string }>;
+        };
+        usage = addTokenUsage(usage, body.usage);
+        if (body.failures?.length) diagnostics = [...diagnostics, ...body.failures].slice(-128);
+        if (body.endpointId && body.protocol && body.model) {
+          metadata = {
+            endpointId: body.endpointId,
+            protocol: body.protocol,
+            model: body.model,
+            providerRequests: (metadata?.providerRequests ?? 0) + (body.providerRequests ?? 0),
+          };
+        }
+        if (!Array.isArray(body.decisions) || body.decisions.length !== chunk.length) {
+          throw new Error('Plan 没有返回与续编上下文一一对应的结果');
+        }
+        body.decisions.forEach((decision, index) => { decisions[chunk[index].index] = decision; });
+      }
+      return decisions;
+    },
     takeUsage() {
       const result = usage;
       usage = { inputTokens: 0, outputTokens: 0 };
@@ -258,6 +311,11 @@ export function createServerLlmDecider(
     takeInteractionAttempts() {
       const result = interactionAttempts;
       interactionAttempts = [];
+      return result;
+    },
+    takeDiagnostics() {
+      const result = diagnostics;
+      diagnostics = [];
       return result;
     },
   };

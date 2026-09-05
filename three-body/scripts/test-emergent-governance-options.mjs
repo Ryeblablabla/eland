@@ -131,6 +131,15 @@ try {
     }
   }
 
+  // Institutions can be proposed before a scripted cooperation milestone or crisis.
+  members[0].cognition.socialLearning.coordinationPractices = [];
+  members.forEach((member) => { member.body.nutrition = 90; });
+  assert.equal(ruleOffersFor(members[1]).length, 4,
+    'governance choices remain available without a learned-practice unlock or bodily shortage');
+  const autonomyOptions = buildSocialOptions(state, members[1], visibleTo(members[1]), 8);
+  assert.ok(autonomyOptions.some((option) => option.id === `withdraw-collective:${collectiveId}`),
+    'a member may choose to leave before trust or fear crosses a scripted threshold');
+
   const collective = state.collectives[0];
   collective.decisionRules = [Material.Food, Material.CookedFood].map((materialId, index) => ({
     id: `material-rule:${materialId}`,

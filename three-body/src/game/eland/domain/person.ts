@@ -8,6 +8,7 @@ import type { SocialLearningState } from './social-learning';
 import type { PersonTraitState } from './trait';
 import type { RelationshipEpisode } from './relationship-episode';
 import type { PersonOrigin } from './regional-population';
+import type { ProceduralKnowledge } from './procedural-knowledge';
 
 export type {
   RelationshipAppraisalMeaning,
@@ -70,6 +71,8 @@ export interface KnownFact {
   confidence: number;
   learnedAtMonth: number;
   sourceEventIds: string[];
+  /** A fallible, sourced method whose objects must be rebound before another attempt. */
+  procedural?: ProceduralKnowledge;
 }
 
 export interface KnownPlace {

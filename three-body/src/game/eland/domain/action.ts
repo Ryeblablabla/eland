@@ -20,6 +20,7 @@ import type { ActionOptionSemanticsV1 } from './action-option-semantics';
 import type { ProjectLeadershipSuccessionActionBasis } from './project-leadership';
 import type { CharacterAgendaProbe, CharacterAgendaProposal, CharacterAgendaUpdate } from './character-agenda';
 import type { MentalAct, MentalPlanTranslation } from './mental-act';
+import type { WorkLayout } from './work-layout';
 
 export interface VoxelPosition { x: number; y: number; z: number }
 
@@ -56,6 +57,7 @@ export interface DependentTransportBasis {
 
 export type WorldRef =
   | { kind: 'voxel'; position: VoxelPosition }
+  | { kind: 'work'; workId: string }
   | { kind: 'drop'; dropId: string }
   | { kind: 'container'; containerId: string }
   | { kind: 'inventory-stack'; personId: PersonId; stackId: string }
@@ -75,7 +77,7 @@ export type WorldInteractionEffect =
       quantity: number;
     }
   | { kind: 'replace-voxel'; target: Extract<WorldRef, { kind: 'voxel' }>; materialId: MaterialId }
-  | { kind: 'move-self'; target: Extract<WorldRef, { kind: 'voxel' }> }
+  | { kind: 'move-self'; target: WorldRef; withinDistance?: number }
   | { kind: 'body'; target?: Extract<WorldRef, { kind: 'person' }>; field: 'health' | 'hydration' | 'nutrition'; delta: number }
   | { kind: 'relation'; target: Extract<WorldRef, { kind: 'person' }>; field: 'trust' | 'bond' | 'fear'; delta: number }
   | {
@@ -88,13 +90,15 @@ export type WorldInteractionEffect =
       target: Extract<WorldRef, { kind: 'voxel' }>;
       arrangement: 'support' | 'pile' | 'lash' | 'form';
       summary: string;
+      layout?: WorkLayout;
     }
   | {
       /** Add this verdict's consumed materials to the work anchored at target. */
       kind: 'modify-structure';
-      target: Extract<WorldRef, { kind: 'voxel' }>;
+      target: Extract<WorldRef, { kind: 'voxel' | 'work' }>;
       arrangement?: 'support' | 'pile' | 'lash' | 'form';
       summary?: string;
+      layout?: WorkLayout;
     }
   | {
       /**
@@ -439,6 +443,8 @@ export type PrimitiveAction =
   | {
       kind: 'attend';
       target: WorldRef;
+      /** Personally study one source actually heard earlier; hearing alone does not teach. */
+      learning?: { sourceEventId: string; factId: string };
       /** A calibrated, source-bound use of one physical measuring apparatus. */
       measurement?: SourcedMassMeasurementAction;
       instrumentStackId?: string;
@@ -474,6 +480,8 @@ export type PrimitiveAction =
       kind: 'inscribe';
       inscriptionMeaning: Extract<RepresentationInput, { kind: 'claim' }>;
       carrierStackId: string;
+      /** An already understood convention; omission reuses the writer's current convention. */
+      codebookId?: string;
     };
 
 export function waterCurrentObservationFactId(segmentId: string): string {
@@ -655,6 +663,27 @@ export interface IntentOutcomeReceipt {
   goalProgress: 'none' | 'advanced' | 'achieved' | 'regressed' | 'unknown';
   evidence: 'none' | 'novel' | 'confirming' | 'refuting' | 'inconclusive';
   sourceEventIds: string[];
+  planAssessment?: import('./mental-act').PlanCompletionAssessment;
+  planMilestones?: import('./mental-act').PlanMilestoneReceipt[];
+  attempt?: {
+    operationKey: string;
+    premiseKey: string;
+    worldChanged: boolean;
+    repetition: 'new' | 'changed-premises' | 'unchanged-retry';
+    previousEventId?: string;
+  };
+}
+
+/** A factual check that skipped execution; it is deliberately not an ActionFact. */
+export interface PlanPreflightReceipt {
+  atMonth: number;
+  sourceDecisionEventId: string;
+  reason: 'goal-already-satisfied' | 'step-already-satisfied' | 'intent-goal-already-satisfied';
+  summary: string;
+  conditionKey: string;
+  checkedConditions: import('./mental-act').PlanSuccessCondition[];
+  planAssessment: import('./mental-act').PlanCompletionAssessment;
+  selectedAction: PrimitiveAction;
 }
 
 /** Relative policy declared by an executable option. Absence means complete on achievement. */
@@ -695,6 +724,11 @@ export interface Intent {
   sourceDecisionEventId: string;
   /** Complete model-authored plan; execution may consume only its current step. */
   plan?: MentalPlanTranslation;
+  /** Original Mind decision; subsequent Plan translations retain this identity. */
+  planSourceDecisionEventId?: string;
+  planAssessment?: import('./mental-act').PlanCompletionAssessment;
+  planMilestones?: import('./mental-act').PlanMilestoneReceipt[];
+  planPreflight?: PlanPreflightReceipt;
   projectId?: string;
   /** Durable concern that this executable episode is currently serving. */
   characterAgendaItemId?: string;

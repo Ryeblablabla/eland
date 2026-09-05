@@ -10,19 +10,19 @@ import { recordIntentGoalOutcome } from '../../domain/cognition';
 import {
   clearPlanningEventOverlay,
   registerPlanningEventOverlay,
+  worldEventById,
 } from '../../domain/event-index';
 import {
   composeIntentChoice,
+  completionConditionsCoverIntent,
   intentMaintainUntilMonth,
-  intentReviewAtMonth,
   isResumableIntent,
 } from '../../domain/intent';
-import { lifePlanningStage } from '../../domain/life-stage';
 import { remember } from '../../domain/memory';
 import { broadcastLanguage, type LanguageBroadcast } from '../../domain/language-perception';
 import { materialHas } from '../../domain/material';
 import type { MentalAct } from '../../domain/mental-act';
-import { spokenTextSupportsMeaning } from '../../domain/spoken-meaning';
+import { withSpokenUtterance } from '../../domain/spoken-meaning';
 import { recordRelationshipEpisode } from '../../domain/relationship-episode';
 import type {
   ActionFact,
@@ -49,7 +49,6 @@ import {
   recompileNextAction,
   reproductionIntentAttemptedThisMonth,
 } from '../action-options';
-import { ordinaryLearningChildActionAllowed } from '../age-planning';
 import { compileAgreementContinuations, type AgreementContinuation } from '../agreement-continuation';
 import { compileOpenConversationOption } from '../conversation-options';
 import { evaluateCognitiveOption } from '../cognition/option-appraisal';
@@ -62,6 +61,7 @@ import {
 } from '../project-options';
 import { isFulfillmentOption, isRequiredSocialOption, isStateAchievementGoal, RulePlanner } from '../rule-planner';
 import { clamp } from './state-utils';
+import { assessIntentPlan, attachPlanAttemptReceipt, capturePlanAttempt, recordObservedPlanMilestones, recordPlanPreflight } from './plan-progress';
 import { actionOptionSemantics, isEdgeActionOption } from '../../domain/action-option-semantics';
 import {
   rememberDecisionLanguage,
@@ -77,7 +77,6 @@ import {
 
 const MAX_REPRODUCTION_AUDIT_SOURCE_FACTS = 32;
 const localCommitFallbackPlanner = new RulePlanner();
-const modelCommitFallbackPlanner = new RulePlanner({ deferVoluntarySocialChoicesToModel: true });
 
 function revalidateDecisionAtCommit(
   context: DecisionContext,
@@ -106,9 +105,15 @@ function revalidateDecisionAtCommit(
   // context. Do not commit that vanished choice or consume the actor's month
   // with a no-Intent DecisionFact: deliberate once against the authoritative
   // options that still exist at this exact commit boundary.
-  const fallback = (usedModel ? modelCommitFallbackPlanner : localCommitFallbackPlanner)
-    .decideAt(context, { atMonth, planningTick });
   const prefix = '此前选择的机会已被同月行动占用，按当前仍然存在的机会重新考虑';
+  if (usedModel) return {
+    decision: {
+      kind: 'idle',
+      reason: prefix,
+    },
+    usedModel: false,
+  };
+  const fallback = localCommitFallbackPlanner.decideAt(context, { atMonth, planningTick });
   if (fallback.kind === 'start' || fallback.kind === 'revise' || fallback.kind === 'idle') {
     return {
       decision: { ...fallback, reason: `${prefix}；${fallback.reason}` },
@@ -294,8 +299,8 @@ function completedAttendObservedDifferentKnowledgeFact(
   return fact.diff.factId;
 }
 
-function factCarriesNewEvidence(fact: ActionFact): boolean {
-  if (fact.action.kind === 'attend') return fact.status === 'completed';
+function factCarriesNewEvidence(fact: ActionFact, observationChanged = false): boolean {
+  if (fact.action.kind === 'attend') return fact.status === 'completed' && observationChanged;
   if (fact.action.kind === 'world-interact') {
     return Array.isArray(fact.diff.appliedEffects)
       && fact.diff.appliedEffects.some((effect) => (
@@ -315,6 +320,7 @@ function outcomeReceiptForFact(
   fact: ActionFact,
   goalSatisfiedBefore: boolean,
   goalSatisfiedAfter: boolean,
+  observationChanged = false,
 ): IntentOutcomeReceipt {
   const execution = fact.status === 'completed'
     ? 'performed' as const
@@ -330,13 +336,13 @@ function outcomeReceiptForFact(
       : fact.status === 'progressed'
         ? 'unknown' as const
         : 'none' as const;
-  const carriesEvidence = factCarriesNewEvidence(fact);
+  const carriesEvidence = factCarriesNewEvidence(fact, observationChanged);
   const observedFactId = fact.action.kind === 'attend' && typeof fact.diff.factId === 'string'
     ? fact.diff.factId
     : undefined;
   const evidence = goalProgress === 'achieved'
     ? 'confirming' as const
-    : intent.goal.kind === 'knowledge' && observedFactId
+    : carriesEvidence && intent.goal.kind === 'knowledge' && observedFactId
       ? observedFactId === intent.goal.factId ? 'confirming' as const : 'refuting' as const
     : fact.status === 'failed' && carriesEvidence
       ? 'refuting' as const
@@ -359,16 +365,16 @@ function appendOutcomeReceipt(intent: Intent, receipt: IntentOutcomeReceipt): vo
 }
 
 function boundedReviewDurationMonths(duration: ActionOption['estimatedDuration'], estimatedMonths?: number): number {
-  const base = duration === 'long'
+  const base = estimatedMonths !== undefined && Number.isFinite(estimatedMonths)
+    ? estimatedMonths
+    : duration === 'long'
     ? 12
-    : estimatedMonths !== undefined && estimatedMonths <= 1
-      ? 3
       : duration === 'several-months'
-        ? Math.max(6, estimatedMonths ?? 0)
+        ? 3
         : duration === 'unknown'
-          ? 6
-          : Math.max(3, estimatedMonths ?? 0);
-  return Math.max(3, Math.min(12, Math.round(base)));
+          ? 1
+          : 1;
+  return Math.max(1, Math.ceil(base));
 }
 
 function reproductionAttemptBaselineFor(
@@ -420,7 +426,12 @@ export function startIntent(
     : undefined;
   const choice = composeIntentChoice(context.options, context.followUpOptions, optionId, followUpOptionId);
   if (!choice) return null;
-  const obligationOption = [selectedOption, followUpOption].find((option) => option
+  // An explicitly chosen speech prefix executes its own social protocol.
+  // Its agreement must not replace or authorize the separate physical goal.
+  const obligationOptions = followUpOption && !selectedOption?.requiresFollowUp
+    ? [followUpOption]
+    : [selectedOption, followUpOption];
+  const obligationOption = obligationOptions.find((option) => option
     && (isFulfillmentOption(option) || isRequiredSocialOption(option)));
   const sourceAgreement = obligationOption
     ? sourceAgreementForIntent(state, person.id, obligationOption.sourceFactIds)
@@ -453,30 +464,7 @@ export function startIntent(
   const activeMatch = previous && sameThread(previous) ? previous : undefined;
   const reusable = activeMatch ?? suspendedMatches.at(-1);
   if (previous && previous !== activeMatch) {
-    const previousReviewAtMonth = intentReviewAtMonth(previous);
-    const overdueAndUnmet = previousReviewAtMonth !== undefined
-      && atMonth > previousReviewAtMonth
-      && !goalSatisfied(state, person, previous.goal);
-    if (overdueAndUnmet) {
-      previous.status = 'blocked';
-      previous.blockedReason = `第 ${previousReviewAtMonth} 月状态复核时目标仍未满足`;
-      previous.replanCount += 1;
-      recordIntentGoalOutcome(
-        state,
-        previous,
-        'attempted-unmet',
-        atMonth,
-        intentGoalSourceIds(state, previous, [decisionEventId]),
-      );
-      remember(person, {
-        id: `memory:intent-review-due:${previous.id}:${atMonth}`,
-        kind: 'failure', summary: `${previous.summary}需要重新安排：${previous.blockedReason}`, importance: 72,
-        createdAtMonth: atMonth, lastRecalledAtMonth: atMonth,
-        expiresAtMonth: atMonth + 6,
-        personIds: previous.target?.kind === 'person' ? [previous.target.personId] : [],
-        sourceEventIds: [...previous.actionEventIds],
-      });
-    } else if (isResumableIntent(previous)
+    if (isResumableIntent(previous)
       && !(previous.projectId && previous.projectId === projectTarget.projectId)
       && !(previous.characterAgendaItemId
         && previous.characterAgendaItemId === choice.characterAgendaItemId)) {
@@ -514,6 +502,13 @@ export function startIntent(
     reusable.domain = choice.domain;
     reusable.goal = structuredClone(projectTarget.goal);
     reusable.nextAction = structuredClone(choice.nextAction);
+    if (choice.openingAction) {
+      reusable.openingAction = structuredClone(choice.openingAction);
+      reusable.openingActionCompleted = false;
+    } else {
+      delete reusable.openingAction;
+      delete reusable.openingActionCompleted;
+    }
     if (choice.completionAction) reusable.completionAction = structuredClone(choice.completionAction);
     else delete reusable.completionAction;
     if (choice.target) reusable.target = structuredClone(choice.target);
@@ -978,6 +973,17 @@ export function applyDecision(
   planningChannel: NonNullable<DecisionFact['planningChannel']> = 'ordinary',
   selectedOptionAtDecision?: ActionOption,
 ): DecisionFact {
+  if (context.continuingPlan) {
+    const continuation = context.continuingPlan;
+    const sourceIntent = intentById(state, continuation.sourceIntentId);
+    const origin = context.currentMonthEvents?.find((event) => event.id === continuation.sourceDecisionEventId)
+      ?? worldEventById(state, continuation.sourceDecisionEventId);
+    if (sourceIntent?.ownerId !== person.id
+      || (sourceIntent.planSourceDecisionEventId ?? sourceIntent.sourceDecisionEventId) !== continuation.sourceDecisionEventId
+      || origin?.kind !== 'decision' || !origin.usedModel || origin.who !== person.id || !origin.decision.mentalAct) {
+      throw new Error('续编必须引用本人真实选定的意图及其原始模型决定');
+    }
+  }
   if (decision.kind === 'idle' && decision.executionProbe) {
     const option = buildImmediateCharacterProbeOption(
       context,
@@ -1010,7 +1016,27 @@ export function applyDecision(
     selectedOptionAtDecision,
   ));
   const id = `e-${atMonth}-decision-${person.id}-${planningTick}-${orderInMonth}`;
-  const mentalAct = 'mentalAct' in decision ? decision.mentalAct : undefined;
+  const translatedPlan = context.continuingPlan
+    ? structuredClone(decision.mentalAct?.plan ?? context.continuingPlan.plan)
+    : undefined;
+  const chosenGoal = context.continuingPlan?.plan.completion?.goal;
+  if (translatedPlan && chosenGoal?.conditions.length) {
+    // Translation may revise the next means; only a new Mind decision can
+    // replace the goal whose success the person originally chose to test.
+    translatedPlan.completion = {
+      step: translatedPlan.completion?.step ?? { description: decision.reason, conditions: [] },
+      goal: structuredClone(chosenGoal),
+    };
+  }
+  if (context.continuingPlan) {
+    // Plan is translating an existing choice, not making another statement.
+    // Do not replay its frozen utterance, appraisal or concern proposal.
+    const { mentalAct: _previousLanguage, ...silentDecision } = decision;
+    decision = silentDecision;
+    if ('characterAgendaProposal' in decision) delete decision.characterAgendaProposal;
+    if ('characterAgendaUpdate' in decision) delete decision.characterAgendaUpdate;
+  }
+  const mentalAct = decision.mentalAct;
   if (usedModel) commitMentalRelationshipAppraisal(state, person, context, mentalAct, id, atMonth);
   const languageBroadcast = usedModel && mentalAct?.utterance.trim()
     ? broadcastLanguage({
@@ -1053,18 +1079,11 @@ export function applyDecision(
   const delivery = usedModel ? mentalAct?.delivery : undefined;
   const deliveryOptionId = (decision.kind === 'start' || decision.kind === 'revise') ? decision.optionId : undefined;
   const modelTalkAction = (action: PrimitiveAction): PrimitiveAction => action.kind === 'talk'
-    ? (() => {
-        const expressed = !utterance || spokenTextSupportsMeaning(utterance, action.speakerMeaning);
-        return {
-          ...action,
-          ...(delivery ? { delivery } : {}),
-          ...(utterance ? {
-            speakerMeaning: expressed
-              ? { ...action.speakerMeaning, summary: utterance }
-              : { id: action.speakerMeaning.id, kind: 'claim' as const, summary: utterance },
-          } : {}),
-        };
-      })()
+    ? {
+        ...action,
+        ...(delivery ? { delivery } : {}),
+        ...(utterance ? { speakerMeaning: withSpokenUtterance(utterance, action.speakerMeaning) } : {}),
+      }
     : action;
   if (utterance || delivery) decisionContext = {
     ...decisionContext,
@@ -1172,19 +1191,33 @@ export function applyDecision(
     // local planning may bind an existing agenda, but may not manufacture one.
     return null;
   };
+  const attachTranslatedPlan = (intent: Intent | null): void => {
+    if (!intent) return;
+    delete intent.planPreflight;
+    if (context.continuingPlan && translatedPlan) {
+      intent.plan = structuredClone(translatedPlan);
+      intent.planSourceDecisionEventId = context.continuingPlan.sourceDecisionEventId;
+      intent.planMilestones = structuredClone(context.continuingPlan.milestones ?? []);
+    } else if (mentalAct?.plan) {
+      intent.plan = structuredClone(mentalAct.plan);
+      intent.planSourceDecisionEventId = id;
+      delete intent.planMilestones;
+    }
+    recordObservedPlanMilestones(state, person, intent, id, atMonth);
+  };
   if (decision.kind === 'start') {
     const started = startIntent(state, person, decisionContext, decision.optionId, decision.followUpOptionId, id, atMonth);
-    if (started && mentalAct?.plan) started.plan = structuredClone(mentalAct.plan);
+    attachTranslatedPlan(started);
     attachLifeReview(started);
     attachCharacterAgenda(started);
     intentId = started?.id;
     domain = started?.domain;
     result = started ? `${person.name}决定：${started.summary}` : `${person.name}没有找到该行动机会`;
   } else if (decision.kind === 'revise') {
-    const started = decision.mode === 'interrupt' && decision.interruptionKind
+    const started = decision.mode === 'interrupt' && decision.interruptionKind && !decision.followUpOptionId
         ? startInterruptIntent(state, person, decisionContext, decision.optionId, id, atMonth, decision.interruptionKind)
         : startIntent(state, person, decisionContext, decision.optionId, decision.followUpOptionId, id, atMonth);
-    if (started && mentalAct?.plan) started.plan = structuredClone(mentalAct.plan);
+    attachTranslatedPlan(started);
     attachLifeReview(started);
     attachCharacterAgenda(started);
     intentId = started?.id;
@@ -1225,6 +1258,7 @@ export function applyDecision(
         }
       }
       resumed.status = 'active';
+      attachTranslatedPlan(resumed);
       delete resumed.waitingFor;
       resumed.lastResumedAtMonth = atMonth;
       delete resumed.suspendedAtMonth;
@@ -1255,6 +1289,7 @@ export function applyDecision(
       result = `${person.name}放弃：${abandoned.summary}`;
     }
   } else if (decision.kind === 'idle') {
+    if (current && mentalAct?.plan?.disposition === 'continue') attachTranslatedPlan(current);
     const acceptedAgenda = attachCharacterAgenda(null);
     if (acceptedAgenda) {
       const operation = acceptedAgenda.evidence.operation;
@@ -1338,6 +1373,13 @@ export function applyDecision(
     } : {}),
     ...(characterAgendaEvidence.length ? { characterAgendaEvidence } : {}),
     ...(languageBroadcast ? { languageBroadcast } : {}),
+    ...(context.continuingPlan && translatedPlan ? {
+      planContinuation: {
+        sourceIntentId: context.continuingPlan.sourceIntentId,
+        sourceDecisionEventId: context.continuingPlan.sourceDecisionEventId,
+        plan: structuredClone(translatedPlan),
+      },
+    } : {}),
     usedModel,
     result,
   };
@@ -1451,21 +1493,6 @@ export function executeActiveIntent(
     person.currentActionText = sourceAgreement.status === 'fulfilled' ? `约定已经履行：${intent.summary}` : `约定已经结束：${intent.summary}`;
     return null;
   }
-  if (lifePlanningStage(person, atMonth) === 'learning-child'
-    && !ordinaryLearningChildActionAllowed(state, person, intent.nextAction)) {
-    intent.status = 'abandoned';
-    intent.blockedReason = '普通任务的下一步已经越出当前可见亲代的本地照护半径';
-    recordIntentGoalOutcome(
-      state,
-      intent,
-      'not-evaluated',
-      atMonth,
-      intentGoalSourceIds(state, intent),
-    );
-    delete person.activeIntentId;
-    person.currentActionText = '停止继续远离当前可见的亲代照护范围';
-    return null;
-  }
   const alreadyAttemptedReproductionThisMonth = intent.lastReproductionAttemptAtMonth === atMonth;
   if (alreadyAttemptedReproductionThisMonth || (!intent.projectId && intent.lastProcessAttemptAtMonth === atMonth)) return null;
   if (intent.openingAction && !intent.openingActionCompleted) {
@@ -1504,7 +1531,20 @@ export function executeActiveIntent(
     }
     return fact;
   }
-  if (goalSatisfied(state, person, intent.goal)) {
+  intent.planAssessment = assessIntentPlan(state, person, intent);
+  const achievedScope = (['goal', 'step'] as const).find((scope) => intent.planAssessment?.[scope] === 'satisfied'
+    && completionConditionsCoverIntent(intent.plan?.completion?.[scope].conditions ?? [], intent));
+  if (achievedScope) {
+    recordPlanPreflight(intent, achievedScope === 'goal' ? 'goal-already-satisfied' : 'step-already-satisfied',
+      intent.plan!.completion![achievedScope].conditions, intent.planAssessment, atMonth);
+    intent.status = 'completed';
+    intent.progress = 1;
+    delete person.activeIntentId;
+    person.currentActionText = intent.planPreflight!.summary;
+    return null;
+  }
+  if (goalSatisfied(state, person, intent.goal)
+    && (!intent.plan || completionConditionsCoverIntent([{ kind: 'fact', predicate: intent.goal }], intent))) {
     const maintainUntilMonth = intentMaintainUntilMonth(intent);
     if (maintainUntilMonth !== undefined && atMonth < maintainUntilMonth) {
       const duration = Math.max(1, intent.plannedDurationMonths ?? maintainUntilMonth - intent.createdAtMonth + 1);
@@ -1515,6 +1555,8 @@ export function executeActiveIntent(
     }
     intent.status = 'completed';
     intent.progress = 1;
+    if (intent.plan) recordPlanPreflight(intent, 'intent-goal-already-satisfied',
+      [{ kind: 'fact', predicate: intent.goal }], intent.planAssessment, atMonth);
     const conceptionFact = reproductionConceptionFactForIntent(state, intent, currentMonthEvents);
     const reproductionGoal = intent.goal.kind === 'condition'
       && intent.goal.condition === 'pregnancy'
@@ -1531,30 +1573,9 @@ export function executeActiveIntent(
     person.currentActionText = `已经完成：${intent.summary}`;
     return null;
   }
-  const reviewAtMonth = intentReviewAtMonth(intent);
-  if (reviewAtMonth !== undefined && atMonth > reviewAtMonth) {
-    intent.status = 'blocked';
-    intent.blockedReason = `第 ${reviewAtMonth} 月状态复核时目标仍未满足`;
-    recordIntentGoalOutcome(
-      state,
-      intent,
-      'attempted-unmet',
-      atMonth,
-      intentGoalSourceIds(state, intent),
-    );
-    intent.replanCount += 1;
-    remember(person, {
-      id: `memory:intent-review-due:${intent.id}:${atMonth}`,
-      kind: 'failure', summary: `${intent.summary}需要重新安排：${intent.blockedReason}`, importance: 72,
-      createdAtMonth: atMonth, lastRecalledAtMonth: atMonth,
-      expiresAtMonth: atMonth + 6,
-      personIds: intent.target?.kind === 'person' ? [intent.target.personId] : [],
-      sourceEventIds: [...intent.actionEventIds],
-    });
-    delete person.activeIntentId;
-    person.currentActionText = `状态目标到期，需要重评：${intent.summary}`;
-    return null;
-  }
+  // The expected duration schedules reconsideration. Passing an estimate is
+  // not a failed action: available work may continue until the person revises
+  // the plan or its real execution reports an obstacle.
   const next = executeWithCurrentEvidence(() => recompileNextAction(state, person, intent, atMonth));
   if (next && isCurrentlyBodyBlockedPlacement(state, person, next)) {
     // Project options expose one current atom at a time. A distant construction
@@ -1668,9 +1689,17 @@ export function executeActiveIntent(
     return null;
   }
   intent.nextAction = next;
+  const planAssessmentBefore = assessIntentPlan(state, person, intent);
+  const attemptBefore = capturePlanAttempt(state, person, next, intent);
   const goalSatisfiedBeforeAction = goalSatisfied(state, person, intent.goal);
   const recordUseConfidenceBefore = intent.recordUseBasis
     ? person.knowledge.find((knowledge) => knowledge.id === intent.recordUseBasis?.knowledgeId)?.confidence
+    : undefined;
+  const knowledgeBeforeObservation = intent.nextAction.kind === 'attend'
+    ? new Map(person.knowledge.map((knowledge) => [knowledge.id, {
+        confidence: knowledge.confidence,
+        summary: knowledge.summary,
+      }]))
     : undefined;
   const decisionLanguage = decisionLanguageForImmediateTalk(
     state,
@@ -1826,12 +1855,21 @@ export function executeActiveIntent(
   }
   if (fact.action.kind === 'act' && fact.action.operation === 'reproduce') intent.lastReproductionAttemptAtMonth = atMonth;
   const satisfiedAfterAction = goalSatisfied(state, person, intent.goal);
+  const observedKnowledge = fact.action.kind === 'attend' && typeof fact.diff.factId === 'string'
+    ? person.knowledge.find((knowledge) => knowledge.id === fact.diff.factId)
+    : undefined;
+  const previousKnowledge = observedKnowledge ? knowledgeBeforeObservation?.get(observedKnowledge.id) : undefined;
+  const observationChanged = Boolean(observedKnowledge && (!previousKnowledge
+    || previousKnowledge.confidence !== observedKnowledge.confidence
+    || previousKnowledge.summary !== observedKnowledge.summary));
   const outcomeReceipt = outcomeReceiptForFact(
     intent,
     fact,
     goalSatisfiedBeforeAction,
     satisfiedAfterAction,
+    observationChanged,
   );
+  attachPlanAttemptReceipt(state, person, intent, fact, outcomeReceipt, attemptBefore, planAssessmentBefore);
   appendOutcomeReceipt(intent, outcomeReceipt);
   person.currentActionText = fact.result;
   if (fact.status === 'blocked' || fact.status === 'failed') {
@@ -1869,13 +1907,22 @@ export function executeActiveIntent(
       person.currentActionText = `观察结果改变，需要重评：${fact.result}`;
       return fact;
     }
-    if (outcomeReceipt.goalProgress !== 'none' || outcomeReceipt.evidence !== 'none') {
+    if (outcomeReceipt.goalProgress !== 'none' || outcomeReceipt.evidence !== 'none' || outcomeReceipt.attempt?.worldChanged) {
       intent.lastProgressAtMonth = atMonth;
     }
     const representationCompleted = intent.goal.kind === 'representation-made'
       && fact.action.kind === 'talk'
       && fact.action.speakerMeaning.id === intent.goal.representationId
       && fact.status === 'completed';
+    // Looking is a completed episode even when the answer is inconclusive.
+    // Keep that unmet outcome as feedback instead of repeating the same look
+    // for months. Project investigations and read/experiment chains keep
+    // their separately compiled continuation.
+    const observationEpisodeCompleted = fact.action.kind === 'attend'
+      && fact.status === 'completed'
+      && !intent.projectId
+      && !intent.recordUseBasis
+      && !intent.completionAction;
     const reproductionAttempted = fact.action.kind === 'act' && fact.action.operation === 'reproduce';
     const processAttemptCompleted = fact.status === 'completed'
       && (fact.action.kind === 'world-interact'
@@ -1900,12 +1947,14 @@ export function executeActiveIntent(
       || recordReplicationReceiptCompleted;
     const lifecycleAchievementCompleted = intent.lifecycle?.completion === 'on-achievement'
       && (representationCompleted
+        || observationEpisodeCompleted
         || (processAttemptCompleted && recordUseProcessCompleted)
         || satisfiedAfterAction);
     const ordinaryIntentCompleted = !intent.lifecycle
       && intent.stateGoalUntilMonth === undefined
       && !intent.projectId
       && (representationCompleted
+        || observationEpisodeCompleted
         || (processAttemptCompleted && recordUseProcessCompleted)
         || satisfiedAfterAction);
     if (!currentContinues && (maintainedStateCompleted || lifecycleAchievementCompleted || ordinaryIntentCompleted)) {

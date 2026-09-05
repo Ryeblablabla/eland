@@ -1,10 +1,7 @@
 import { executePrimitiveAction } from '../../domain/action-executor';
 import { synchronizeAgreementResponseDeadlineSuspensions } from '../../domain/agreement';
 import { PLANNING_TICKS_PER_MONTH } from '../../domain/calendar';
-import {
-  ORDINARY_DECISION_PERSON_MONTHS,
-  ORDINARY_LOCAL_DELIBERATIONS_PER_PERSON_MONTH,
-} from '../../domain/decision-budget';
+import { ORDINARY_DECISION_PERSON_MONTHS } from '../../domain/decision-budget';
 import {
   chooseDependentCareReflex,
   dependentCareUrgency,
@@ -299,10 +296,10 @@ function grantTerminalReplanPermit(
     || rootAfterStep.returnToIntentId
     || person.activeIntentId
     || activeIntent(execution.prepared.state, person)) return;
-  const ordinaryCount = execution.ordinaryDeliberationCounts.get(person.id) ?? 0;
-  if (ordinaryCount < ORDINARY_LOCAL_DELIBERATIONS_PER_PERSON_MONTH) {
-    execution.ordinaryReplanPermits.add(person.id);
-  }
+  // A completed or parked episode frees the next physical activity slot.
+  // The month's finite activity slots bound work; finishing two short tasks
+  // must not prevent someone from using the rest of the month.
+  execution.ordinaryReplanPermits.add(person.id);
 }
 
 function executeIntentStep(
@@ -359,7 +356,7 @@ function executeActorControl(
       const ordinaryCount = execution.ordinaryDeliberationCounts.get(person.id) ?? 0;
       execution.ordinaryDeliberationCounts.set(
         person.id,
-        Math.min(ORDINARY_LOCAL_DELIBERATIONS_PER_PERSON_MONTH, ordinaryCount + 1),
+        ordinaryCount + 1,
       );
       execution.ordinaryReplanPermits.delete(person.id);
     }

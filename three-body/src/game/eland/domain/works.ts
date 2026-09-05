@@ -1,7 +1,9 @@
 import type { MaterialId } from './material';
 import { materialDefinition, materialHas } from './material';
 import type { PersonId } from './person';
-import { cellId, neighbors4, setVoxel, voxelAt, type VoxelWorld } from '../world/grid';
+import type { EnvironmentFact } from './model';
+import { workOccupiedVoxels, type WorkLayout } from './work-layout';
+import { cellId, setVoxel, voxelAt, type VoxelWorld } from '../world/grid';
 import { seededFraction } from '../world/generator';
 
 /**
@@ -36,7 +38,7 @@ export interface WorkComponent {
 }
 
 export interface WorkProfile {
-  /** 遮蔽贡献：防风防雨能力（0..100）。 */
+  /** 材料的遮蔽潜力（0..100）；实际庇护取决于占用体素形成的几何。 */
   cover: number;
   /** 抗形变能力（0..100）。 */
   rigidity: number;
@@ -78,6 +80,8 @@ export interface WorkState {
   profile: WorkProfile;
   /** 锚点体素的材料（实体的物理身体，渲染与体素判定共用）。 */
   anchorMaterialId: MaterialId;
+  /** Committed material occupancy; absence means only the single anchor voxel. */
+  layout?: WorkLayout;
   summary: string;
   builderIds: PersonId[];
   createdAtMonth: number;
@@ -88,17 +92,10 @@ export interface WorkState {
 }
 
 export const WORK_COLLAPSE_CONDITION = 25;
-export const WORK_SHELTER_COVER_THRESHOLD = 55;
-const MAX_WORKS = 128;
 const MAX_WORK_SOURCE_EVENTS = 16;
-const MAX_WORK_COMPONENTS = 12;
 const MAX_WORK_USE_RECEIPTS = 96;
 const MAX_WORK_USE_WITNESSES = 24;
 const MAX_WORK_EVIDENCE_PATHS = 8;
-
-export function workIdAt(position: { x: number; y: number; z: number }): string {
-  return `work:${position.x}:${position.y}:${position.z}`;
-}
 
 export function workById(
   world: { works?: WorkState[] },
@@ -111,7 +108,8 @@ export function workAt(
   world: { works?: WorkState[] },
   position: { x: number; y: number; z: number },
 ): WorkState | undefined {
-  return workById(world, workIdAt(position));
+  return world.works?.find((work) => workOccupiedVoxels(work).some((voxel) => voxel.position.x === position.x
+    && voxel.position.y === position.y && voxel.position.z === position.z));
 }
 
 export function workCell(work: WorkState): number {
@@ -157,115 +155,21 @@ function meaningfulEvidence(value: unknown): boolean {
   return true;
 }
 
-function valueAtEvidencePath(event: ReplayableWorkUseAction, path: string): unknown {
-  const segments = path.split('.').filter(Boolean);
-  if (!segments.length || !['action', 'diff', 'pathSegment', 'toCellId'].includes(segments[0])) return undefined;
-  let value: unknown = event;
-  for (const segment of segments) {
-    if (!value || typeof value !== 'object' || !(segment in value)) return undefined;
-    value = (value as Record<string, unknown>)[segment];
+export function physicalActionUseEvidencePaths(event: ReplayableWorkUseAction): string[] {
+  const action = event.action as { kind?: string } | undefined;
+  if (action?.kind === 'world-interact') {
+    return (Array.isArray(event.diff.appliedEffects) ? event.diff.appliedEffects : []).flatMap((value, index) => {
+      if (!value || typeof value !== 'object') return [];
+      const effect = value as { kind?: string; delta?: number };
+      const physical = ['produce', 'relocate', 'replace-voxel'].includes(effect.kind ?? '')
+        || (effect.kind === 'body' && typeof effect.delta === 'number' && effect.delta !== 0);
+      return physical ? [`diff.appliedEffects.${index}`] : [];
+    });
   }
-  return value;
-}
-
-function actionTargetPositions(action: unknown): Array<{ x: number; y: number; z: number }> {
-  if (!action || typeof action !== 'object') return [];
-  const record = action as Record<string, unknown>;
-  const directTargets = Array.isArray(record.targets) ? record.targets : [];
-  const adjudication = record.adjudication && typeof record.adjudication === 'object'
-    ? record.adjudication as Record<string, unknown>
-    : undefined;
-  const adjudicatedTargets = Array.isArray(adjudication?.targets) ? adjudication.targets : [];
-  return [...directTargets, ...adjudicatedTargets].flatMap((target) => {
-    if (!target || typeof target !== 'object') return [];
-    const candidate = target as { kind?: unknown; position?: { x?: unknown; y?: unknown; z?: unknown } };
-    if (candidate.kind !== 'voxel'
-      || ![candidate.position?.x, candidate.position?.y, candidate.position?.z]
-        .every((value) => Number.isInteger(Number(value)))) return [];
-    return [{
-      x: Number(candidate.position?.x),
-      y: Number(candidate.position?.y),
-      z: Number(candidate.position?.z),
-    }];
-  });
-}
-
-function eventExplicitlyReferencesWork(value: unknown, workId: string, depth = 0): boolean {
-  if (!value || typeof value !== 'object' || depth > 4) return false;
-  if (Array.isArray(value)) return value.some((entry) => eventExplicitlyReferencesWork(entry, workId, depth + 1));
-  const record = value as Record<string, unknown>;
-  if (record.workId === workId) return true;
-  return Object.values(record).some((entry) => eventExplicitlyReferencesWork(entry, workId, depth + 1));
-}
-
-function eventWitnessIds(event: ReplayableWorkUseAction): Set<PersonId> {
-  const result = new Set<PersonId>();
-  const collect = (value: unknown, parentKey = '', depth = 0): void => {
-    if (!value || typeof value !== 'object' || depth > 4) return;
-    if (Array.isArray(value)) {
-      if (/(?:witness|observer|perceived|interpreter).*ids?$/iu.test(parentKey)) {
-        value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
-          .forEach((entry) => result.add(entry));
-      } else value.forEach((entry) => collect(entry, parentKey, depth + 1));
-      return;
-    }
-    Object.entries(value).forEach(([key, entry]) => collect(entry, key, depth + 1));
-  };
-  collect(event.diff);
-  return result;
-}
-
-function eventOccurredAtWork(event: ReplayableWorkUseAction, work: WorkState): boolean {
-  if (eventExplicitlyReferencesWork(event.diff, work.id)) return true;
-  if (actionTargetPositions(event.action).some((position) => (
-    position.x === work.position.x
-      && position.y === work.position.y
-      && Math.abs(position.z - work.position.z) <= 1
-  ))) return true;
-  const nearbyCells = new Set([workCell(work), ...neighbors4(workCell(work))]);
-  return nearbyCells.has(event.cellId)
-    || nearbyCells.has(event.toCellId)
-    || event.pathSegment.some((candidate) => nearbyCells.has(candidate));
-}
-
-function eventDirectlyTargetsWork(event: ReplayableWorkUseAction, work: WorkState): boolean {
-  return eventExplicitlyReferencesWork(event.diff, work.id)
-    || actionTargetPositions(event.action).some((position) => (
-      position.x === work.position.x
-        && position.y === work.position.y
-        && Math.abs(position.z - work.position.z) <= 1
-    ));
-}
-
-function eventWorkFunctionKey(event: ReplayableWorkUseAction): string {
-  const action = event.action && typeof event.action === 'object'
-    ? event.action as Record<string, unknown>
-    : {};
-  const kind = typeof action.kind === 'string' ? action.kind : 'interaction';
-  if (kind === 'act' && typeof action.operation === 'string') return `act:${action.operation}`;
-  if (kind === 'talk') {
-    const meaning = action.speakerMeaning && typeof action.speakerMeaning === 'object'
-      ? action.speakerMeaning as Record<string, unknown>
-      : {};
-    return `talk:${typeof meaning.kind === 'string' ? meaning.kind : 'interaction'}`;
-  }
-  const effects = Array.isArray(event.diff.appliedEffects)
-    ? event.diff.appliedEffects.flatMap((effect) => (
-      effect && typeof effect === 'object' && typeof (effect as { kind?: unknown }).kind === 'string'
-        ? [String((effect as { kind: string }).kind)]
-        : []
-    ))
-    : [];
-  return effects.length ? `${kind}:${[...new Set(effects)].sort().join('+')}` : kind;
-}
-
-function eventEvidencePaths(event: ReplayableWorkUseAction): string[] {
-  if (event.pathSegment.length > 1) return ['pathSegment'];
-  return Object.entries(event.diff)
-    .filter(([key, value]) => !['worldAdjudicated', 'request', 'planFeedback'].includes(key)
-      && meaningfulEvidence(value))
-    .map(([key]) => `diff.${key}`)
-    .slice(0, MAX_WORK_EVIDENCE_PATHS);
+  if (action?.kind !== 'act' && action?.kind !== 'transfer') return [];
+  return ['outputStackId', 'outputDropId', 'outputMaterialId', 'quantity', 'healthDelta', 'hydrationDelta', 'nutritionDelta', 'electricalPowerDelivered', 'mechanicalPowerOperation']
+    .filter((key) => meaningfulEvidence(event.diff[key]) && event.diff[key] !== false && event.diff[key] !== 0)
+    .map((key) => `diff.${key}`);
 }
 
 /**
@@ -320,33 +224,27 @@ export function recordWorkUse(
   return receipt;
 }
 
-/**
- * 执行器的单点接线：一个 completed ActionFact 提交后调用一次即可。
- * 只有显式指向造物锚点/身份的行为会写回执，仅从旁路过不会被误认为使用。
- */
-export function recordWorkUsesFromCompletedAction(
+function shelterUseEvidence(event: EnvironmentFact): { workIds: string[] } | undefined {
+  const use = event.diff.shelterUse as Record<string, unknown> | undefined;
+  if (event.change !== 'body' || !event.who || !use || !Array.isArray(use.workIds)) return undefined;
+  const reduced = (typeof use.coldLoadWithoutShelter === 'number' && typeof use.coldLoad === 'number'
+      && use.coldLoadWithoutShelter > use.coldLoad)
+    || (typeof use.heatLoadWithoutShelter === 'number' && typeof use.heatLoad === 'number'
+      && use.heatLoadWithoutShelter > use.heatLoad);
+  return reduced ? { workIds: use.workIds.filter((id): id is string => typeof id === 'string') } : undefined;
+}
+
+/** Physical exposure settlement supplies the receipt, independently of anyone's claim. */
+export function recordWorkShelterUse(
   world: { works?: WorkState[] },
-  event: ReplayableWorkUseAction,
+  event: EnvironmentFact,
 ): WorkUseReceipt[] {
-  if (event.status !== 'completed') return [];
-  const evidencePaths = eventEvidencePaths(event);
-  if (!evidencePaths.length) return [];
-  return (world.works ?? []).flatMap((work) => {
-    if (work.condition <= WORK_COLLAPSE_CONDITION
-      || work.sourceEventIds.includes(event.id)
-      || !eventDirectlyTargetsWork(event, work)) return [];
-    const witnessIds = [...eventWitnessIds(event)].filter((personId) => personId !== event.who);
-    return [recordWorkUse(world, {
-      workId: work.id,
-      kind: witnessIds.length ? 'demonstration' : 'use',
-      functionKey: eventWorkFunctionKey(event),
-      actorId: event.who,
-      witnessIds,
-      atMonth: event.atMonth,
-      sourceEventId: event.id,
-      evidencePaths,
-    })];
-  });
+  const use = shelterUseEvidence(event);
+  if (!use || !event.who) return [];
+  return use.workIds.flatMap((workId) => workById(world, workId) ? [recordWorkUse(world, {
+    workId, kind: 'use', functionKey: 'thermal-protection', actorId: event.who!,
+    atMonth: event.atMonth, sourceEventId: event.id, evidencePaths: ['diff.shelterUse'],
+  })] : []);
 }
 
 /**
@@ -355,7 +253,7 @@ export function recordWorkUsesFromCompletedAction(
  */
 export function observeWorkAdoption(
   work: WorkState,
-  events: readonly ReplayableWorkUseAction[],
+  events: readonly (ReplayableWorkUseAction | EnvironmentFact)[],
   atMonth: number,
 ): WorkAdoptionObservation {
   const byId = new Map(events.map((event) => [event.id, event]));
@@ -364,17 +262,18 @@ export function observeWorkAdoption(
     if (receipt.version !== WORK_USE_RECEIPT_VERSION
       || receipt.workId !== work.id
       || !event
-      || event.status !== 'completed'
       || event.who !== receipt.actorId
       || event.atMonth !== receipt.atMonth
-      || event.atMonth < work.createdAtMonth
-      || work.sourceEventIds.includes(event.id)
-      || !eventOccurredAtWork(event, work)
-      || !receipt.evidencePaths.every((path) => meaningfulEvidence(valueAtEvidencePath(event, path)))) return [];
-    if (receipt.kind !== 'demonstration') return [{ ...receipt, witnessIds: [] }];
-    const witnessedInEvent = eventWitnessIds(event);
-    const witnessIds = receipt.witnessIds.filter((personId) => witnessedInEvent.has(personId));
-    return witnessIds.length ? [{ ...receipt, witnessIds }] : [];
+      || event.atMonth < work.createdAtMonth) return [];
+    if (event.kind === 'environment') {
+      const use = shelterUseEvidence(event);
+      return use?.workIds.includes(work.id) && receipt.functionKey === 'thermal-protection'
+        && receipt.evidencePaths.includes('diff.shelterUse') ? [{ ...receipt, witnessIds: [] }] : [];
+    }
+    // Existing ActionFact receipts from earlier versions used co-occurrence,
+    // references or proximity as evidence. They do not prove causal use and
+    // must not survive replay merely because the cached receipt still exists.
+    return [];
   });
   const months = receipts.map((receipt) => receipt.atMonth).sort((left, right) => left - right);
   return {
@@ -447,12 +346,11 @@ function mergeComponents(
 ): WorkComponent[] {
   const merged = new Map<MaterialId, number>();
   for (const component of [...left, ...right]) {
-    merged.set(component.materialId, Math.min(24, (merged.get(component.materialId) ?? 0) + component.quantity));
+    merged.set(component.materialId, (merged.get(component.materialId) ?? 0) + component.quantity);
   }
   return [...merged]
     .map(([materialId, quantity]) => ({ materialId, quantity }))
-    .sort((a, b) => a.materialId - b.materialId)
-    .slice(0, MAX_WORK_COMPONENTS);
+    .sort((a, b) => a.materialId - b.materialId);
 }
 
 /** 锚点体素材料：数量×硬度最高的组件，即实体"看起来主要是什么"。 */
@@ -476,18 +374,21 @@ export function createWork(
     builderId: PersonId;
     atMonth: number;
     sourceEventId: string;
+    layout?: WorkLayout;
   },
 ): WorkState {
   const components = mergeComponents([], input.components);
   return {
     version: WORK_SCHEMA_VERSION,
-    id: workIdAt(input.position),
+    id: `work:${input.sourceEventId}`,
     position: { ...input.position },
     arrangement: input.arrangement,
     components,
     condition: 100,
     profile: deriveWorkProfile(input.arrangement, components),
-    anchorMaterialId: dominantWorkMaterial(components) ?? components[0]?.materialId ?? 0,
+    anchorMaterialId: input.layout?.voxels.find((voxel) => voxel.offset.x === 0 && voxel.offset.y === 0 && voxel.offset.z === 0)?.materialId
+      ?? dominantWorkMaterial(components) ?? components[0]?.materialId ?? 0,
+    ...(input.layout ? { layout: structuredClone(input.layout) } : {}),
     summary: input.summary.slice(0, 120),
     builderIds: [input.builderId],
     createdAtMonth: input.atMonth,
@@ -506,6 +407,7 @@ export function modifyWork(
     builderId: PersonId;
     atMonth: number;
     sourceEventId: string;
+    layout?: WorkLayout;
   },
 ): WorkState {
   const components = mergeComponents(work.components, input.components);
@@ -516,11 +418,13 @@ export function modifyWork(
     components,
     condition: Math.min(100, work.condition + 8),
     profile: deriveWorkProfile(arrangement, components),
-    anchorMaterialId: dominantWorkMaterial(components) ?? work.anchorMaterialId,
+    anchorMaterialId: (input.layout ?? work.layout)?.voxels.find((voxel) => voxel.offset.x === 0 && voxel.offset.y === 0 && voxel.offset.z === 0)?.materialId
+      ?? work.anchorMaterialId,
+    ...(input.layout ? { layout: structuredClone(input.layout) } : {}),
     summary: input.summary?.slice(0, 120) ?? work.summary,
     builderIds: work.builderIds.includes(input.builderId)
       ? work.builderIds
-      : [...work.builderIds, input.builderId].slice(-6),
+      : [...work.builderIds, input.builderId],
     lastTouchedAtMonth: input.atMonth,
     sourceEventIds: [...work.sourceEventIds, input.sourceEventId].slice(-MAX_WORK_SOURCE_EVENTS),
   };
@@ -528,33 +432,12 @@ export function modifyWork(
 
 export function registerWork(world: { works?: WorkState[] }, work: WorkState): void {
   world.works ??= [];
-  world.works = world.works.filter((existing) => existing.id !== work.id);
+  world.works = world.works.filter((existing) => existing.id !== work.id
+    && (existing.position.x !== work.position.x || existing.position.y !== work.position.y
+      || existing.position.z !== work.position.z));
   world.works.push(work);
-  if (world.works.length > MAX_WORKS) {
-    world.works = world.works
-      .sort((a, b) => b.lastTouchedAtMonth - a.lastTouchedAtMonth || b.condition - a.condition)
-      .slice(0, MAX_WORKS);
-  }
-}
-
-/**
- * Works 提供的遮蔽：同一格或邻格、高差不超过 1、状态尚可的实体，
- * 取 cover 最高者。避在棚架旁边与躲进棚架下在 v1 一视同仁。
- */
-export function workShelterCoverAt(
-  world: { grid: VoxelWorld; works?: WorkState[] },
-  position: { cellId: number; z: number },
-): number {
-  if (!world.works?.length) return 0;
-  const cells = [position.cellId, ...neighbors4(position.cellId)];
-  let best = 0;
-  for (const work of world.works) {
-    if (work.condition < WORK_COLLAPSE_CONDITION) continue;
-    if (!cells.includes(workCell(work))) continue;
-    if (Math.abs(work.position.z - position.z) > 1) continue;
-    best = Math.max(best, work.profile.cover);
-  }
-  return best;
+  // Living physical entities are world state, not an LRU cache. Only actual
+  // dismantling or collapse may remove a work or its invested components.
 }
 
 /**
@@ -598,7 +481,8 @@ export function advanceWorksMonth(
     }
     const decayRate = (organic * (wet ? 1.6 : 0.7) + mineral * 0.15) / Math.max(1, organic + mineral);
     const jitter = seededFraction(input.seed, `work-decay:${input.atMonth}:${work.id}`) * 0.6;
-    const condition = Math.max(0, work.condition - decayRate * (2.2 + jitter));
+    const intact = voxelAt(world.grid, work.position.x, work.position.y, work.position.z) === work.anchorMaterialId;
+    const condition = intact ? Math.max(0, work.condition - decayRate * (2.2 + jitter)) : 0;
     if (condition <= WORK_COLLAPSE_CONDITION) {
       collapsed.push({ ...work, condition });
       for (const component of work.components) {
@@ -615,8 +499,10 @@ export function advanceWorksMonth(
         });
       }
       // 锚点体素随塌落消失，归还为空位，不产生新物质。
-      if (voxelAt(world.grid, work.position.x, work.position.y, work.position.z) === work.anchorMaterialId) {
-        setVoxel(world.grid, work.position.x, work.position.y, work.position.z, 0);
+      for (const voxel of workOccupiedVoxels(work)) {
+        if (voxelAt(world.grid, voxel.position.x, voxel.position.y, voxel.position.z) === voxel.materialId) {
+          setVoxel(world.grid, voxel.position.x, voxel.position.y, voxel.position.z, 0);
+        }
       }
       continue;
     }

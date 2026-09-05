@@ -1,26 +1,27 @@
 import {
   type DecisionRequestContext,
-} from '../src/game/eland/application/model-decision/decision-context';
-import {
   buildDecisionProbeHandleMap,
   type DecisionProbeHandleMap,
-} from '../src/game/eland/application/model-decision/capability-handles';
-import {
   buildMindIntentionRequestContext,
   buildMentalActRequestContext,
   type MindIntentionDraft,
   type MindIntentionOrientation,
   type MindIntentionRequestContext,
   type MentalActRequestContext,
-} from '../src/game/eland/application/model-decision/mental-act-context';
+  compileModelPlanCompletion,
+  sanitizeBoundPlanCompletion,
+  compileMindSpeechIntent,
+  describeMindSpeechIntent,
+  speechIntentAllowsOption,
+} from '../src/game/eland/infrastructure-api';
 import { validateActionOptionSemantics } from '../src/game/eland/domain/action-option-semantics';
-import { Material, MATERIAL_PALETTE, materialHas } from '../src/game/eland/domain/material';
+import { MATERIAL_PALETTE } from '../src/game/eland/domain/material';
 import type {
   WorldAdjudicatedInteraction,
   WorldInteractionEffect,
   WorldRef,
 } from '../src/game/eland/domain/action';
-import { spokenTextSupportsMeaning } from '../src/game/eland/domain/spoken-meaning';
+import type { WorkLayout } from '../src/game/eland/domain/work-layout';
 import type {
   CharacterAgendaProbe,
   CharacterAgendaProposal,
@@ -66,8 +67,8 @@ function decisionTimeout(endpoint: ResolvedModelEndpoint): number {
 }
 
 function decisionMaxOutputTokens(): number {
-  const configured = Number(loadServerEnvValue('MODEL_DECISION_MAX_OUTPUT_TOKENS') || 600);
-  return Number.isFinite(configured) ? Math.max(128, Math.min(2_000, Math.floor(configured))) : 600;
+  const configured = Number(loadServerEnvValue('MODEL_DECISION_MAX_OUTPUT_TOKENS') || 1_200);
+  return Number.isFinite(configured) ? Math.max(128, Math.min(2_400, Math.floor(configured))) : 1_200;
 }
 
 function decisionPhaseTemperature(phase: 'mind' | 'plan'): number {
@@ -136,6 +137,7 @@ export function buildDecisionModelRequestProtocol(
 }
 
 interface MindIntentionOutput extends MindIntentionDraft {
+  speechIntent: NonNullable<MentalAct['speechIntent']>;
   orientation: MindIntentionOrientation;
   horizon: 'momentary' | 'ongoing';
   evidenceMemoryHandles: string[];
@@ -144,6 +146,7 @@ interface MindIntentionOutput extends MindIntentionDraft {
 
 interface ModelPlanOutput {
   steps: string[];
+  completion?: NonNullable<MentalAct['plan']>['completion'];
   disposition?: 'act' | 'continue' | 'pause' | 'abandon' | 'stay';
   firstStepHandle?: string;
   continuationHandle?: string;
@@ -153,12 +156,14 @@ interface ModelPlanOutput {
   experiment?: Record<string, unknown>;
   worldAction?: ModelWorldAction;
   feedback?: ModelPlanFeedback;
+  freeExpression?: boolean;
 }
 
 interface ModelWorldAction {
   description: string;
   targetHandles: string[];
   expectedResult?: string;
+  methodHandle?: string;
 }
 
 interface ModelPlanFeedback {
@@ -221,11 +226,8 @@ function agentPlanRequestContext(
 ): Record<string, unknown> {
   const context = agentTurnRequestContext(protocol);
   const availableSteps = protocol.requestContext.availableSteps.map((step) => ({
-    handle: step.handle,
+    ...step,
     action: readableAgentAction(step),
-    priority: step.priority,
-    purpose: step.purpose,
-    target: record(step.target)?.name,
   }));
   return {
     schemaVersion: 'agent-plan-context-v1',
@@ -235,13 +237,19 @@ function agentPlanRequestContext(
       goal: intention.goal,
       orientation: intention.orientation,
       horizon: intention.horizon,
+      speechIntent: describeMindSpeechIntent(intention.speechIntent, protocol.handles),
     },
+    person: context.person,
+    situation: context.situation,
     mind: context.mind,
     current: context.current,
     recentDialogue: context.recentDialogue,
     visible: context.visible,
     availableSteps,
+    continuations: protocol.requestContext.continuations,
     actionSpace: context.actionSpace,
+    knownMethods: protocol.requestContext.knownMethods ?? [],
+    speechReferences: protocol.requestContext.speechReferences ?? [],
     ...planAgentWorldContext(),
   };
 }
@@ -264,8 +272,13 @@ function record(value: unknown): Record<string, unknown> | null {
 function sanitizeMindIntention(
   input: unknown,
   handles: DecisionProbeHandleMap,
+  onInvalid?: (problem: string) => void,
 ): MindIntentionOutput | undefined {
   const raw = record(input);
+  if (!raw) {
+    onInvalid?.('Mind 必须返回一个 JSON 对象，包含 utterance、goal、delivery、orientation、horizon');
+    return undefined;
+  }
   const utterance = boundedUtterance(raw?.utterance);
   const goal = text(raw?.goal, 240);
   const delivery = raw?.delivery === 'whisper' || raw?.delivery === 'normal' || raw?.delivery === 'call'
@@ -283,20 +296,33 @@ function sanitizeMindIntention(
   const horizon = raw?.horizon === 'momentary' || raw?.horizon === 'ongoing'
     ? raw.horizon
     : undefined;
-  if (!raw || !utterance || !goal || !delivery || !orientation || !horizon) return undefined;
+  const problems = [
+    ...(!utterance ? [`utterance 需要 1–180 字的完整原话，当前长度 ${typeof raw.utterance === 'string' ? raw.utterance.trim().length : 0}`] : []),
+    ...(!goal ? ['goal 缺少人物此刻的具体意图'] : []),
+    ...(!delivery ? ['delivery 必须是 whisper、normal 或 call'] : []),
+    ...(!orientation ? ['orientation 必须是 social、inquiry、survival、construction、acquisition、exploration 或 rest'] : []),
+    ...(!horizon ? ['horizon 必须是 momentary 或 ongoing'] : []),
+  ];
+  if (!utterance || !goal || !delivery || !orientation || !horizon) {
+    onInvalid?.(problems.join('；'));
+    return undefined;
+  }
   const evidenceMemoryHandles = Array.isArray(raw.evidenceMemoryHandles)
     ? [...new Set(raw.evidenceMemoryHandles.map((value) => text(value, 24)).filter(Boolean))]
       .filter((handle) => handles.memories.some((memory) => memory.handle === handle))
       .slice(0, 4)
     : [];
   const relationshipAppraisal = sanitizeMindRelationshipAppraisal(raw.relationshipAppraisal, handles);
-  if (raw.relationshipAppraisal !== undefined && raw.relationshipAppraisal !== null && !relationshipAppraisal) {
-    return undefined;
-  }
+  const rawSpeech = record(raw.speechIntent);
+  const speechIntent = compileMindSpeechIntent(rawSpeech, handles,
+    Boolean(rawSpeech?.referenceId || Array.isArray(rawSpeech?.counterpartIds)));
+  // An optional, ungrounded appraisal is omitted. It must neither create a
+  // false relationship nor erase the person's independently valid intention.
   return {
     utterance,
     delivery,
     goal,
+    speechIntent,
     orientation,
     horizon,
     evidenceMemoryHandles,
@@ -404,10 +430,12 @@ function sanitizeMentalPlanTranslation(
   const worldActionRaw = record(raw.worldAction);
   const description = text(worldActionRaw?.description, 240);
   const expectedResult = text(worldActionRaw?.expectedResult, 180);
+  const completion = sanitizeBoundPlanCompletion(raw.completion);
   return {
     version: 'mental-plan-translation-v1',
     steps,
     disposition,
+    ...(completion ? { completion } : {}),
     ...(firstStepHandle ? { firstStepHandle } : {}),
     ...(continuationHandle ? { continuationHandle } : {}),
     ...(resumeIntentHandle ? { resumeIntentHandle } : {}),
@@ -420,16 +448,6 @@ function sanitizeMentalPlanTranslation(
     } : {}),
   };
 }
-
-const PURPOSES_BY_ORIENTATION: Record<MindIntentionOrientation, ReadonlySet<string>> = {
-  social: new Set(['conversation', 'social-coordination', 'care', 'conflict', 'reproduction']),
-  inquiry: new Set(['inquiry', 'conversation', 'movement']),
-  survival: new Set(['homeostasis', 'safety', 'care', 'conflict', 'resource', 'project', 'spatial-comfort', 'movement', 'conversation']),
-  construction: new Set(['project', 'production', 'resource', 'movement', 'conversation']),
-  acquisition: new Set(['resource', 'movement', 'conversation']),
-  exploration: new Set(['movement', 'inquiry', 'resource']),
-  rest: new Set(),
-};
 
 function selectedOptionForPlan(
   context: DecisionRequestContext,
@@ -447,135 +465,6 @@ function selectedSuspendedIntentForHandle(
   const intentId = protocol.handles.suspendedIntents
     .find((candidate) => candidate.handle === handle)?.intentId;
   return intentId ? context.suspendedIntents.find((intent) => intent.id === intentId) : undefined;
-}
-
-function normalizedSemanticText(value: string): string {
-  return value.normalize('NFKC').toLowerCase()
-    .replace(/木头|木料/gu, '木材')
-    .replace(/藤蔓|绳索/gu, '纤维')
-    .replace(/石头|石块|石子/gu, '石')
-    .replace(/庇护所|窝头|小窝|顶棚|屋顶/gu, '住所')
-    .replace(/遮风挡雨|挡风|遮雨|挡雨/gu, '遮蔽')
-    .replace(/搭建|构建|建成|造出|盖成/gu, '建造')
-    .replace(/[\s，。；：、？！“”‘’"'（）()《》〈〉—…·,.!?:;-]/gu, '');
-}
-
-function semanticBigrams(value: string): Set<string> {
-  const characters = [...normalizedSemanticText(value)];
-  if (characters.length < 2) return new Set(characters);
-  return new Set(characters.slice(0, -1).map((character, index) => `${character}${characters[index + 1]}`));
-}
-
-function semanticOverlap(left: string, right: string): number {
-  const leftGrams = semanticBigrams(left);
-  const rightGrams = semanticBigrams(right);
-  if (!leftGrams.size || !rightGrams.size) return 0;
-  let shared = 0;
-  for (const gram of rightGrams) if (leftGrams.has(gram)) shared += 1;
-  return shared / Math.min(leftGrams.size, rightGrams.size);
-}
-
-function selectableObjectNames(protocol: DecisionModelRequestProtocol): string[] {
-  const visible = record(protocol.requestContext.visible);
-  const objects = [
-    ...protocol.requestContext.actionSpace.heldObjects,
-    ...((visible?.surfaces as Array<Record<string, unknown>> | undefined) ?? []),
-    ...((visible?.nearbyObjects as Array<Record<string, unknown>> | undefined) ?? []),
-  ];
-  return [...new Set(objects.map((item) => text(item.name, 80)).filter(Boolean))];
-}
-
-function physicalOptionSupportsIntention(
-  option: DecisionRequestContext['options'][number],
-  intention: MindIntentionOutput,
-  protocol: DecisionModelRequestProtocol,
-  selectedTargetName?: string,
-): boolean {
-  const intentionText = `${intention.goal}；${intention.utterance}`;
-  const optionText = option.summary;
-  if (/拆下|拆除|原位置会变空|取回/u.test(optionText)
-    && !/拆下|拆除|拆开|取回|移除|拿下|拔下|撤掉/u.test(intentionText)) return false;
-  if (option.executionProjectFunction === 'weather-shelter'
-    && !/住所|庇护|遮蔽|挡风|遮雨|挡雨|屋顶|顶棚|窝/u.test(intention.utterance)) return false;
-
-  const purpose = option.semantics.purpose;
-  if (purpose === 'resource') {
-    const requestsAcquisition = /找|寻找|取得|获取|拿到|捡|采集|收集|搬来|搬回|带回|缺少|还缺|需要.{0,8}(?:材料|资源|木材|纤维|石|食物|水)/u.test(intentionText);
-    const genericResource = /材料|资源|东西/u.test(intentionText);
-    const normalizedIntention = normalizedSemanticText(intentionText);
-    const normalizedOption = normalizedSemanticText(optionText);
-    const mentionedObjects = selectableObjectNames(protocol)
-      .filter((name) => normalizedIntention.includes(normalizedSemanticText(name)));
-    if (mentionedObjects.length) {
-      const selectedNames = mentionedObjects.filter((name) => normalizedOption.includes(normalizedSemanticText(name)));
-      if (!selectedNames.length) return false;
-      const treatsNamedMaterialAsAlreadyHeld = /手里|手中|现有|已有|拿着|持有/u.test(intentionText);
-      return !treatsNamedMaterialAsAlreadyHeld || requestsAcquisition;
-    }
-    return requestsAcquisition || genericResource || semanticOverlap(intentionText, optionText) >= 0.08;
-  }
-  if (purpose === 'movement') {
-    return /走|前往|过去|回到|离开|靠近|漫游|探索|寻找同伴|换个地方/u.test(intentionText);
-  }
-  if (purpose === 'inquiry') {
-    if (!/看|观察|确认|验证|弄清|比较|检查|试|能不能|是否|怎样|为什么/u.test(intentionText)) return false;
-    if (!selectedTargetName) return true;
-    const normalizedIntention = normalizedSemanticText(intentionText);
-    const normalizedTarget = normalizedSemanticText(selectedTargetName);
-    const mentionedObjects = selectableObjectNames(protocol)
-      .filter((name) => normalizedIntention.includes(normalizedSemanticText(name)));
-    if (mentionedObjects.length) {
-      return mentionedObjects.some((name) => normalizedSemanticText(name) === normalizedTarget);
-    }
-    return normalizedIntention.includes(normalizedTarget)
-      || /周围|环境|陌生|某个|任何|眼前有什么|观察四周|看看四周/u.test(intentionText);
-  }
-  if (purpose === 'project') {
-    return /建造|搭|盖|修|完成|推进|安装|围|铺|夯|架|庇护|住所|项目/u.test(normalizedSemanticText(intentionText))
-      || semanticOverlap(intentionText, optionText) >= 0.08;
-  }
-  if (purpose === 'production') {
-    return /加工|制作|处理|组合|结合|编|烧|冶|炼|压|分离|制造/u.test(intentionText)
-      && semanticOverlap(intentionText, optionText) >= 0.06;
-  }
-  if (purpose === 'conversation' || purpose === 'social-coordination') {
-    return /说|问|告诉|交谈|聊|回应|商量|请求|提议|听|愿不愿|能否/u.test(intentionText);
-  }
-  if (purpose === 'conflict') {
-    return /攻击|打|伤害|施力|推|抢|强取|偷|盗|约束|捆|绑|制服|抵抗|冲突|复仇|威胁/u.test(intentionText);
-  }
-  return true;
-}
-
-function experimentSupportsIntention(
-  protocol: DecisionModelRequestProtocol,
-  intention: MindIntentionOutput,
-  experiment: Record<string, unknown>,
-): boolean {
-  const kind = text(experiment.kind, 24);
-  if (kind === 'move') return true;
-  const handles = [
-    experiment.targetHandle,
-    experiment.inputHandle,
-    experiment.toolHandle,
-    ...(Array.isArray(experiment.stackHandles) ? experiment.stackHandles : []),
-  ].map((value) => text(value, 24)).filter(Boolean);
-  const selectableObjects = [
-    ...protocol.requestContext.actionSpace.heldObjects,
-    ...((record(protocol.requestContext.visible)?.surfaces as Array<Record<string, unknown>> | undefined) ?? []),
-    ...((record(protocol.requestContext.visible)?.nearbyObjects as Array<Record<string, unknown>> | undefined) ?? []),
-  ];
-  const nameByHandle = new Map(selectableObjects.flatMap((item) => {
-    const handle = text(item.ref, 24);
-    const name = text(item.name, 80);
-    return handle && name ? [[handle, name] as const] : [];
-  }));
-  const allNames = [...new Set(nameByHandle.values())];
-  const intentionText = normalizedSemanticText(`${intention.goal}；${intention.utterance}`);
-  const mentionedNames = allNames.filter((name) => intentionText.includes(normalizedSemanticText(name)));
-  if (!mentionedNames.length) return true;
-  const selectedNames = handles.map((handle) => nameByHandle.get(handle)).filter((name): name is string => Boolean(name));
-  return mentionedNames.some((name) => selectedNames.includes(name));
 }
 
 function exposedWorldTargets(protocol: DecisionModelRequestProtocol): Array<Record<string, unknown> & { ref: string }> {
@@ -609,6 +498,7 @@ function worldRefForHandle(handles: DecisionProbeHandleMap, handle: unknown, act
   if (visible.kind === 'drop') return { kind: 'drop', dropId: visible.dropId };
   if (visible.kind === 'person') return { kind: 'person', personId: visible.personId };
   if (visible.kind === 'animal') return { kind: 'animal', animalId: visible.animalId };
+  if (visible.kind === 'work') return { kind: 'work', workId: visible.workId };
   return { kind: 'container', containerId: visible.containerId };
 }
 
@@ -616,6 +506,7 @@ function sanitizeWorldAction(input: unknown, protocol: DecisionModelRequestProto
   const raw = record(input);
   const description = text(raw?.description, 240);
   const expectedResult = text(raw?.expectedResult, 180);
+  const methodHandle = text(raw?.methodHandle, 32);
   if (!raw || !description || !Array.isArray(raw.targetHandles) || raw.targetHandles.length > 8) return undefined;
   const targetHandles = raw.targetHandles.map((value) => text(value, 24));
   if (targetHandles.some((handle) => !handle) || new Set(targetHandles).size !== targetHandles.length) return undefined;
@@ -625,6 +516,7 @@ function sanitizeWorldAction(input: unknown, protocol: DecisionModelRequestProto
     description,
     targetHandles,
     ...(expectedResult ? { expectedResult } : {}),
+    ...(methodHandle && protocol.requestContext.knownMethods?.some((method) => method.handle === methodHandle) ? { methodHandle } : {}),
   };
 }
 
@@ -646,97 +538,18 @@ function sanitizePlanFeedback(input: unknown, protocol: DecisionModelRequestProt
   };
 }
 
-function worldActionSupportsIntention(
-  protocol: DecisionModelRequestProtocol,
-  intention: MindIntentionOutput,
-  worldAction: ModelWorldAction,
-): boolean {
-  const rows = exposedWorldTargets(protocol);
-  const names = new Map(rows.flatMap((item) => {
-    const handle = text(item.ref, 24);
-    const name = text(item.name, 80);
-    return handle && name ? [[handle, name] as const] : [];
-  }));
-  const intentionText = normalizedSemanticText(`${intention.goal}；${intention.utterance}`);
-  const actionText = normalizedSemanticText(worldAction.description);
-  const matchedNames = [...new Set(names.values())]
-    .map((name) => ({ name, normalized: normalizedSemanticText(name) }))
-    .filter(({ normalized }) => normalized && actionText.includes(normalized));
-  // Prefer the most specific visible name. “锡矿石” contains the generic
-  // name “石”; mentioning the former must not look like an unselected second
-  // object merely because both names are present in the scene.
-  const actionNamedObjects = matchedNames
-    .filter((candidate) => !matchedNames.some((other) => (
-      other.normalized.length > candidate.normalized.length
-        && other.normalized.includes(candidate.normalized)
-    )))
-    .map((candidate) => candidate.name);
-  const selectedNames = worldAction.targetHandles
-    .map((handle) => names.get(handle))
-    .filter((name): name is string => Boolean(name));
-  if (actionNamedObjects.some((name) => !selectedNames.includes(name))) return false;
-  return actionNamedObjects.length > 0
-    || selectedNames.some((name) => intentionText.includes(normalizedSemanticText(name)))
-    || semanticOverlap(`${intention.goal}；${intention.utterance}`, worldAction.description) >= 0.06;
-}
-
-function planSupportsIntention(
-  context: DecisionRequestContext,
-  intention: MindIntentionOutput,
-  plan: ModelPlanOutput,
-  protocol: DecisionModelRequestProtocol,
-): boolean {
-  if (plan.disposition !== 'act') {
-    if (plan.disposition === 'abandon' && plan.abandonIntentHandle) {
-      const abandoned = selectedSuspendedIntentForHandle(context, plan.abandonIntentHandle, protocol);
-      return !plan.firstStepHandle && !plan.resumeIntentHandle && !plan.experiment && !plan.worldAction
-        && Boolean(abandoned)
-        && semanticOverlap(
-          `${intention.goal}；${intention.utterance}`,
-          `${abandoned?.summary ?? ''}；${abandoned?.plan?.steps.join('；') ?? ''}`,
-        ) >= 0.04;
-    }
-    return !plan.firstStepHandle && !plan.resumeIntentHandle && !plan.abandonIntentHandle
-      && !plan.experiment && !plan.worldAction;
-  }
-  if (plan.worldAction) return worldActionSupportsIntention(protocol, intention, plan.worldAction);
-  if (intention.orientation === 'rest') return false;
-  const suspendedIntent = selectedSuspendedIntentForHandle(context, plan.resumeIntentHandle, protocol);
-  if (suspendedIntent) {
-    return semanticOverlap(
-      `${intention.goal}；${intention.utterance}`,
-      `${suspendedIntent.summary}；${suspendedIntent.plan?.steps.join('；') ?? ''}`,
-    ) >= 0.04;
-  }
-  const option = selectedOptionForPlan(context, plan);
-  if (option) {
-    if (!PURPOSES_BY_ORIENTATION[intention.orientation].has(option.semantics.purpose)) return false;
-    const selectedStep = protocol.requestContext.availableSteps.find((step) => step.handle === plan.firstStepHandle);
-    const selectedTargetName = text(record(selectedStep?.target)?.name, 80);
-    return !option.communicationMeaning
-      ? physicalOptionSupportsIntention(option, intention, protocol, selectedTargetName)
-      : spokenTextSupportsMeaning(intention.utterance, option.communicationMeaning)
-        && physicalOptionSupportsIntention(option, intention, protocol, selectedTargetName);
-  }
-  const probeKind = text(plan.experiment?.kind, 24);
-  if (!probeKind) return false;
-  if (!experimentSupportsIntention(protocol, intention, plan.experiment!)) return false;
-  if (intention.orientation === 'inquiry') return true;
-  if (intention.orientation === 'construction') return ['observe', 'combine', 'expose', 'exert'].includes(probeKind);
-  if (intention.orientation === 'exploration') return probeKind === 'observe' || probeKind === 'move';
-  if (intention.orientation === 'survival') return probeKind === 'observe' || probeKind === 'move';
-  return false;
-}
-
 function sanitizeModelPlan(
   input: unknown,
   protocol: DecisionModelRequestProtocol,
+  context?: DecisionRequestContext,
   readableAction = false,
 ): ModelPlanOutput | undefined {
   const raw = record(input);
   if (!raw || !Array.isArray(raw.steps)) return undefined;
   const steps = raw.steps.map((value) => text(value, 240)).filter(Boolean);
   if (!steps.length || steps.length !== raw.steps.length) return undefined;
+  const completion = (context ? compileModelPlanCompletion(raw.completion, context, protocol.handles) : undefined)
+    ?? sanitizeBoundPlanCompletion(raw.completion);
   const knownSteps = new Set(protocol.requestContext.availableSteps.map((step) => step.handle));
   const knownContinuations = new Set(protocol.requestContext.continuations.map((step) => step.handle));
   const knownSuspendedIntents = new Set(protocol.handles.suspendedIntents.map((intent) => intent.handle));
@@ -753,6 +566,8 @@ function sanitizeModelPlan(
     : text(raw.firstStepHandle, 24);
   const requestedContinuationHandle = text(raw.continuationHandle, 24);
   const firstStepHandle = knownSteps.has(requestedStepHandle) ? requestedStepHandle : '';
+  const requestedExpression = firstStepHandle === 'expression';
+  const freeExpression = requestedExpression || raw.freeExpression === true;
   const continuationHandle = knownContinuations.has(requestedContinuationHandle)
     ? requestedContinuationHandle
     : '';
@@ -800,21 +615,24 @@ function sanitizeModelPlan(
   if (!disposition) return undefined;
   // A free-form worldAction is the Plan's most specific output. It is still
   // only a request here; the independent resolver authors the result later.
-  const effectiveFirstStepHandle = adjudicatedWorldAction ? '' : firstStepHandle;
+  const effectiveFirstStepHandle = adjudicatedWorldAction || requestedExpression ? '' : firstStepHandle;
   const effectiveExperiment = adjudicatedWorldAction ? undefined : validExperiment;
   const actionCount = Number(Boolean(effectiveFirstStepHandle))
     + Number(Boolean(resumeIntentHandle))
     + Number(Boolean(effectiveExperiment))
     + Number(Boolean(adjudicatedWorldAction));
-  const hasAction = actionCount === 1;
-  if (actionCount > 1) return undefined;
+  const effectiveActionCount = actionCount + Number(requestedExpression);
+  const hasAction = effectiveActionCount === 1;
+  if (effectiveActionCount > 1) return undefined;
   if (resumeIntentHandle && continuationHandle) return undefined;
   if (abandonIntentHandle && (hasAction || continuationHandle || disposition !== 'abandon')) return undefined;
   if (disposition === 'act' && !hasAction) return undefined;
   if (disposition && disposition !== 'act' && hasAction) return undefined;
   return {
     steps,
-    ...(disposition ? { disposition } : {}),
+    ...(completion ? { completion } : {}),
+    ...(disposition ? { disposition: requestedExpression ? 'stay' as const : disposition } : {}),
+    ...(freeExpression ? { freeExpression: true } : {}),
     ...(effectiveFirstStepHandle ? { firstStepHandle: effectiveFirstStepHandle } : {}),
     ...(continuationHandle ? { continuationHandle } : {}),
     ...(resumeIntentHandle ? { resumeIntentHandle } : {}),
@@ -842,7 +660,7 @@ function stagedDecisionOutput(
   const abandonedIntent = plan?.abandonIntentHandle
     ? selectedSuspendedIntentForHandle(context, plan.abandonIntentHandle, protocol)
     : undefined;
-  const kind = resumedIntent || plan?.disposition === 'continue'
+  const kind = plan?.freeExpression ? 'pursue' : resumedIntent || plan?.disposition === 'continue'
     ? 'continue'
     : plan?.disposition === 'pause' || plan?.disposition === 'abandon'
       ? 'reconsider'
@@ -853,7 +671,7 @@ function stagedDecisionOutput(
     : plan?.experiment || plan?.worldAction
       ? 'investigate'
       : 'pursue';
-  const strategy = selectedStep
+  const strategy = plan?.freeExpression ? intention.utterance : selectedStep
     ? readableAgentAction(selectedStep)
     : resumedIntent
       ? `恢复此前搁置的事务：${resumedIntent.summary}`
@@ -883,6 +701,7 @@ function stagedDecisionOutput(
     kind,
     utterance: intention.utterance,
     delivery: intention.delivery,
+    speechIntent: intention.speechIntent,
     goal: intention.goal,
     orientation: intention.orientation,
     horizon: intention.horizon,
@@ -892,6 +711,7 @@ function stagedDecisionOutput(
       plan: {
         version: 'mental-plan-translation-v1',
         steps: [...plan.steps],
+        ...(plan.completion ? { completion: structuredClone(plan.completion) } : {}),
         disposition: plan.disposition ?? 'stay',
         ...(plan.firstStepHandle ? { firstStepHandle: plan.firstStepHandle } : {}),
         ...(plan.continuationHandle ? { continuationHandle: plan.continuationHandle } : {}),
@@ -963,6 +783,7 @@ function observationProbe(
   if (visible.kind === 'drop') return { kind: 'observe', target: { kind: 'drop', dropId: visible.dropId } };
   if (visible.kind === 'person') return { kind: 'observe', target: { kind: 'person', personId: visible.personId } };
   if (visible.kind === 'animal') return { kind: 'observe', target: { kind: 'animal', animalId: visible.animalId } };
+  if (visible.kind === 'work') return { kind: 'observe', target: { kind: 'work', workId: visible.workId } };
   return { kind: 'observe', target: { kind: 'container', containerId: visible.containerId } };
 }
 
@@ -1118,9 +939,8 @@ function sanitizeMentalAct(
   const expectedObservation = text(raw.expectedObservation, 240);
   const plan = sanitizeMentalPlanTranslation(raw.plan, handles);
   const relationshipAppraisal = sanitizeStagedRelationshipAppraisal(raw.relationshipAppraisal, handles);
-  if (raw.relationshipAppraisal !== undefined && raw.relationshipAppraisal !== null && !relationshipAppraisal) {
-    return undefined;
-  }
+  const rawSpeechIntent = record(raw.speechIntent);
+  const speechIntent = compileMindSpeechIntent(raw.speechIntent, handles, Boolean(rawSpeechIntent?.referenceId || Array.isArray(rawSpeechIntent?.counterpartIds)));
   const planFeedbackRaw = record(raw.planFeedback);
   const planFeedbackCorrection = text(planFeedbackRaw?.correction, 240);
   const planFeedbackAdjustment = text(planFeedbackRaw?.adjustment, 240);
@@ -1152,6 +972,7 @@ function sanitizeMentalAct(
     utterance,
     delivery,
     goal,
+    speechIntent,
     ...(orientation ? { orientation } : {}),
     ...(horizon ? { horizon } : {}),
     strategy,
@@ -1235,10 +1056,10 @@ export function expandDecisionModelOutput(
     || (requestedResume && !exposedResumableIntents.has(resumeIntentHandle))
     || (requestedAbandon && !exposedSuspendedIntents.has(abandonIntentHandle))) return null;
   const optionIndex = /^o([1-9]\d*)$/u.exec(stepHandle);
-  const continuationIndex = /^f([1-9]\d*)$/u.exec(continuationHandle);
+  const continuationIndex = /^([fo])([1-9]\d*)$/u.exec(continuationHandle);
   const optionId = optionIndex ? context.options[Number(optionIndex[1]) - 1]?.id : undefined;
   const followUpOptionId = continuationIndex
-    ? context.followUpOptions[Number(continuationIndex[1]) - 1]?.id
+    ? (continuationIndex[1] === 'f' ? context.followUpOptions : context.options)[Number(continuationIndex[2]) - 1]?.id
     : undefined;
   const resumeIntentId = protocol.handles.suspendedIntents
     .find((intent) => intent.handle === resumeIntentHandle)?.intentId;
@@ -1360,7 +1181,7 @@ async function requestModelPlan(
       role: 'user',
       content: [
         `上一个 Plan 协议无效：${correction.problem}。请只修正规划 JSON，不要改写 intention。`,
-        `firstStepHandle 必须引用以下稳定 handle 之一：${(context.availableSteps as Array<{ handle: string }>).map((step) => step.handle).join('、') || '无'}`,
+        '既有入口不能表达具体做法时，使用 worldAction 描述当前可尝试的第一步；缺少配方或固定动词不是停留的原因。',
       ].join('\n'),
     },
   );
@@ -1386,6 +1207,14 @@ function worldResolutionRequestContext(
     visible: protocol.requestContext.visible,
     actionSpace: protocol.requestContext.actionSpace,
     worldAction,
+    ...(worldAction.methodHandle ? { referencedMethod: protocol.requestContext.knownMethods?.find((method) => method.handle === worldAction.methodHandle) } : {}),
+    executionEvidence: {
+      ...(protocol.requestContext.current.planContinuation ? { planContinuation: protocol.requestContext.current.planContinuation } : {}),
+      recentWork: protocol.requestContext.current.recentlyFinishedWork,
+    },
+    ...(protocol.requestContext.current.planContinuation ? {
+      executionMode: 'continue-existing-plan-without-new-speech',
+    } : {}),
     ...planAgentWorldContext(),
   };
 }
@@ -1412,7 +1241,7 @@ async function requestWorldResolution(
     temperature: 0,
     maxOutputTokens: decisionMaxOutputTokens(),
     jsonObject: true,
-    jsonSchema: buildWorldResolutionJsonSchema(protocol),
+    jsonSchema: buildWorldResolutionJsonSchema(protocol, worldAction),
     timeoutMs: decisionTimeout(endpoint),
   });
   return { content: response.text, usage: response.usage };
@@ -1422,7 +1251,7 @@ async function resolveWorldAction(
   endpoint: ResolvedModelEndpoint,
   protocol: DecisionModelRequestProtocol,
   worldAction: ModelWorldAction | undefined,
-): Promise<{ resolution?: WorldAdjudicationResolution; usage: TokenUsage; providerRequests: number }> {
+): Promise<{ resolution?: WorldAdjudicationResolution; usage: TokenUsage; providerRequests: number; failure?: string }> {
   if (!worldAction) return {
     usage: { inputTokens: 0, outputTokens: 0 },
     providerRequests: 0,
@@ -1432,7 +1261,12 @@ async function resolveWorldAction(
   let correction: { invalidContent: string; problem: string } | undefined;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     providerRequests += 1;
-    const response = await requestWorldResolution(endpoint, protocol, worldAction, correction);
+    let response: Awaited<ReturnType<typeof requestWorldResolution>>;
+    try {
+      response = await requestWorldResolution(endpoint, protocol, worldAction, correction);
+    } catch (error) {
+      return { usage, providerRequests, failure: error instanceof Error ? error.message : String(error) };
+    }
     usage = addUsage(usage, response.usage);
     let parsed: unknown;
     try {
@@ -1441,14 +1275,15 @@ async function resolveWorldAction(
       correction = { invalidContent: response.content, problem: '不是 JSON 对象' };
       continue;
     }
-    const resolution = sanitizePlanAgentWorldVerdict(parsed, worldAction, protocol);
+    let problem = '世界变化无法编译，请依据 effect schema 绑定动作中的真实对象';
+    const resolution = sanitizePlanAgentWorldVerdict(parsed, worldAction, protocol, (reason) => { problem = reason; });
     if (resolution) return { resolution, usage, providerRequests };
     correction = {
       invalidContent: response.content,
-      problem: '结果缺少合法的来源、对象绑定或可执行世界变化',
+      problem,
     };
   }
-  return { usage, providerRequests };
+  return { usage, providerRequests, failure: correction?.problem };
 }
 
 function boundedInteger(value: unknown, minimum: number, maximum: number): number | undefined {
@@ -1458,105 +1293,17 @@ function boundedInteger(value: unknown, minimum: number, maximum: number): numbe
     : undefined;
 }
 
-function sameWorldRef(left: WorldRef, right: WorldRef): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-function planAgentAuthorsAnotherPerson(
-  protocol: DecisionModelRequestProtocol,
-  worldAction: ModelWorldAction,
-  result: string,
-): boolean {
-  const combined = `${worldAction.description}；${result}`;
-  const visible = record(protocol.requestContext.visible);
-  const otherNames = ((visible?.nearbyObjects as Array<Record<string, unknown>> | undefined) ?? [])
-    .filter((person) => text(person.kind, 24) === '人物')
-    .map((person) => text(person.name, 80))
-    .filter(Boolean);
-  const voluntaryAction = /回答|回应|说出|告诉|表示|补充|提出|决定|同意|拒绝|点头|摇头|愿意|走来|过来|拿起|捡起|敲击|刮削|整理|协作|帮助/u;
-  if (otherNames.some((name) => combined.includes(name) && voluntaryAction.test(combined))) return true;
-  const targetsAnotherPerson = worldAction.targetHandles.some((handle) => {
-    const visible = protocol.handles.visible.find((item) => item.handle === handle);
-    return visible?.kind === 'person' && visible.personId !== protocol.requestContext.person.id;
-  });
-  return targetsAnotherPerson
-    && /两人|双方|他们|对方/u.test(combined)
-    && /回答|回应|同意|拒绝|点头|愿意|交流|交谈|商量|走来|过来/u.test(combined);
-}
-
-function completedWorldResultNeedsFeedback(worldAction: ModelWorldAction, result: string): boolean {
-  return Boolean(worldAction.expectedResult)
-    && /未能|没能|没有(?:成功|形成|达到|出现|做成)|无法|失败|未达/u.test(result);
-}
-
-function containsPlanProtocolLeak(value: string): boolean {
-  return /(?:^|[^a-z0-9])(?:h|d|v|p|a|c)\d+\b|句柄|availableActions|worldAction|targetHandles|stateKey|stateValue|replace-voxel|move-self|\beffects\b|\bexpose\b/u.test(value);
-}
-
-function completedWorldEffectsMatchClaim(
-  protocol: DecisionModelRequestProtocol,
-  worldAction: ModelWorldAction,
-  result: string,
-  effects: readonly WorldInteractionEffect[],
-): boolean {
-  const combined = `${worldAction.description}；${result}`;
-  const exposed = new Map(exposedWorldTargets(protocol).map((item) => [text(item.ref, 24), item]));
-  const actorId = text(protocol.requestContext.person.id, 120);
-  const refsForNamedTarget = (pattern: RegExp): WorldRef[] => worldAction.targetHandles.flatMap((handle) => {
-    const name = text(exposed.get(handle)?.name, 80);
-    const ref = worldRefForHandle(protocol.handles, handle, actorId);
-    return name && pattern.test(name) && ref ? [ref] : [];
-  });
-  const seedRefs = refsForNamedTarget(/种子/u);
-  if (seedRefs.length && /播种|播入|种进|种下|埋入|埋下/u.test(combined)) {
-    const consumedSeed = effects.some((effect) => effect.kind === 'consume'
-      && seedRefs.some((seed) => sameWorldRef(seed, effect.target)));
-    const plantedSprout = effects.some((effect) => effect.kind === 'replace-voxel'
-      && effect.materialId === Material.CropSprout);
-    if (!consumedSeed || !plantedSprout) return false;
-  }
-  if (/走向|走到|走近|抵达|来到|靠近/u.test(worldAction.description)
-    && !effects.some((effect) => effect.kind === 'move-self')) return false;
-  // 声称"搭/垒/捆/架/棚/组装"且真实消耗了材料时，材料必须被绑成持久实体
-  // （assemble/modify-structure）或落成真实体素（replace-voxel）；只用
-  // world-state 或只搬动材料的"结构"对世界不存在，必须重述为真实成型。
-  const consumedMaterials = effects.some((effect) => effect.kind === 'consume');
-  if (consumedMaterials && /搭|垒|捆|架|棚|组装|拼接|捏成|塑成/u.test(combined)
-    && !effects.some((effect) => effect.kind === 'assemble'
-      || effect.kind === 'modify-structure'
-      || effect.kind === 'replace-voxel')) return false;
-  if (/饮用|饮水|喝水|喝下|喝了/u.test(combined)) {
-    const replenishedHydration = effects.some((effect) => effect.kind === 'body'
-      && effect.field === 'hydration' && effect.delta > 0);
-    const waterRefs = refsForNamedTarget(/水/u);
-    const destroyedWaterVoxel = effects.some((effect) => effect.kind === 'consume'
-      && effect.target.kind === 'voxel'
-      && waterRefs.some((water) => sameWorldRef(water, effect.target)));
-    if (!replenishedHydration || destroyedWaterVoxel) return false;
-  }
-  if (/制成|做成|削成|打磨成/u.test(result) && /工具/u.test(result)) {
-    const madeTool = effects.some((effect) => effect.kind === 'produce'
-      && materialHas(effect.materialId, 'tool'));
-    if (!madeTool) return false;
-  }
-  if (/搬.{0,16}(?:到|至)|移到|移动到|移动至|放(?:到|在)|摆到|堆到/u.test(result)
-    && !effects.some((effect) => effect.kind === 'relocate')) return false;
-  if (/翻松|拍实|压实|整理出.{0,8}土垄|形成.{0,8}土垄/u.test(result)
-    && !effects.some((effect) => effect.kind === 'replace-voxel')) return false;
-  if (/建成|搭成|砌成|形成.{0,8}(?:墙|棚|屋顶|结构)|改变.{0,8}(?:空间|遮蔽)/u.test(result)) {
-    const materializedConstruction = effects.some((effect) => effect.kind === 'replace-voxel'
-      && materialHas(effect.materialId, 'building'));
-    if (!materializedConstruction) return false;
-  }
-  return true;
-}
-
 /** Converts an independent world-semantics verdict into server-owned refs and a bounded mutation IR. */
 export function sanitizePlanAgentWorldVerdict(
   input: unknown,
   worldActionInput: unknown,
   protocol: DecisionModelRequestProtocol,
+  onInvalid?: (problem: string) => void,
 ): WorldAdjudicationResolution | undefined {
+  const invalid = (problem: string): undefined => {
+    onInvalid?.(problem);
+    return undefined;
+  };
   const worldAction = sanitizeWorldAction(worldActionInput, protocol);
   const raw = record(input);
   const status = raw?.status === 'completed' || raw?.status === 'blocked' || raw?.status === 'failed'
@@ -1568,40 +1315,27 @@ export function sanitizePlanAgentWorldVerdict(
     : raw?.effects === undefined || raw?.effects === null
       ? []
       : undefined;
-  if (!worldAction || !raw || !status || !result || !rawEffects || rawEffects.length > 8) return undefined;
-  if (status === 'blocked' && rawEffects.length) return undefined;
+  if (!worldAction || !raw || !status || !result || !rawEffects || rawEffects.length > 8) return invalid('需要 status、具体 result 与最多 8 项 effects；动作目标必须来自人物选中的 ref');
+  if (status === 'blocked' && rawEffects.length) return invalid('blocked 表示没有开始，因此 effects 应为空；如果已经操作并发生变化，应结算 completed 或 failed');
   const feedbackRaw = record(raw.feedback);
   const feedbackCorrection = text(feedbackRaw?.correction, 240);
   const feedbackAdjustment = text(feedbackRaw?.adjustment, 240);
-  const protocolFacingProse = [
-    worldAction.description,
-    worldAction.expectedResult ?? '',
-    result,
-    feedbackCorrection,
-    feedbackAdjustment,
-    ...rawEffects.flatMap((effect) => {
-      const parsed = record(effect);
-      return [text(parsed?.summary, 240), text(parsed?.stateValue, 160)];
-    }),
-  ].join('；');
-  if (containsPlanProtocolLeak(protocolFacingProse)) return undefined;
-  if (status !== 'completed' && (!feedbackCorrection || !feedbackAdjustment)) return undefined;
-  if (status === 'completed' && completedWorldResultNeedsFeedback(worldAction, result)
-    && (!feedbackCorrection || !feedbackAdjustment)) return undefined;
-  if (planAgentAuthorsAnotherPerson(protocol, worldAction, result)) return undefined;
+  if (status !== 'completed' && (!feedbackCorrection || !feedbackAdjustment)) {
+    return invalid('blocked/failed 必须说明具体缺失条件 feedback.correction 和可改变的做法 feedback.adjustment；不能把协议错误说成人物失败');
+  }
   const actorId = text(protocol.requestContext.person.id, 120);
   const requestedHandles = new Set(worldAction.targetHandles);
   const targets = worldAction.targetHandles.map((handle) => worldRefForHandle(protocol.handles, handle, actorId));
-  if (targets.some((target) => !target)) return undefined;
+  if (targets.some((target) => !target)) return invalid('动作引用的对象不存在，请使用本次 worldAction.targetHandles');
   const materialByKey = new Map(MATERIAL_PALETTE.map((material) => [material.key, material]));
   const effects: WorldInteractionEffect[] = [];
   for (const value of rawEffects) {
     const effect = record(value);
     const kind = text(effect?.kind, 32);
-    if (!effect) return undefined;
+    if (!effect) return invalid('每项 effect 必须是结构化对象');
     if (kind === 'knowledge') {
       const summary = text(effect.summary, 240);
-      if (!summary) return undefined;
+      if (!summary) return invalid('knowledge.summary 需要本次亲历的具体观察');
       effects.push({ kind, summary });
       continue;
     }
@@ -1613,7 +1347,7 @@ export function sanitizePlanAgentWorldVerdict(
         : undefined;
       const stateKey = text(effect.stateKey, 64);
       const stateValue = text(effect.stateValue, 160);
-      if (!summary || !target || !stateKey || !stateValue) return undefined;
+      if (!summary || !target || !stateKey || !stateValue) return invalid('world-state 需要已点名 targetHandle、stateKey、stateValue 和 summary');
       effects.push({ kind, summary, target, stateKey, stateValue });
       continue;
     }
@@ -1624,7 +1358,7 @@ export function sanitizePlanAgentWorldVerdict(
         : undefined;
       const quantity = boundedInteger(effect.quantity, 1, 8);
       if (!target || quantity === undefined
-        || !['inventory-stack', 'drop', 'voxel'].includes(target.kind)) return undefined;
+        || !['inventory-stack', 'drop', 'voxel'].includes(target.kind)) return invalid('consume 只能消耗已点名的背包、地面物料或体素，quantity 为 1–8 整数');
       effects.push({ kind, target, quantity });
       continue;
     }
@@ -1634,7 +1368,7 @@ export function sanitizePlanAgentWorldVerdict(
       const destination = effect.destination === 'inventory' || effect.destination === 'ground'
         ? effect.destination
         : undefined;
-      if (!material || material.id === 0 || quantity === undefined || !destination) return undefined;
+      if (!material || material.id === 0 || quantity === undefined || !destination) return invalid('produce 需要目录中 materialKey、1–8 的 quantity 和 inventory/ground 目的地；自命名复合造物请用 assemble');
       effects.push({ kind, materialId: material.id, quantity, destination });
       continue;
     }
@@ -1649,7 +1383,7 @@ export function sanitizePlanAgentWorldVerdict(
         : undefined;
       const quantity = boundedInteger(effect.quantity, 1, 8);
       if (!target || !['drop', 'inventory-stack'].includes(target.kind)
-        || destination?.kind !== 'voxel' || quantity === undefined) return undefined;
+        || destination?.kind !== 'voxel' || quantity === undefined) return invalid('relocate 的 targetHandle 必须是已点名背包/地面物，destinationHandle 必须是已点名地表，quantity 为 1–8');
       effects.push({
         kind,
         target: target as Extract<WorldRef, { kind: 'drop' | 'inventory-stack' }>,
@@ -1663,11 +1397,18 @@ export function sanitizePlanAgentWorldVerdict(
       const target = requestedHandles.has(targetHandle)
         ? worldRefForHandle(protocol.handles, targetHandle, actorId)
         : undefined;
-      if (!target || target.kind !== 'voxel') return undefined;
-      if (kind === 'move-self') effects.push({ kind, target });
+      if (!target) return invalid(`${kind}.targetHandle 必须是人物已点名的真实对象 ref`);
+      if (kind === 'move-self') {
+        const withinDistance = effect.withinDistance;
+        if (withinDistance !== undefined && (typeof withinDistance !== 'number' || !Number.isFinite(withinDistance) || withinDistance < 0)) {
+          return invalid('move-self.withinDistance 必须是非负实际距离');
+        }
+        effects.push({ kind, target, ...(withinDistance !== undefined ? { withinDistance: withinDistance as number } : {}) });
+      }
       else {
+        if (target.kind !== 'voxel') return invalid('replace-voxel.targetHandle 必须是已点名地表；靠近人物或物品用 move-self');
         const material = materialByKey.get(text(effect.materialKey, 80));
-        if (!material || material.id === 0) return undefined;
+        if (!material || material.id === 0) return invalid('replace-voxel.materialKey 必须来自材料目录；新复合设施使用 assemble');
         effects.push({ kind, target, materialId: material.id });
       }
       continue;
@@ -1681,13 +1422,33 @@ export function sanitizePlanAgentWorldVerdict(
         ? effect.arrangement
         : undefined;
       const summary = text(effect.summary, 160);
-      if (!target || target.kind !== 'voxel') return undefined;
-      if (kind === 'assemble' && (!arrangement || !summary)) return undefined;
+      if (!target || (kind === 'assemble' ? target.kind !== 'voxel' : target.kind !== 'voxel' && target.kind !== 'work')) {
+        return invalid(`${kind}.targetHandle 需要已点名的位置；修改已有造物优先使用其 w 引用`);
+      }
+      if (kind === 'assemble' && (!arrangement || !summary)) return invalid('assemble 需要 arrangement=support/pile/lash/form 和具体造物 summary');
+      let layout: WorkLayout | undefined;
+      if (effect.layout !== undefined) {
+        if (!Array.isArray(effect.layout) || !effect.layout.length) return invalid(`${kind}.layout 需要非空完整体素布局`);
+        const voxels = effect.layout.map((value) => {
+          const voxel = record(value);
+          const offset = record(voxel?.offset);
+          const material = materialByKey.get(text(voxel?.materialKey, 80));
+          return offset && ['x', 'y', 'z'].every((key) => Number.isSafeInteger(offset[key]))
+            && material && material.id !== 0 && material.phase === 'solid'
+            ? { offset: { x: offset.x as number, y: offset.y as number, z: offset.z as number }, materialId: material.id }
+            : undefined;
+        });
+        if (!voxels.every((voxel): voxel is NonNullable<typeof voxel> => Boolean(voxel))) {
+          return invalid(`${kind}.layout 每格需要整数 offset:{x,y,z} 与材料目录中的固体 materialKey`);
+        }
+        layout = { version: 'work-layout-v1', voxels };
+      }
       effects.push({
         kind,
         target,
         ...(arrangement ? { arrangement } : {}),
         ...(summary ? { summary } : {}),
+        ...(layout ? { layout } : {}),
       } as WorldInteractionEffect);
       continue;
     }
@@ -1697,7 +1458,7 @@ export function sanitizePlanAgentWorldVerdict(
         ? worldRefForHandle(protocol.handles, targetHandle, actorId)
         : undefined;
       const summary = text(effect.summary, 160);
-      if (!target || target.kind !== 'animal' || !summary) return undefined;
+      if (!target || target.kind !== 'animal' || !summary) return invalid('bond-animal 需要已点名动物 targetHandle 和本次接触 summary');
       effects.push({ kind, target, summary });
       continue;
     }
@@ -1712,31 +1473,17 @@ export function sanitizePlanAgentWorldVerdict(
         ? effect.field
         : undefined;
       const delta = boundedInteger(effect.delta, -25, 25);
-      if ((targetHandle !== 'self' && target?.kind !== 'person') || !field || delta === undefined) return undefined;
+      if ((targetHandle !== 'self' && target?.kind !== 'person') || !field || delta === undefined) return invalid('body 只支持 self/已点名人物的 health/hydration/nutrition，delta 为 -25–25 整数');
       effects.push({ kind, ...(target?.kind === 'person' ? { target } : {}), field, delta });
       continue;
     }
-    return undefined;
+    return invalid(`未知 effect.kind=${kind}；请用 schema 中的物理原语组合表达，造物使用 assemble/modify-structure`);
   }
   // A semantic resolver may describe a transformation, but it cannot summon
   // authoritative material.  Every produced lot must consume a named input in
   // the same local action; known recipe executors remain the richer path.
   if (effects.some((effect) => effect.kind === 'produce')
-    && !effects.some((effect) => effect.kind === 'consume')) return undefined;
-  const hasPersistentEffect = effects.some((effect) => (
-    effect.kind === 'world-state'
-      || effect.kind === 'replace-voxel'
-      || effect.kind === 'produce'
-      || effect.kind === 'consume'
-      || effect.kind === 'relocate'
-      || effect.kind === 'assemble'
-      || effect.kind === 'modify-structure'
-  ));
-  if (status === 'completed' && !hasPersistentEffect
-    && /形成|留下|变得|搭成|建成|压实|摆成|固定|放置|堆叠/u.test(result)) return undefined;
-  if (status === 'completed' && !completedWorldEffectsMatchClaim(protocol, worldAction, result, effects)) {
-    return undefined;
-  }
+    && !effects.some((effect) => effect.kind === 'consume')) return invalid('produce 需要同次 consume 真实输入；若只是搬动原物，应使用 relocate');
   const adjudication: WorldAdjudicatedInteraction = {
     version: 'world-adjudicated-interaction-v1',
     request: worldAction.description,
@@ -1852,7 +1599,7 @@ function normalizeDecision(context: DecisionRequestContext, input: unknown): Dec
     return {
       kind: 'start',
       optionId,
-      ...(option?.requiresFollowUp ? { followUpOptionId } : {}),
+      ...(followUpOptionId ? { followUpOptionId } : {}),
       reason,
       ...(openConversation ? { groundingSourceFactIds } : {}),
       ...(characterAgendaProposal ? { characterAgendaProposal } : {}),
@@ -1864,12 +1611,12 @@ function normalizeDecision(context: DecisionRequestContext, input: unknown): Dec
     kind: 'revise',
     intentId: activeIntentId,
     optionId,
-    ...(option.requiresFollowUp ? { followUpOptionId } : {}),
+    ...(followUpOptionId ? { followUpOptionId } : {}),
     reason,
     ...(openConversation ? { groundingSourceFactIds } : {}),
     ...(characterAgendaProposal ? { characterAgendaProposal } : {}),
     ...(characterAgendaUpdate ? { characterAgendaUpdate } : {}),
-    ...(communication ? {
+    ...(communication && !followUpOptionId ? {
       mode: 'interrupt' as const,
       interruptionKind: option.semantics.obligation === 'required-response'
         ? 'required-response' as const
@@ -1897,22 +1644,50 @@ export function normalizeMindPlanModelOutput(
 ): Decision | null {
   const intention = sanitizeMindIntention(mindInput, protocol.handles);
   if (!intention) return null;
-  const plan = sanitizeModelPlan(planInput, protocol);
+  const plan = sanitizeModelPlan(planInput, protocol, context);
   if (!plan) return null;
-  const planAligned = planSupportsIntention(context, intention, plan, protocol);
-  const effectiveWorldResolution = planAligned ? worldResolution : undefined;
-  const alignedPlan = planAligned
-    ? plan
-    : {
-        steps: [`当前没有与“${intention.goal}”直接一致的执行入口，先保留这个意图`],
-        disposition: 'stay' as const,
-      };
-  const executionPlan = alignedPlan.worldAction && !effectiveWorldResolution?.probe
+  if (plan.worldAction && !worldResolution?.probe) return null;
+  const option = selectedOptionForPlan(context, plan);
+  let executionPlan = plan;
+  if (option && !speechIntentAllowsOption(intention.speechIntent, option)) {
+    // The language wave already carries Mind's exact expression. An unrelated
+    // social menu entry cannot silently turn it into an agreement or consent.
+    // Keep an explicitly chosen bodily follow-up, without a second LLM call.
+    const physicalContinuation = plan.continuationHandle?.startsWith('o')
+      ? protocol.requestContext.continuations.find((step) => step.handle === plan.continuationHandle)
+      : undefined;
+    const continuationOption = physicalContinuation
+      ? context.options[Number(physicalContinuation.handle.slice(1)) - 1] : undefined;
+    executionPlan = {
+      steps: plan.steps,
+      ...(plan.completion ? { completion: plan.completion } : {}),
+      ...(plan.feedback ? { feedback: plan.feedback } : {}),
+      ...(continuationOption && !continuationOption.communicationKind && !continuationOption.communicationMeaning
+        ? { disposition: 'act' as const, firstStepHandle: physicalContinuation!.handle }
+        : { disposition: 'stay' as const, freeExpression: true }),
+    };
+  }
+  const effectiveWorldResolution = worldResolution?.probe?.kind === 'world-interaction' && executionPlan.completion
     ? {
-        steps: [effectiveWorldResolution?.feedback || 'Plan Agent 没有返回可执行裁决，当前未知交互没有发生'],
-        disposition: 'stay' as const,
+        ...worldResolution,
+        probe: {
+          ...worldResolution.probe,
+          adjudication: {
+            ...worldResolution.probe.adjudication,
+            effects: worldResolution.probe.adjudication.effects.map((effect) => {
+              if (effect.kind !== 'move-self') return effect;
+              const sameTarget = (target: WorldRef): boolean => target.kind === effect.target.kind
+                && JSON.stringify(Object.entries(target).sort(([a], [b]) => a.localeCompare(b)))
+                  === JSON.stringify(Object.entries(effect.target).sort(([a], [b]) => a.localeCompare(b)));
+              const distances = [...executionPlan.completion!.step.conditions, ...executionPlan.completion!.goal.conditions]
+                .flatMap((condition) => (condition.kind === 'near-target' || condition.kind === 'reached-target')
+                  && sameTarget(condition.target) ? [condition.maxDistance] : []);
+              return distances.length ? { ...effect, withinDistance: Math.min(effect.withinDistance ?? Infinity, ...distances) } : effect;
+            }),
+          },
+        },
       }
-    : alignedPlan;
+    : worldResolution;
   const decision = normalizeDecisionModelOutput(
     context,
     stagedDecisionOutput(
@@ -1920,7 +1695,7 @@ export function normalizeMindPlanModelOutput(
       executionPlan,
       protocol,
       context,
-      alignedPlan.worldAction && !effectiveWorldResolution?.probe ? effectiveWorldResolution?.feedback : undefined,
+      effectiveWorldResolution?.feedback,
     ),
     protocol,
   );
@@ -1934,16 +1709,52 @@ export function normalizeMindPlanModelOutput(
     : decision;
 }
 
+/** Continuation changes only the implementation of an already authored intention. */
+export function normalizeContinuingPlanModelOutput(
+  context: DecisionRequestContext,
+  planInput: unknown,
+  protocol: DecisionModelRequestProtocol,
+  worldResolution?: WorldAdjudicationResolution,
+): Decision | null {
+  const frozen = context.continuingPlan?.mentalAct;
+  if (!frozen) return null;
+  const decision = normalizeMindPlanModelOutput(context, {
+    ...frozen,
+    relationshipAppraisal: undefined,
+    evidenceMemoryHandles: [],
+  }, planInput, protocol, worldResolution);
+  if (!decision?.mentalAct) return decision;
+  if (decision.mentalAct.kind === 'talk') return null;
+  if (decision.kind === 'resume' && !context.suspendedIntents.some((intent) => (
+    intent.id === decision.intentId && intent.requiresNewSpeech === false
+      && intent.planSourceDecisionEventId === context.continuingPlan?.sourceDecisionEventId
+  ))) return null;
+  return {
+    ...decision,
+    mentalAct: {
+      ...decision.mentalAct,
+      utterance: frozen.utterance,
+      delivery: frozen.delivery,
+      goal: frozen.goal,
+      assumptions: [...frozen.assumptions],
+      sourceEventIds: [...frozen.sourceEventIds],
+    },
+  };
+}
+
 interface DecisionResult {
   decision: Decision | null;
   usage: TokenUsage;
   providerRequests: number;
+  /** Infrastructure diagnosis, never a character belief or chosen inactivity. */
+  failure?: string;
 }
 
 interface MindResult {
   intention?: MindIntentionOutput;
   usage: TokenUsage;
   providerRequests: number;
+  failure?: string;
 }
 
 function addUsage(left: TokenUsage, right: TokenUsage): TokenUsage {
@@ -1983,7 +1794,7 @@ async function decideMind(
         conciseRetry = true;
         continue;
       }
-      throw error;
+      return { usage, providerRequests, failure: message };
     }
     usage = addUsage(usage, completion.usage);
     let parsed: unknown;
@@ -1993,19 +1804,47 @@ async function decideMind(
       mindCorrection = { invalidContent: completion.content, problem: '不是 JSON 对象' };
       continue;
     }
-    intention = sanitizeMindIntention(parsed, protocol.handles);
+    let problem = '';
+    intention = sanitizeMindIntention(parsed, protocol.handles, (detail) => { problem = detail; });
     if (intention) break;
-    mindCorrection = { invalidContent: completion.content, problem: '缺少合法意图、原话或本人记忆句柄' };
+    mindCorrection = { invalidContent: completion.content, problem };
   }
-  return { intention, usage, providerRequests };
+  return {
+    intention, usage, providerRequests,
+    ...(!intention && mindCorrection ? { failure: mindCorrection.problem } : {}),
+  };
 }
 
-async function decideOne(context: DecisionRequestContext, endpoint: ResolvedModelEndpoint): Promise<DecisionResult> {
-  const protocol = buildDecisionModelRequestProtocol(context);
-  const mind = await decideMind(protocol, endpoint);
-  let usage = mind.usage;
-  let providerRequests = mind.providerRequests;
-  if (!mind.intention) return { decision: null, usage, providerRequests };
+async function decideOne(
+  inputContext: DecisionRequestContext,
+  endpoint: ResolvedModelEndpoint,
+  continuationOnly = false,
+): Promise<DecisionResult> {
+  const context = continuationOnly ? {
+    ...inputContext,
+    options: inputContext.options.filter((option) => !option.communicationKind && !option.communicationMeaning),
+    suspendedIntents: inputContext.suspendedIntents.filter((intent) => intent.requiresNewSpeech === false
+      && intent.planSourceDecisionEventId === inputContext.continuingPlan?.sourceDecisionEventId),
+  } : inputContext;
+  const protocol = buildDecisionModelRequestProtocol(context,
+    continuationOnly ? { characterAgendaProposal: false } : {});
+  let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+  let providerRequests = 0;
+  try {
+  const frozen = context.continuingPlan?.mentalAct;
+  const mind: MindResult = continuationOnly
+    ? {
+        intention: frozen ? sanitizeMindIntention({
+          ...frozen, relationshipAppraisal: undefined, evidenceMemoryHandles: [],
+        }, protocol.handles) : undefined,
+        usage: { inputTokens: 0, outputTokens: 0 },
+        providerRequests: 0,
+        ...(!frozen ? { failure: 'Plan 续编缺少已形成的原始人物意图' } : {}),
+      }
+    : await decideMind(protocol, endpoint);
+  usage = mind.usage;
+  providerRequests = mind.providerRequests;
+  if (!mind.intention) return { decision: null, usage, providerRequests, failure: mind.failure ?? 'Mind 未返回可解析的本人意图' };
   let correction: { invalidContent: string; problem: string } | undefined;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     providerRequests += 1;
@@ -2018,31 +1857,21 @@ async function decideOne(context: DecisionRequestContext, endpoint: ResolvedMode
       correction = { invalidContent: completion.content, problem: '不是 JSON 对象' };
       continue;
     }
-    const plan = sanitizeModelPlan(parsed, protocol);
+    const plan = sanitizeModelPlan(parsed, protocol, context);
     if (!plan) {
       correction = { invalidContent: completion.content, problem: '缺少合法的简短计划或行动引用' };
-      continue;
-    }
-    if (!planSupportsIntention(context, mind.intention, plan, protocol)) {
-      correction = {
-        invalidContent: completion.content,
-        problem: '所选具体行动没有推进冻结的 intention，或替换了 intention 明确指定的材料。若固定入口能表达原意，请用对应 ref；否则用 worldAction 原样提交具体未知交互，或真实选择 stay',
-      };
       continue;
     }
     const world = await resolveWorldAction(endpoint, protocol, plan.worldAction);
     usage = addUsage(usage, world.usage);
     providerRequests += world.providerRequests;
     if (plan.worldAction && !world.resolution) {
-      return { decision: null, usage, providerRequests };
+      correction = { invalidContent: completion.content, problem: `世界尚未将动作编译为可执行效果：${world.failure ?? '未返回实际变化'}；请拆出可实际完成的第一步并保留原目标` };
+      continue;
     }
-    const decision = normalizeMindPlanModelOutput(
-      context,
-      mind.intention,
-      plan,
-      protocol,
-      world.resolution,
-    );
+    const decision = continuationOnly
+      ? normalizeContinuingPlanModelOutput(context, plan, protocol, world.resolution)
+      : normalizeMindPlanModelOutput(context, mind.intention, plan, protocol, world.resolution);
     if (decision) {
       return {
         decision,
@@ -2052,87 +1881,36 @@ async function decideOne(context: DecisionRequestContext, endpoint: ResolvedMode
     }
     correction = { invalidContent: completion.content, problem: '所选行动不能由当前世界执行' };
   }
-  if (loadServerEnvValue('MODEL_DECISION_DEBUG') === '1') {
-    console.warn(`模型端点 ${endpoint.id} 的 Mind → Plan 没有通过 Execution 接口校验`);
-  }
   return {
     decision: null,
     usage,
     providerRequests,
+    failure: correction?.problem ?? 'Plan 尚未编译成可执行动作',
   };
+  } catch (error) {
+    return {
+      decision: null, usage, providerRequests,
+      failure: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
-/** Mind and Plan Agent requests are both person-isolated; one malformed plan cannot erase another person's turn. */
+/** Every person gets the same complete translation/repair path, even in a batch. */
 async function decideBatch(
   contexts: DecisionRequestContext[],
   endpoint: ResolvedModelEndpoint,
+  continuationOnly = false,
 ): Promise<DecisionResult[]> {
-  const protocols = contexts.map((context) => buildDecisionModelRequestProtocol(context));
-  const mindResults: MindResult[] = [];
-  for (const protocol of protocols) {
-    mindResults.push(await decideMind(protocol, endpoint));
-  }
-  const intentions = mindResults.map((result) => result.intention);
-  let planUsage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
-  let planProviderRequests = 0;
-  const plans: Array<ModelPlanOutput | undefined> = Array.from({ length: contexts.length });
-  const worldResolutions: Array<WorldAdjudicationResolution | undefined> = Array.from({ length: contexts.length });
-  for (let index = 0; index < contexts.length; index += 1) {
-    const intention = intentions[index];
-    if (!intention) continue;
-    let correction: { invalidContent: string; problem: string } | undefined;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const response = await requestModelPlan(endpoint, protocols[index], intention, correction);
-      planUsage = addUsage(planUsage, response.usage);
-      planProviderRequests += 1;
-      let parsed: unknown;
-      try {
-        parsed = parseJson(response.content);
-      } catch {
-        correction = { invalidContent: response.content, problem: '不是 JSON 对象' };
-        continue;
-      }
-      const candidate = sanitizeModelPlan(parsed, protocols[index]);
-      if (candidate && planSupportsIntention(contexts[index], intention, candidate, protocols[index])) {
-        const world = await resolveWorldAction(endpoint, protocols[index], candidate.worldAction);
-        planUsage = addUsage(planUsage, world.usage);
-        planProviderRequests += world.providerRequests;
-        if (candidate.worldAction && !world.resolution) break;
-        if (loadServerEnvValue('MODEL_DECISION_DEBUG') === '1') {
-          console.warn(`Plan Agent 接受 a${index + 1}: ${JSON.stringify(candidate).slice(0, 3_000)}`);
-        }
-        plans[index] = candidate;
-        worldResolutions[index] = world.resolution;
-        break;
-      }
-      if (loadServerEnvValue('MODEL_DECISION_DEBUG') === '1') {
-        console.warn(`Plan Agent 输出未通过 ${candidate ? '意图一致性' : '协议'} a${index + 1}: ${response.content.slice(0, 3_000)}`);
-      }
-      correction = {
-        invalidContent: response.content,
-        problem: candidate
-          ? '所选具体行动没有推进冻结的 intention，或替换了 intention 明确指定的材料'
-          : 'Plan、worldAction 或失败 feedback 不符合协议',
-      };
+  const results = new Array<DecisionResult>(contexts.length);
+  let next = 0;
+  // This bounds provider concurrency, not who is allowed to think or act.
+  await Promise.all(Array.from({ length: Math.min(3, contexts.length) }, async () => {
+    while (next < contexts.length) {
+      const index = next++;
+      results[index] = await decideOne(contexts[index], endpoint, continuationOnly);
     }
-  }
-  const decisions = contexts.map((context, index) => {
-    const intention = intentions[index];
-    if (!intention || !plans[index]) return null;
-    return normalizeMindPlanModelOutput(context, intention, plans[index], protocols[index], worldResolutions[index]);
-  });
-  const mindUsage = mindResults.reduce(
-    (sum, result) => addUsage(sum, result.usage),
-    { inputTokens: 0, outputTokens: 0 } as TokenUsage,
-  );
-  const usage = addUsage(mindUsage, planUsage);
-  const providerRequests = mindResults.reduce((sum, result) => sum + result.providerRequests, 0)
-    + planProviderRequests;
-  return decisions.map((decision, index) => ({
-    decision,
-    usage: index === 0 ? usage : { inputTokens: 0, outputTokens: 0 },
-    providerRequests: index === 0 ? providerRequests : 0,
   }));
+  return results;
 }
 
 function isContext(value: unknown): value is DecisionRequestContext {
@@ -2153,7 +1931,11 @@ function isContext(value: unknown): value is DecisionRequestContext {
     && Array.isArray(context.visibleDrops));
 }
 
-export async function handleDecide(payload: unknown, requestedEndpoint?: string): Promise<{ status: number; body: unknown }> {
+async function handleDecisions(
+  payload: unknown,
+  requestedEndpoint?: string,
+  continuationOnly = false,
+): Promise<{ status: number; body: unknown }> {
   let endpoint: ResolvedModelEndpoint;
   try {
     endpoint = resolveModelEndpoint('decision', requestedEndpoint);
@@ -2167,8 +1949,8 @@ export async function handleDecide(payload: unknown, requestedEndpoint?: string)
   const contexts = Array.isArray(input?.contexts) ? input.contexts.filter(isContext).slice(0, MAX_AGENTS) : [];
   if (!contexts.length) return { status: 400, body: { error: '缺少合法的月度决策上下文' } };
   const results = contexts.length === 1
-    ? [await decideOne(contexts[0], endpoint)]
-    : await decideBatch(contexts, endpoint);
+    ? [await decideOne(contexts[0], endpoint, continuationOnly)]
+    : await decideBatch(contexts, endpoint, continuationOnly);
   const usage = results.reduce<TokenUsage>((sum, item) => ({
     inputTokens: sum.inputTokens + item.usage.inputTokens,
     outputTokens: sum.outputTokens + item.usage.outputTokens,
@@ -2191,8 +1973,19 @@ export async function handleDecide(payload: unknown, requestedEndpoint?: string)
       decided: decisions.filter(Boolean).length,
       total: decisions.length,
       decisions,
+      failures: results.flatMap((result, index) => result.failure
+        ? [{ personId: contexts[index].person.id, reason: result.failure }]
+        : []),
       usage,
       providerRequests,
     },
   };
+}
+
+export async function handleDecide(payload: unknown, requestedEndpoint?: string): Promise<{ status: number; body: unknown }> {
+  return handleDecisions(payload, requestedEndpoint);
+}
+
+export async function handleContinuePlans(payload: unknown, requestedEndpoint?: string): Promise<{ status: number; body: unknown }> {
+  return handleDecisions(payload, requestedEndpoint, true);
 }

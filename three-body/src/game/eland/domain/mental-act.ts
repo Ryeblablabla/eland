@@ -1,3 +1,5 @@
+import type { FactPredicate, SocialProposal, WorldRef } from './action';
+
 /**
  * One subjective turn of mind. It can choose a direction and name fallible
  * assumptions, but it never states that a world result has already happened.
@@ -31,6 +33,8 @@ export interface MentalPlanTranslation {
   version: 'mental-plan-translation-v1';
   steps: string[];
   disposition: 'act' | 'continue' | 'pause' | 'abandon' | 'stay';
+  /** Expected facts are checked against actual state, never the plan's prose. */
+  completion?: { step: PlanCompletionCheck; goal: PlanCompletionCheck };
   /** Stable request-scoped handle used by Plan; never interpreted as a fact. */
   firstStepHandle?: string;
   continuationHandle?: string;
@@ -87,6 +91,8 @@ export interface MentalAct {
   utterance: string;
   /** Electromagnetic emission strength; it never selects a receiver. */
   delivery: 'whisper' | 'normal' | 'call';
+  /** The person's own declared speech meaning; Plan cannot add a commitment. */
+  speechIntent?: MentalSpeechIntent;
   goal: string;
   /** The broad subjective direction chosen before Plan saw executable entries. */
   orientation?: MentalActOrientation;
@@ -106,4 +112,43 @@ export interface MentalAct {
     sourceEventIds: string[];
   };
   sourceEventIds: string[];
+}
+
+export type MentalSpeechIntent =
+  | { kind: 'expression' }
+  | { kind: 'proposal'; proposalKind: SocialProposal['kind']; counterpartIds: string[]; commitment: string }
+  | { kind: 'accept' | 'reject' | 'end-agreement' | 'revoke-permission' | 'leave-collective' | 'share-knowledge'; referenceId: string }
+  | { kind: 'prediction' | 'request-information' };
+export type PlanSuccessCondition =
+  | { kind: 'fact'; predicate: FactPredicate }
+  | { kind: 'near-target'; target: WorldRef; maxDistance: number }
+  | { kind: 'reached-target'; target: WorldRef; maxDistance: number }
+  | {
+      kind: 'work-state';
+      target: Extract<WorldRef, { kind: 'voxel' }> | { kind: 'work'; workId: string } | { kind: 'produced-work' };
+      minCondition?: number;
+      minProfile?: { cover?: number; rigidity?: number; stability?: number };
+      components?: Array<{ materialId: number; quantity: number }>;
+    };
+
+export interface PlanCompletionCheck {
+  description: string;
+  conditions: PlanSuccessCondition[];
+}
+
+/** An observed arrival within this chosen plan, not a permanent state claim. */
+export interface PlanMilestoneReceipt {
+  condition: Extract<PlanSuccessCondition, { kind: 'reached-target' }>;
+  distance: number;
+  sourceEventId: string;
+  atMonth: number;
+}
+
+export interface PlanCompletionAssessment {
+  step: 'satisfied' | 'unmet' | 'unverified';
+  goal: 'satisfied' | 'unmet' | 'unverified';
+  satisfiedConditionIds: string[];
+  changedConditionIds: string[];
+  /** Exact checks evaluated for this receipt, even if a later Plan changes steps. */
+  checked?: { step: PlanCompletionCheck; goal: PlanCompletionCheck };
 }

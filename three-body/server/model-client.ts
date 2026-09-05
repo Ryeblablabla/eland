@@ -84,6 +84,16 @@ function openAiChatThinking(endpoint: ResolvedModelEndpoint): Record<string, unk
 }
 
 function requestBody(endpoint: ResolvedModelEndpoint, request: ModelTextRequest): Record<string, unknown> {
+  // json_object only promises JSON syntax. Prompt-mode endpoints and
+  // Anthropic also need the actual field contract, not an unsent schema.
+  const nativeSchema = endpoint.structuredOutput === 'native-json'
+    && (endpoint.protocol === 'openai-responses' || endpoint.protocol === 'ollama-chat');
+  const messages: ModelMessage[] = request.jsonObject && request.jsonSchema && !nativeSchema
+    ? [...request.messages, {
+      role: 'user',
+      content: `本轮输出使用以下 JSON Schema。它描述字段与引用格式，不改变人物目标或世界事实；只输出符合它的 JSON 对象。\n${JSON.stringify(request.jsonSchema.schema)}`,
+    }]
+    : request.messages;
   const common = {
     model: endpoint.model,
     ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
@@ -92,7 +102,7 @@ function requestBody(endpoint: ResolvedModelEndpoint, request: ModelTextRequest)
     return {
       ...common,
       max_tokens: request.maxOutputTokens,
-      messages: request.messages,
+      messages,
       ...openAiChatThinking(endpoint),
       ...(request.jsonObject && endpoint.structuredOutput === 'native-json'
         ? { response_format: { type: 'json_object' } }
@@ -103,7 +113,7 @@ function requestBody(endpoint: ResolvedModelEndpoint, request: ModelTextRequest)
     return {
       ...common,
       max_output_tokens: request.maxOutputTokens,
-      input: request.messages,
+      input: messages,
       ...(request.jsonObject && endpoint.structuredOutput === 'native-json'
         ? {
             text: {
@@ -121,7 +131,7 @@ function requestBody(endpoint: ResolvedModelEndpoint, request: ModelTextRequest)
   if (endpoint.protocol === 'ollama-chat') {
     return {
       model: endpoint.model,
-      messages: request.messages,
+      messages,
       stream: false,
       think: endpoint.thinking ?? false,
       ...(request.jsonObject && endpoint.structuredOutput === 'native-json'
@@ -133,12 +143,12 @@ function requestBody(endpoint: ResolvedModelEndpoint, request: ModelTextRequest)
       },
     };
   }
-  const system = request.messages.filter((message) => message.role === 'system').map((message) => message.content).join('\n\n');
+  const system = messages.filter((message) => message.role === 'system').map((message) => message.content).join('\n\n');
   return {
     ...common,
     max_tokens: request.maxOutputTokens,
     ...(system ? { system } : {}),
-    messages: request.messages.filter((message) => message.role !== 'system'),
+    messages: messages.filter((message) => message.role !== 'system'),
   };
 }
 

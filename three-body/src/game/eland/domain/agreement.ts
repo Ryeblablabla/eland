@@ -11,7 +11,7 @@ import { isAlive, sameLocation } from './person';
 import { applyRelationEvidence } from './relation';
 import { materialHas, type MaterialId } from './material';
 import { neighbors4, surfaceMaterial, voxelAt } from '../world/grid';
-import { REPRODUCTION_CONSENT_WINDOW_MONTHS } from './population-capacity';
+import { REPRODUCTION_CONSENT_WINDOW_MONTHS } from './reproduction';
 import {
   compareWorldEventsInCanonicalOrder,
   completedActionFactsForPerson,

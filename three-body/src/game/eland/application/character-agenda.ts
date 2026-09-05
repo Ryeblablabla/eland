@@ -25,6 +25,7 @@ import { actionOptionSemantics, classifyActionOption } from '../domain/action-op
 import { intentById, personById, projectById } from '../domain/state-index';
 import { agendaMemorySignals } from '../domain/agent-memory';
 import { cellId, findStandingPath, voxelAt } from '../world/grid';
+import { workById, WORK_COLLAPSE_CONDITION } from '../domain/works';
 
 const MAX_AGENDA_EVIDENCE_SOURCES = 24;
 
@@ -122,6 +123,7 @@ function probeEntitySourceFactIds(context: DecisionContext, probe: CharacterAgen
         return context.visibleDrops.find((drop) => drop.id === target.dropId)?.sourceEventIds ?? [];
       }
       if (target.kind === 'container') return containerById(context.state, target.containerId)?.sourceEventIds ?? [];
+      if (target.kind === 'work') return workById(context.state.world, target.workId)?.sourceEventIds ?? [];
       if (target.kind === 'remains') {
         return (context.visibleRemains ?? []).find((remains) => remains.id === target.remainsId)?.sourceEventIds ?? [];
       }
@@ -150,6 +152,7 @@ function probeEntitySourceFactIds(context: DecisionContext, probe: CharacterAgen
   }
   if (probe.kind === 'move') return [];
   const target = probe.target;
+  if (target.kind === 'work') return uniqueIds(workById(context.state.world, target.workId)?.sourceEventIds ?? []);
   if (target.kind === 'own-inventory-stack') {
     return uniqueIds(context.person.inventory.find((stack) => stack.id === target.stackId)?.sourceEventIds ?? []);
   }
@@ -201,6 +204,7 @@ function groundedObservationTarget(
   context: DecisionContext,
   target: Extract<CharacterAgendaProbe, { kind: 'observe' }>['target'],
 ): Extract<CharacterAgendaProbe, { kind: 'observe' }>['target'] | undefined {
+  if (target.kind === 'work') return groundedWorldRef(context, target) ? structuredClone(target) : undefined;
   const visible = target.kind === 'voxel'
     ? visibleVoxel(context, target.position)
     : target.kind === 'own-inventory-stack'
@@ -222,6 +226,11 @@ function groundedObservationTarget(
 }
 
 function groundedWorldRef(context: DecisionContext, target: WorldRef): boolean {
+  if (target.kind === 'work') {
+    const work = workById(context.state.world, target.workId);
+    return Boolean(work && work.condition >= WORK_COLLAPSE_CONDITION && visibleVoxel(context, work.position)
+      && voxelAt(context.state.world.grid, work.position.x, work.position.y, work.position.z) === work.anchorMaterialId);
+  }
   if (target.kind === 'inventory-stack') {
     return target.personId === context.person.id
       && context.person.inventory.some((stack) => stack.id === target.stackId && stack.quantity > 0);
@@ -309,6 +318,7 @@ function probeTargetLabel(
   context: DecisionContext,
   target: Extract<CharacterAgendaProbe, { kind: 'observe' }>['target'],
 ): string {
+  if (target.kind === 'work') return workById(context.state.world, target.workId)?.summary ?? '眼前造物';
   if (target.kind === 'voxel') {
     return materialDefinition(voxelAt(
       context.state.world.grid,

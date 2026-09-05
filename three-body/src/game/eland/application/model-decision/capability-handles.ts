@@ -4,6 +4,7 @@ export type DecisionProbeVisibleHandle =
   | { handle: string; kind: 'drop'; dropId: string }
   | { handle: string; kind: 'person'; personId: string }
   | { handle: string; kind: 'animal'; animalId: string }
+  | { handle: string; kind: 'work'; workId: string }
   | { handle: string; kind: 'container'; containerId: string };
 
 /** Request-scoped opaque handles retained by the server-side gateway. */
@@ -27,12 +28,13 @@ export interface DecisionProbeHandleMap {
     kind: 'memory' | 'knowledge' | 'relationship';
     summary: string;
   }>;
+  speechReferences?: Array<{ handle: string; kind: 'agreement' | 'permission' | 'collective' | 'knowledge'; id: string }>;
 }
 
 export interface CharacterAgendaProbeCandidates {
   held: Array<{ handle: string; name: string; properties: string[]; quantity: number }>;
   visible: Array<Record<string, unknown> & { handle: string; kind: string }>;
-  voxels: Array<{ handle: string; name: string; properties: string[] }>;
+  voxels: Array<{ handle: string; name: string; properties: string[]; position: { x: number; y: number; z: number } }>;
 }
 
 export function decisionVoxelKey(position: { x: number; y: number; z: number }): string {
@@ -91,6 +93,12 @@ export function buildDecisionProbeHandleMap(context: DecisionRequestContext): De
     }
   }
   return {
+    speechReferences: [
+      ...context.agreements.map((item, index) => ({ handle: `agreement${index + 1}`, kind: 'agreement' as const, id: item.id })),
+      ...context.permissions.map((item, index) => ({ handle: `permission${index + 1}`, kind: 'permission' as const, id: item.id })),
+      ...context.collectives.map((item, index) => ({ handle: `collective${index + 1}`, kind: 'collective' as const, id: item.id })),
+      ...context.person.knowledge.map((item, index) => ({ handle: `knowledge${index + 1}`, kind: 'knowledge' as const, id: item.id })),
+    ],
     // Every held entity remains addressable for this request. Compacting the
     // prose view must never make a later stack impossible for the person to
     // choose as a concrete experiment input.
@@ -110,6 +118,9 @@ export function buildDecisionProbeHandleMap(context: DecisionRequestContext): De
       })),
       ...context.visibleContainers.map((item, index) => ({
         handle: `c${index + 1}`, kind: 'container' as const, containerId: item.id,
+      })),
+      ...(context.visibleWorks ?? []).map((item, index) => ({
+        handle: `w${index + 1}`, kind: 'work' as const, workId: item.id,
       })),
     ],
     voxels,
@@ -145,7 +156,8 @@ export function buildCharacterAgendaProbeCandidates(
   const visibleByRef = new Map(handles.visible.map((item) => {
     const id = item.kind === 'drop' ? item.dropId
       : item.kind === 'person' ? item.personId
-        : item.kind === 'animal' ? item.animalId
+      : item.kind === 'animal' ? item.animalId
+        : item.kind === 'work' ? item.workId
           : item.containerId;
     return [`${item.kind}:${id}`, item.handle];
   }));
@@ -174,11 +186,15 @@ export function buildCharacterAgendaProbeCandidates(
         const handle = visibleByRef.get(`container:${id}`);
         return handle ? [{ handle, kind: 'container', position, capacity, usedCapacity }] : [];
       }),
+      ...(context.visibleWorks ?? []).flatMap(({ id, ...work }) => {
+        const handle = visibleByRef.get(`work:${id}`);
+        return handle ? [{ handle, kind: 'work', ...work }] : [];
+      }),
     ],
     voxels: handles.voxels.flatMap(({ handle, position }) => {
       const visible = (context.visibleVoxels ?? [])
         .find((candidate) => decisionVoxelKey(candidate.position) === decisionVoxelKey(position));
-      return visible ? [{ handle, name: visible.name, properties: [...visible.properties] }] : [];
+      return visible ? [{ handle, name: visible.name, properties: [...visible.properties], position: { ...position } }] : [];
     }),
   };
 }

@@ -1,7 +1,7 @@
 import { retrieveAgentMemories } from '../../domain/agent-memory';
 import { worldEventById } from '../../domain/event-index';
 import type { DecisionContext } from '../../simulation';
-import { verifiedSpeechLinesBySourceEventId } from '../../projection/speech-history';
+import { verifiedSpeechLinesBySourceEventId } from '../../domain/speech-evidence';
 import type { DialogueDisposition, DialogueMove, SpeechLineView } from '../../../societyContract';
 import { actionOptionSemantics } from '../../domain/action-option-semantics';
 

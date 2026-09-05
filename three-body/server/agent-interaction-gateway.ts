@@ -1,6 +1,6 @@
-import { buildDecisionRequestContext } from '../src/game/eland/application/model-decision/decision-context';
 import type { DecisionContext } from '../src/game/eland/simulation';
 import {
+  buildDecisionRequestContext,
   isPlayerInteractionEmergencyContext,
   isFulfillmentOption,
   isRequiredSocialOption,

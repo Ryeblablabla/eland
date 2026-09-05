@@ -1,6 +1,5 @@
 import { goalSatisfied } from '../../domain/action-executor';
 import { openAgreementCandidatesForPerson } from '../../domain/agreement';
-import { ORDINARY_LOCAL_DELIBERATIONS_PER_PERSON_MONTH } from '../../domain/decision-budget';
 import { inheritPlanningEventOverlay, registerPlanningEventOverlay } from '../../domain/event-index';
 import { intentReviewAtMonth, isResumableIntent } from '../../domain/intent';
 import { lifePlanningStage } from '../../domain/life-stage';
@@ -335,8 +334,7 @@ export function planLocallyForTick(
   const hasOrdinaryPermit = cadence.ordinaryReplanPermits.has(person.id);
   const firstOrdinaryReviewDue = ordinaryCount === 0 && fullReview;
   const terminalOrdinaryReplanDue = !current
-    && hasOrdinaryPermit
-    && ordinaryCount < ORDINARY_LOCAL_DELIBERATIONS_PER_PERSON_MONTH;
+    && hasOrdinaryPermit;
   const checkLifeOpportunity = planningTick === 1 && Boolean(current?.projectId);
   const recordUsePreflight = !current?.recordUseBasis
     && projectsOwnedBy(state, person.id).some((project) => project.status === 'active')
@@ -414,8 +412,7 @@ export function planLocallyForTick(
     const latestCount = cadence.ordinaryDeliberationCounts.get(person.id) ?? 0;
     const canSpendFirst = latestCount === 0;
     const canSpendTerminalReplan = !activeIntent(state, person)
-      && cadence.ordinaryReplanPermits.has(person.id)
-      && latestCount < ORDINARY_LOCAL_DELIBERATIONS_PER_PERSON_MONTH;
+      && cadence.ordinaryReplanPermits.has(person.id);
     if (!canSpendFirst && !canSpendTerminalReplan) return;
     if (cadence.ordinaryReplanPermits.has(person.id)) cadence.ordinaryReplanPermits.delete(person.id);
     cadence.ordinaryDeliberationCounts.set(person.id, latestCount + 1);

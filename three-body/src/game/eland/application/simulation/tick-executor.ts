@@ -1,6 +1,5 @@
 import {
   availableModelContexts,
-  availableModelTokens,
   ORDINARY_DECISION_PERSON_MONTHS,
 } from '../../domain/decision-budget';
 import { PLANNING_TICKS_PER_MONTH } from '../../domain/calendar';
@@ -14,13 +13,13 @@ import type {
   WorldEvent,
 } from '../../domain/model';
 import { isAlive, type PersonId } from '../../domain/person';
-import { personById } from '../../domain/state-index';
+import { intentById, personById } from '../../domain/state-index';
+import { worldEventById } from '../../domain/event-index';
 import { languageInterpreterIds } from '../../domain/language-perception';
-import { isProductionOption, RulePlanner } from '../rule-planner';
+import { RulePlanner } from '../rule-planner';
+import { intentReviewAtMonth } from '../../domain/intent';
 import {
   decisionBudgetExemption,
-  decisionUrgency,
-  hasUnfinishedProductionIntent,
   lastModelDecisionMonth,
   validateModelDecision,
 } from './model-review';
@@ -35,15 +34,118 @@ import {
 import { currentRollingLedgers, prepareMonth, type PreparedMonth } from './month-boundary';
 import type { ObservationProjector } from './observation-projector';
 import { buildCurrentMonthDecisionContext } from './tick-planner';
+import { planPreflightOutcomeKey } from './plan-progress';
+
+function planContinuationContexts(
+  prepared: PreparedMonth,
+  priorActiveIntentIds: readonly string[],
+  tickEvents: readonly WorldEvent[],
+  nextTick: number,
+  consumedOutcomes: Set<string>,
+  stoppedPlans: ReadonlySet<string>,
+): DecisionContext[] {
+  const candidateIds = new Set([
+    ...priorActiveIntentIds,
+    ...tickEvents.flatMap((event) => event.kind === 'action' && event.intentId ? [event.intentId] : []),
+  ]);
+  const contexts: DecisionContext[] = [];
+  const includedPeople = new Set<PersonId>();
+  for (const intentId of candidateIds) {
+    const intent = intentById(prepared.state, intentId);
+    if (!intent?.plan || includedPeople.has(intent.ownerId)) continue;
+    const terminal = intent.status === 'completed'
+      || intent.status === 'blocked'
+      || intent.status === 'failed'
+      || (intent.status === 'suspended' && intent.waitingFor === 'world-change');
+    if (!terminal || ['stay', 'pause', 'abandon'].includes(intent.plan.disposition)) continue;
+    const originId = intent.planSourceDecisionEventId ?? intent.sourceDecisionEventId;
+    if (stoppedPlans.has(originId)) continue;
+    const latestOutcome = intent.outcomeReceipts?.at(-1);
+    if (intent.planAssessment?.goal === 'satisfied'
+      && (intent.planPreflight || latestOutcome?.execution === 'performed')) continue;
+    // Equivalent attempts under unchanged physical premises supply no new
+    // planning event. A changed tool, resource, target or world state does.
+    const unchangedOutcome = latestOutcome?.attempt && !latestOutcome.attempt.worldChanged
+      && !latestOutcome.planAssessment?.changedConditionIds.length;
+    const outcomeKey = planPreflightOutcomeKey(intent) ?? (unchangedOutcome
+      ? `${intent.ownerId}:${latestOutcome.attempt!.operationKey}:${latestOutcome.attempt!.premiseKey}`
+      : `${intent.id}:${intent.status}:${intent.actionEventIds.at(-1) ?? intent.goalOutcome?.resolvedAtMonth ?? ''}`);
+    if (consumedOutcomes.has(outcomeKey)) continue;
+    const person = personById(prepared.state, intent.ownerId);
+    if (!person || !isAlive(person) || (person.activeIntentId && person.activeIntentId !== intent.id)) continue;
+    const origin = prepared.events.find((event) => event.id === originId)
+      ?? worldEventById(prepared.state, originId);
+    const mentalAct = origin?.kind === 'decision' && origin.usedModel && origin.who === intent.ownerId
+      ? origin.decision.mentalAct
+      : undefined;
+    if (!mentalAct) continue;
+    const context = buildCurrentMonthDecisionContext(
+      prepared.state, person, prepared.atMonth, nextTick, prepared.events,
+    );
+    context.continuingPlan = {
+      sourceIntentId: intent.id,
+      sourceDecisionEventId: originId,
+      mentalAct: structuredClone(mentalAct),
+      // Natural-language steps need not map one-to-one to primitive actions.
+      // Plan must reconcile the actual receipts, not have its steps deleted
+      // according to an engine guess about sentence granularity.
+      plan: structuredClone(intent.plan),
+      outcomeReceipts: structuredClone(intent.outcomeReceipts ?? []),
+      ...(intent.planAssessment ? { completionAssessment: structuredClone(intent.planAssessment) } : {}),
+      ...(intent.planMilestones?.length ? { milestones: structuredClone(intent.planMilestones) } : {}),
+      ...(intent.planPreflight ? { preflightReceipt: structuredClone(intent.planPreflight) } : {}),
+    };
+    consumedOutcomes.add(outcomeKey);
+    includedPeople.add(person.id);
+    contexts.push(context);
+  }
+  return contexts;
+}
 
 const authoritativeRulePlanner = new RulePlanner();
-// A live model owns open-ended social choices, but it never owns the ability
-// to act.  This planner keeps required replies, accepted commitments and
-// grounded physical work available without inventing optional social speech.
-const modelOwnedFallbackPlanner = new RulePlanner({
-  deferVoluntarySocialChoicesToModel: true,
-});
 const MAX_MODEL_MENTAL_ACTS_PER_PERSON_MONTH = 2;
+
+/** Local execution can finish a chosen undertaking; it cannot invent a new
+ * decision on behalf of a character whose mind is remote. Pending social
+ * requests do not grant permission to accept, reject or reopen an obligation.
+ * Physical emergencies are handled by the tick executor's embodied reflexes. */
+const modelOwnedExecutionPlanner: AgentDecider & { decideAt: RulePlanner['decideAt'] } = {
+  defersVoluntarySocialChoicesToModel: true,
+  decide(context) {
+    return this.decideAt(context, {
+      atMonth: context.decisionMonth ?? context.state.clock.elapsedMonths + 1,
+      planningTick: context.planningTick ?? 1,
+    });
+  },
+  decideAt(context) {
+    return {
+      kind: 'idle',
+      reason: context.activeIntent
+        ? `继续已有安排：${context.activeIntent.summary}`
+        : '当前行动已经结束，尚未形成下一项安排',
+    };
+  },
+};
+
+function recordModelReviewAvailability(
+  prepared: PreparedMonth,
+  context: DecisionContext,
+  available: boolean,
+): void {
+  const opportunity = prepared.events.find((event) => event.kind === 'decision-opportunity'
+    && event.who === context.person.id);
+  if (!opportunity || opportunity.kind !== 'decision-opportunity') return;
+  const reason = '模型复核尚未返回有效决定；只执行既定行动，不代替本人形成新选择';
+  if (available) {
+    if (opportunity.reasons.includes(reason)) {
+      opportunity.reasons = opportunity.reasons.filter((candidate) => candidate !== reason);
+      opportunity.result = `${context.person.name}的模型复核已返回有效决定`;
+    }
+    return;
+  }
+  if (!opportunity.reasons.includes(reason)) opportunity.reasons.push(reason);
+  opportunity.result = `${context.person.name}的模型复核待返回，已有行动仍可执行`;
+}
 
 /**
  * A missing model review cannot silently replace work the person already
@@ -61,13 +163,16 @@ function preserveExistingExecution(
   if (exemption === 'emergency'
     || exemption === 'required-response'
     || exemption === 'fulfillment') return localDecision;
+  const reviewAtMonth = intentReviewAtMonth(context.activeIntent);
+  if ((reviewAtMonth !== undefined && atMonth > reviewAtMonth)
+    || atMonth - context.activeIntent.lastProgressAtMonth >= 2) return localDecision;
   return {
     kind: 'idle',
     reason: `继续已有安排：${context.activeIntent.summary}`,
   };
 }
 
-function cognitiveTriggerPersonIds(events: readonly WorldEvent[]): Set<PersonId> {
+function cognitiveTriggerPersonIds(state: SimulationState, events: readonly WorldEvent[]): Set<PersonId> {
   const people = new Set<PersonId>();
   const speakers = new Set(events.flatMap((event) => event.kind === 'action'
     && event.status === 'completed'
@@ -76,6 +181,14 @@ function cognitiveTriggerPersonIds(events: readonly WorldEvent[]): Set<PersonId>
     : []));
   for (const event of events) {
     if (event.kind !== 'action') continue;
+    const intent = event.intentId ? state.intents.find((candidate) => candidate.id === event.intentId) : undefined;
+    const receipt = intent?.outcomeReceipts?.at(-1);
+    if (receipt?.attempt?.repetition === 'unchanged-retry'
+      && !receipt.attempt.worldChanged && receipt.evidence === 'none'
+      && !receipt.planAssessment?.changedConditionIds.length) continue;
+    if (intent?.status === 'completed' && (intent.plan?.steps.length ?? 0) > 1) {
+      people.add(event.who);
+    }
     if (event.action.kind === 'act'
       && event.action.operation === 'hunt'
       && event.diff.killed === true) {
@@ -94,7 +207,8 @@ function cognitiveTriggerPersonIds(events: readonly WorldEvent[]): Set<PersonId>
       if (!speakers.has(event.who)) people.add(event.who);
       continue;
     }
-    if (event.action.kind === 'attend' && event.status === 'completed') {
+    if (event.action.kind === 'attend' && event.status === 'completed'
+      && intent?.outcomeReceipts?.at(-1)?.evidence !== 'none') {
       if (!speakers.has(event.who)) people.add(event.who);
       continue;
     }
@@ -195,45 +309,23 @@ async function executeSimulationAsync(
     ordinaryCandidates.length,
     Math.floor(prepared.state.decisionBudget.credits + living / ORDINARY_DECISION_PERSON_MONTHS),
     availableModelContexts(rolling, living),
-    Math.floor(availableModelTokens(rolling, living, prepared.state.decisionBudget.tokensPerContext)
-      / prepared.state.decisionBudget.tokensPerContext),
   );
-  const importance = (context: DecisionContext) => {
-    const exemption = decisionBudgetExemption(context, prepared.atMonth);
-    const interactionReview = Boolean(batch.forceReview?.(context, prepared.atMonth));
-    let score = interactionReview
-      ? 2_800
-      : exemption === 'bootstrap'
-      ? 3_000
-      : exemption === 'emergency'
-        ? 2_900
-        : exemption === 'required-response'
-          ? 2_700
-      : exemption === 'fulfillment'
-            ? 2_500
-            : exemption === 'agenda-revision'
-              ? 2_400
-            : !context.activeIntent
-              ? 1_800 + (context.options.some(isProductionOption) ? 240 : 0)
-              : hasUnfinishedProductionIntent(context)
-                ? 1_700
-                : context.activeIntent.domain === 'strategic'
-                  ? 900
-                  : 350;
-    const lastDecisionMonth = lastModelDecisionMonth(prepared.state, context.person.id);
-    if (lastDecisionMonth !== null && exemption === null) {
-      const monthsSince = prepared.atMonth - lastDecisionMonth;
-      score -= Math.max(0, 6 - monthsSince) * 60;
-    }
-    return score;
-  };
+  // Token usage remains audited, but a guessed token cost must not silently
+  // erase somebody's monthly mind turn when Mind + Plan cost more than the
+  // estimate. Context capacity already bounds the number of remote turns.
+  // Remote capacity is infrastructure. Give the longest-unreviewed person
+  // their turn without rewarding construction or suppressing social aims.
   const rank = (contexts: DecisionContext[]) => [...contexts]
-    .sort((a, b) => importance(b) - importance(a) || decisionUrgency(b) - decisionUrgency(a) || a.person.id.localeCompare(b.person.id));
+    .sort((a, b) => (
+      (lastModelDecisionMonth(prepared.state, a.person.id) ?? -1)
+      - (lastModelDecisionMonth(prepared.state, b.person.id) ?? -1)
+      || a.person.id.localeCompare(b.person.id)
+    ));
   const ordinaryContexts = rank(ordinaryCandidates).slice(0, ordinaryCapacity);
   const modelContexts = rank([...exemptContexts, ...ordinaryContexts]);
   const decisions = new Map<PersonId, { decision: Decision; usedModel: boolean }>();
   const fallbackPlanner = batch.ownsVoluntarySocialChoices
-    ? modelOwnedFallbackPlanner
+    ? modelOwnedExecutionPlanner
     : authoritativeRulePlanner;
   const timedFallbackPlanner = fallbackPlanner as AgentDecider & { decideAt?: RulePlanner['decideAt'] };
   // Freeze the local month-opening choice before the remote request. Model
@@ -256,6 +348,7 @@ async function executeSimulationAsync(
       ? timedFallbackPlanner.decideAt(context, { atMonth: prepared.atMonth, planningTick: 1 })
       : fallbackPlanner.decide(context));
   for (const context of prepared.candidates.filter((candidate) => !modelPersonIds.has(candidate.person.id))) {
+    if (batch.ownsVoluntarySocialChoices) recordModelReviewAvailability(prepared, context, false);
     decisions.set(context.person.id, { decision: fallbackFor(context), usedModel: false });
   }
   let modelDecisions: (Decision | null)[] = [];
@@ -277,6 +370,7 @@ async function executeSimulationAsync(
     } catch {
       // Runtime-invalid adapter output follows the same local path as null.
     }
+    if (batch.ownsVoluntarySocialChoices) recordModelReviewAvailability(prepared, context, Boolean(decision));
     decisions.set(context.person.id, decision
       ? { decision, usedModel: true }
       : { decision: localDecision, usedModel: false });
@@ -291,12 +385,55 @@ async function executeSimulationAsync(
     projectionCadence: 'monthly',
   });
   const modelTurns = new Map<PersonId, number>(modelContexts.map((context) => [context.person.id, 1]));
+  const consumedPlanOutcomes = new Set<string>();
+  const stoppedPlans = new Set<string>();
   while (execution.completedTick < PLANNING_TICKS_PER_MONTH) {
+    const priorActiveIntentIds = batch.continuePlans
+      ? prepared.state.people.flatMap((person) => person.activeIntentId ? [person.activeIntentId] : [])
+      : [];
     const tick = executePlanningTick(execution);
     if (tick.actionTick >= PLANNING_TICKS_PER_MONTH
       || !batch.ownsVoluntarySocialChoices) continue;
     const nextTick = tick.actionTick + 1;
-    const triggeredContexts = [...cognitiveTriggerPersonIds(tick.events)]
+    const planContexts = batch.continuePlans
+      ? planContinuationContexts(prepared, priorActiveIntentIds, tick.events, nextTick, consumedPlanOutcomes, stoppedPlans)
+      : [];
+    const planPeople = new Set(planContexts.map((context) => context.person.id));
+    if (planContexts.length && batch.continuePlans) {
+      execution.attempted.total += planContexts.length;
+      execution.attempted.exempt += planContexts.length;
+      let translations: (Decision | null)[] = [];
+      try {
+        const response = await batch.continuePlans(planContexts);
+        translations = Array.isArray(response) ? response : [];
+      } catch {
+        // A failed translator leaves the existing intention intact. It never
+        // turns into a fresh Mind decision or invented local social response.
+      }
+      const acceptedPlans = planContexts.flatMap((context, index) => {
+        const proposed = translations[index];
+        const plan = proposed?.mentalAct?.plan;
+        const originId = context.continuingPlan!.sourceDecisionEventId;
+        const stopsPlan = Boolean(plan && ['stay', 'pause', 'abandon'].includes(plan.disposition));
+        let decision: Decision | null = null;
+        try {
+          decision = proposed ? validateModelDecision(context, proposed) : null;
+        } catch {
+          // Invalid translation is infrastructure feedback, not consent.
+        }
+        recordModelReviewAvailability(prepared, context, Boolean(decision));
+        if (!decision) return [];
+        if (stopsPlan) {
+          stoppedPlans.add(originId);
+          decision = { kind: 'idle', reason: decision.reason,
+            ...(decision.mentalAct ? { mentalAct: decision.mentalAct } : {}) };
+        }
+        return [{ context, decision, usedModel: true }];
+      });
+      applyPlanningDecisions(execution, acceptedPlans, nextTick);
+    }
+    const triggeredContexts = [...cognitiveTriggerPersonIds(prepared.state, tick.events)]
+      .filter((personId) => !planPeople.has(personId))
       .filter((personId) => (modelTurns.get(personId) ?? 0) < MAX_MODEL_MENTAL_ACTS_PER_PERSON_MONTH)
       .flatMap((personId) => {
         const person = personById(prepared.state, personId);
@@ -317,7 +454,7 @@ async function executeSimulationAsync(
     execution.attempted.total += triggeredContexts.length;
     execution.attempted.exempt += triggeredContexts.length;
     const localReviewDecisions = triggeredContexts.map((context) => (
-      modelOwnedFallbackPlanner.decideAt(context, { atMonth: prepared.atMonth, planningTick: nextTick })
+      modelOwnedExecutionPlanner.decideAt(context, { atMonth: prepared.atMonth, planningTick: nextTick })
     ));
     const localDecisions = triggeredContexts.map((context, index) => (
       preserveExistingExecution(context, localReviewDecisions[index], prepared.atMonth)
@@ -327,6 +464,7 @@ async function executeSimulationAsync(
       const response = await batch.decideAll(triggeredContexts);
       proposed = Array.isArray(response) ? response : [];
     } catch {
+      triggeredContexts.forEach((context) => recordModelReviewAvailability(prepared, context, false));
       applyPlanningDecisions(execution, triggeredContexts.map((context, index) => ({
         context,
         decision: localDecisions[index],
@@ -343,6 +481,7 @@ async function executeSimulationAsync(
       } catch {
         // Invalid model output is replaced by the precomputed local decision.
       }
+      recordModelReviewAvailability(prepared, context, Boolean(decision));
       return decision
         ? { context, decision, usedModel: true }
         : { context, decision: localDecisions[index], usedModel: false };

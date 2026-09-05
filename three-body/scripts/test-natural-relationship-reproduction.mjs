@@ -14,6 +14,11 @@ try {
     evidence: 'src/game/eland/domain/relationship-evidence.ts',
     episode: 'src/game/eland/domain/relationship-episode.ts',
     adapter: 'src/game/eland/adapter.ts',
+    executor: 'src/game/eland/domain/action-executor.ts',
+    physiology: 'src/game/eland/domain/reproduction.ts',
+    review: 'src/game/eland/application/simulation/model-review.ts',
+    grid: 'src/game/eland/world/grid.ts',
+    socialSpace: 'src/game/eland/domain/social-space.ts',
   };
   for (const [name, entry] of Object.entries(entries)) {
     execFileSync(path.resolve('node_modules/.bin/esbuild'), [
@@ -47,6 +52,17 @@ try {
     `${pathToFileURL(path.join(temporaryDirectory, 'adapter.mjs')).href}?test=${cacheBust}`
   );
 
+  const { executePrimitiveAction } = await import(
+    `${pathToFileURL(path.join(temporaryDirectory, 'executor.mjs')).href}?test=${cacheBust}`
+  );
+  const { conceptionChance } = await import(
+    `${pathToFileURL(path.join(temporaryDirectory, 'physiology.mjs')).href}?test=${cacheBust}`
+  );
+
+  const { validateModelDecision } = await import(
+    `${pathToFileURL(path.join(temporaryDirectory, 'review.mjs')).href}?test=${cacheBust}`
+  );
+
   const atMonth = 30 * 12;
   const state = createInitialState(20260904, {
     endpoint: { kind: 'months', value: atMonth + 12 },
@@ -60,8 +76,7 @@ try {
   partner.sex = 'male';
   observer.bornAtMonth = atMonth - 25 * 12;
   partner.bornAtMonth = atMonth - 26 * 12;
-  observer.position = { ...observer.position, cellId: 1, previousCellId: 1, z: 1, previousZ: 1 };
-  partner.position = { ...partner.position, cellId: 1, previousCellId: 1, z: 1, previousZ: 1 };
+  partner.position = structuredClone(observer.position);
   observer.body = { health: 30, hydration: 30, nutrition: 30 };
   partner.body = { health: 30, hydration: 30, nutrition: 30 };
   const observerRelation = observer.relations.find((relation) => relation.personId === partner.id);
@@ -218,7 +233,7 @@ try {
   assert.ok(responseOptions.some((option) => option.id === `accept-reproduce:${offerId}`));
   assert.ok(responseOptions.some((option) => option.id === `reject-reproduce:${offerId}`));
   assert.equal(responseOptions.some((option) => option.id.startsWith(`reproduce:${offerId}:`)), false,
-    'low body reserves must block execution even though accept/reject remain subjective choices');
+    'an unanswered proposal must not become permission to execute');
 
   agreement.status = 'active';
   agreement.acceptedByPersonIds.push(observer.id);
@@ -227,8 +242,137 @@ try {
   const activeOptions = buildReproductionOptions(state, observer, [partner], atMonth);
   assert.ok(activeOptions.some((option) => option.id === `withdraw-reproduce:${offerId}`),
     'either participant must retain a sourced withdrawal path');
-  assert.equal(activeOptions.some((option) => option.id.startsWith(`reproduce:${offerId}:`)), false,
-    'an active mutual agreement still must not bypass the body execution boundary');
+  assert.ok(activeOptions.some((option) => option.id.startsWith(`reproduce:${offerId}:`)),
+    'low reserves inform the persons and conception probability, rather than forbidding their choice');
+  const withdrawal = validateModelDecision(
+    { state, person: observer, options: activeOptions, followUpOptions: [] },
+    { kind: 'start', optionId: `withdraw-reproduce:${offerId}`, reason: '本人决定撤回这一次尝试' },
+  );
+  assert.equal(withdrawal?.kind, 'start',
+    'an available fulfillment action must not prevent the model from withdrawing consent');
+
+  const independentAction = {
+    id: 'independent-move', summary: '离开眼前的谈话', reason: '本人选择先做其他事情',
+    goal: { kind: 'near-person', personId: partner.id },
+    nextAction: { kind: 'move', toCellId: partner.position.cellId, toZ: partner.position.z },
+    estimatedDuration: 'one-month', sourceFactIds: [],
+  };
+  const newAttempt = { kind: 'observe', target: { kind: 'person', personId: partner.id } };
+  for (const pendingOptions of [responseOptions, activeOptions]) {
+    const context = { state, person: observer, options: [...pendingOptions, independentAction], followUpOptions: [] };
+    assert.equal(validateModelDecision(context, { kind: 'idle', reason: '本人暂不回应' })?.kind, 'idle',
+      'an unanswered request or accepted obligation cannot force the next subjective decision');
+    assert.deepEqual(validateModelDecision(context, {
+      kind: 'idle', reason: '本人想到另一个实际尝试', executionProbe: newAttempt,
+    })?.executionProbe, newAttempt, 'creative attempts must reach their own physical compiler despite pending obligations');
+    assert.equal(validateModelDecision(context, {
+      kind: 'start', optionId: independentAction.id, reason: independentAction.reason,
+    })?.optionId, independentAction.id, 'the person may choose a different available action and face later social consequences');
+    const activeIntent = { id: 'own-current-work', ownerId: observer.id, status: 'active' };
+    for (const kind of ['suspend', 'abandon']) {
+      assert.equal(validateModelDecision({ ...context, activeIntent }, {
+        kind, intentId: activeIntent.id, reason: '本人不再继续这项安排',
+      })?.kind, kind, 'pending social work must not prevent pausing or abandoning personal work');
+    }
+  }
+
+  const lowReserveChance = conceptionChance(observer, partner, atMonth);
+  assert.ok(lowReserveChance > 0 && lowReserveChance < 0.28);
+
+  const executeAttempt = (world) => executePrimitiveAction(
+    world, world.people.find((person) => person.id === observer.id),
+    { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: partner.id }], authorizationRef: offerId },
+    atMonth, 100, { cause: 'intent', actionTick: 1 },
+  );
+  const sparseWorld = structuredClone(state);
+  const populatedWorld = structuredClone(state);
+  populatedWorld.people.push(...Array.from({ length: 70 }, (_, index) => ({
+    ...structuredClone(partner), id: `distant-person-${index}`,
+    position: { ...partner.position, cellId: 20 + index },
+  })));
+  const sparseAttempt = executeAttempt(sparseWorld);
+  const populatedAttempt = executeAttempt(populatedWorld);
+  assert.equal(sparseAttempt.status, 'completed');
+  assert.equal(populatedAttempt.status, 'completed');
+  assert.equal(populatedAttempt.diff.chance, sparseAttempt.diff.chance,
+    'unrelated people elsewhere in the world must not suppress this pair\'s conception');
+  assert.equal(populatedAttempt.diff.conceived, sparseAttempt.diff.conceived);
+
+  const refusedWorld = structuredClone(state);
+  refusedWorld.agreements.find((candidate) => candidate.id === offerId).acceptedByPersonIds = [partner.id];
+  assert.equal(executeAttempt(refusedWorld).status, 'blocked',
+    'population freedom must not invent a second person\'s agreement');
+
+  agreement.status = 'rejected';
+  agreement.resolvedAtMonth = atMonth;
+  agreement.rejectedByPersonIds = [observer.id];
+  assert.equal(canOfferRelationshipProposal(state, partner, observer,
+    buildRelationshipCausalBasis(state, partner, observer, 'reproduce', atMonth)), true,
+  'a prior response is remembered evidence, not a hidden multi-month lock on asking');
+
+  observer.conditions.push({ id: 'existing-pregnancy', kind: 'pregnancy', stage: 1, sinceMonth: atMonth,
+    dueAtMonth: atMonth + 9, sourceEventIds: ['existing-pregnancy-fact'], otherPersonId: partner.id });
+  agreement.status = 'active';
+  assert.equal(buildReproductionOptions(state, observer, [partner], atMonth)
+    .some((option) => option.id.startsWith(`reproduce:${offerId}:`)), false,
+  'an existing pregnancy remains a real physical boundary');
+
+  const { cellId, setVoxel } = await import(
+    `${pathToFileURL(path.join(temporaryDirectory, 'grid.mjs')).href}?test=${cacheBust}`
+  );
+  const { positionsCanTouch } = await import(
+    `${pathToFileURL(path.join(temporaryDirectory, 'socialSpace.mjs')).href}?test=${cacheBust}`
+  );
+  const contactState = createInitialState(31, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
+  contactState.clock.elapsedMonths = 1;
+  const [first, second] = contactState.people;
+  first.sex = 'female'; second.sex = 'male';
+  contactState.people = [first, second];
+  first.body = { health: 90, hydration: 90, nutrition: 90 };
+  second.body = { health: 90, hydration: 90, nutrition: 90 };
+  first.conditions = []; second.conditions = [];
+  for (let x = 9; x <= 12; x += 1) for (let y = 9; y <= 11; y += 1) {
+    setVoxel(contactState.world.grid, x, y, 2, 1);
+    for (let z = 3; z < contactState.world.grid.levels; z += 1) setVoxel(contactState.world.grid, x, y, z, 0);
+  }
+  first.position = { ...first.position, cellId: cellId(10, 10), z: 3 };
+  second.position = { ...second.position, cellId: cellId(11, 10), z: 3 };
+  let contactOrder = 0;
+  const performContact = (person, action) => {
+    const fact = executePrimitiveAction(contactState, person, action, 1, ++contactOrder,
+      { cause: 'intent', actionTick: contactOrder });
+    contactState.world.past.push(fact);
+    assert.equal(fact.status, 'completed', fact.result);
+    return fact;
+  };
+  const proposal = buildReproductionOptions(contactState, first, [second], 1)
+    .find((option) => option.id.startsWith('offer-reproduce:'));
+  assert.equal(proposal.nextAction.kind, 'talk', 'a reproductive proposal must use language without walking into the listener');
+  performContact(first, proposal.nextAction);
+  const responses = buildReproductionOptions(contactState, second, [first], 1);
+  const acceptance = responses.find((option) => option.id.startsWith('accept-reproduce:'));
+  const rejection = responses.find((option) => option.id.startsWith('reject-reproduce:'));
+  assert.equal(acceptance?.nextAction.kind, 'talk');
+  assert.equal(rejection?.nextAction.kind, 'talk', 'both independent responses use the same language range');
+  performContact(second, { ...acceptance.nextAction, delivery: 'call', speakerMeaning: {
+    ...acceptance.nextAction.speakerMeaning, summary: '我愿意和你一起尝试生育。',
+  } });
+  const agreed = contactState.agreements.find((candidate) => candidate.proposal.kind === 'reproduce');
+  assert.deepEqual(new Set(agreed.acceptedByPersonIds), new Set([first.id, second.id]));
+  const contactOptions = buildReproductionOptions(contactState, first, [second], 1);
+  assert.equal(contactOptions.find((option) => option.id.startsWith('withdraw-reproduce:'))?.nextAction.kind, 'talk');
+  const attempt = contactOptions.find((option) => option.id.startsWith('reproduce:'));
+  assert.equal(attempt?.nextAction.kind, 'act', 'adjacent unobstructed bodies do not need to occupy one exact voxel');
+  const attemptResult = performContact(first, attempt.nextAction);
+  assert.equal(attemptResult.diff.mutualConsent, true);
+  assert.ok(attemptResult.diff.chance > 0, 'this is an actual probabilistic attempt, without forcing conception');
+  setVoxel(contactState.world.grid, 11, 10, 3, 1);
+  assert.equal(positionsCanTouch(contactState.world.grid, first.position, second.position), false,
+    'a solid obstruction at the shared contact height blocks bodily contact');
+  setVoxel(contactState.world.grid, 11, 10, 3, 0);
+  second.position = { ...first.position, z: first.position.z + 3 };
+  assert.equal(positionsCanTouch(contactState.world.grid, first.position, second.position), false,
+    'people on separate floors cannot reproduce through vertical separation');
 
   process.stdout.write('natural relationship and reproduction tests passed\n');
 } finally {

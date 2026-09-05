@@ -31,6 +31,8 @@ import { projectById } from '../domain/state-index';
 import { projectsLedBy } from '../domain/project-leadership-index';
 import { projectIsLedBy } from '../domain/project-leadership';
 import type { ProjectStep } from './projects/project-step';
+import { heardKnowledgeSource, knownWritingConvention, recordInspectionFactId } from '../domain/record';
+import { lifePlanningStage } from '../domain/life-stage';
 
 interface ResolvedTechniqueAction {
   action: Extract<PrimitiveAction, { kind: 'act' }>;
@@ -44,6 +46,72 @@ type RecordUsePurpose = NonNullable<RecordUseBasisV3['purpose']>;
 
 function unique(values: string[]): string[] {
   return [...new Set(values)].sort();
+}
+
+/** Ordinary study is available without a prewritten recipe or owned project. */
+export function buildKnowledgeLearningOptions(
+  state: SimulationState,
+  reader: PersonState,
+  visibleDrops: DropState[],
+): ActionOption[] {
+  if (!isAlive(reader) || lifePlanningStage(reader, state.clock.elapsedMonths + 1) === 'dependent-child') return [];
+  const options: ActionOption[] = [];
+  const self: WorldRef = { kind: 'person', personId: reader.id };
+  const heardEvents = new Set(reader.knowledge.filter((fact) => fact.id.startsWith('heard-knowledge:'))
+    .flatMap((fact) => fact.sourceEventIds));
+  for (const sourceEventId of heardEvents) {
+    const source = heardKnowledgeSource(state, reader, sourceEventId);
+    if (!source) continue;
+    const confidence = Math.min(source.knowledge.confidence, 46);
+    const known = reader.knowledge.find((fact) => fact.id === source.knowledge.id);
+    if (known && known.confidence >= confidence && (!source.knowledge.procedural || known.procedural)) continue;
+    options.push({
+      id: `study-heard:${source.event.id}:${source.knowledge.id}`,
+      summary: '回想并理解此前听到的一段解释',
+      reason: source.event.action.kind === 'talk'
+        ? `本人曾听到“${source.event.action.speakerMeaning.summary ?? '这项解释'}”；可以主动整理其中内容，再决定是否相信和尝试`
+        : '本人可以主动整理此前听到的解释',
+      goal: { kind: 'knowledge', factId: source.knowledge.id, minConfidence: confidence },
+      nextAction: { kind: 'attend', target: self, learning: { sourceEventId: source.event.id, factId: source.knowledge.id } },
+      target: self, estimatedDuration: 'one-month', sourceFactIds: [source.event.id], domain: 'strategic',
+    });
+  }
+  const sources: Array<{ recordId: string; target: WorldRef; sourceEventIds: string[]; position?: VoxelPosition }> = [
+    ...reader.inventory.flatMap((stack) => stack.quantity > 0 && stack.recordPayloadId ? [{
+      recordId: stack.recordPayloadId,
+      target: { kind: 'inventory-stack' as const, personId: reader.id, stackId: stack.id },
+      sourceEventIds: stack.sourceEventIds,
+    }] : []),
+    ...visibleDrops.flatMap((drop) => drop.quantity > 0 && drop.recordPayloadId ? [{
+      recordId: drop.recordPayloadId, target: { kind: 'drop' as const, dropId: drop.id },
+      sourceEventIds: drop.sourceEventIds, position: { x: cellX(drop.cellId), y: cellY(drop.cellId), z: drop.z },
+    }] : []),
+  ];
+  const consideredRecords = new Set<string>();
+  for (const source of sources) {
+    if (consideredRecords.has(source.recordId)) continue;
+    consideredRecords.add(source.recordId);
+    const record = state.records.find((candidate) => candidate.id === source.recordId);
+    if (!record) continue;
+    const understood = Boolean(knownWritingConvention(reader, record.codebookId));
+    const factId = recordInspectionFactId(record, understood);
+    if (reader.knowledge.some((fact) => fact.id === factId)) continue;
+    const attend: PrimitiveAction = { kind: 'attend', target: structuredClone(source.target) };
+    const mustApproach = source.position && distanceToPosition(reader, source.position) > 1;
+    options.push({
+      id: `inspect-record:${record.id}:v${record.version}:${understood ? 'read' : 'unread-signs'}`,
+      summary: understood ? '阅读身边实体载体上的记录' : '查看身边记录载体上的陌生刻痕',
+      reason: understood
+        ? '这些符号采用本人已理解的约定；读完后可以独立判断、试做或转述其中内容'
+        : '可以先看清这份载体与刻痕；看见符号不会自动知道含义，之后可寻求理解这些符号的人解释',
+      goal: { kind: 'knowledge', factId, minConfidence: 55 },
+      nextAction: mustApproach ? { kind: 'move', toCellId: cellId(source.position!.x, source.position!.y), toZ: source.position!.z } : attend,
+      ...(mustApproach ? { completionAction: attend } : {}),
+      target: structuredClone(source.target), estimatedDuration: 'one-month',
+      sourceFactIds: unique([record.id, ...source.sourceEventIds]), domain: 'strategic',
+    });
+  }
+  return options;
 }
 
 function stableBasisPart(value: string): string {
@@ -482,6 +550,9 @@ export function buildDemandBoundRecordUseOptions(
     const codebook = reader.knowledge.find((fact) => fact.id === record.codebookId
       && fact.kind === 'codebook'
       && fact.confidence >= 55);
+    // Unfamiliar signs are inspected through ordinary learning options. An
+    // owned project is never evidence that the reader can decipher a script.
+    if (!codebook || record.procedural) continue;
     const technique = reader.knowledge.find((fact) => fact.id === record.knowledgeId && fact.kind === 'technique');
     const purpose: RecordUsePurpose = (technique?.confidence ?? 0) >= 55 ? 'replicate' : 'learn';
     const alreadyRead = Boolean(technique?.sourceEventIds.includes(record.id));

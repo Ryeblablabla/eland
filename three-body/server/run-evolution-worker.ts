@@ -17,8 +17,7 @@ import {
   RunWriteConflictError,
 } from './run-persistence';
 import { SqliteRunStore } from './sqlite-run-store';
-
-const RULE_PLANNER_MODEL = 'rule-planner-v1';
+import { resolveEvolutionDecisionRuntime } from './evolution-decision-runtime';
 
 interface RunEvolutionWorkerData {
   dataDirectory: string;
@@ -95,10 +94,11 @@ void (async () => {
       ?? (input.request.kind === 'ensure-through'
         ? input.request.expected.fromMonth
         : current.state.clock.elapsedMonths);
+    const runtime = resolveEvolutionDecisionRuntime();
     const initialPath = evolvePath(current.state, {
       runId: input.runId,
-      provider: 'local',
-      model: previous?.model ?? RULE_PLANNER_MODEL,
+      provider: runtime.provider,
+      model: runtime.model,
       fromMonth,
       requestedEndMonth,
       ...(previous ? { previous } : {}),
@@ -131,6 +131,7 @@ void (async () => {
       requestedEndMonth,
       initialPath,
       current.state,
+      runtime,
     );
     parentPort.postMessage({ type: 'completed' } satisfies RunEvolutionWorkerMessage);
   } catch (error) {

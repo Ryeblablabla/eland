@@ -19,6 +19,7 @@ import type { PrimitiveAction, WorldRef } from './domain/action';
 import { actionActivityIndex } from './domain/event-index';
 import { bodyHistoryLabel, playerTextForEvent } from './projection/player-narrative';
 import { projectSocietyWorld } from './projection/society-world-cache';
+import { projectWorkStructures } from './projection/work-structures';
 import { portraitForPerson } from '../personPortraits';
 import { voxelAt } from './world/grid';
 import { traitDefinition, traitStatesOf } from './domain/trait';
@@ -31,6 +32,7 @@ import { retrieveAgentMemories } from './domain/agent-memory';
 import { projectPersonMindMarkdown } from './domain/person-mind';
 import { languageBroadcastFromDiff } from './domain/language-perception';
 import { relationshipEpisodesWith } from './domain/relationship-episode';
+import { workById } from './domain/works';
 
 export { projectPlayerNarrative } from './projection/player-narrative';
 export type { WorldEventLookup } from './projection/player-narrative';
@@ -160,6 +162,7 @@ function materialForTarget(state: SimulationState, lookup: StateLookup, target: 
   }
   if (target.kind === 'drop') return lookup.dropsById.get(target.dropId)?.materialId;
   if (target.kind === 'container') return Material.Container;
+  if (target.kind === 'work') return workById(state.world, target.workId)?.anchorMaterialId;
   if (target.kind === 'voxel') {
     const { x, y, z } = target.position;
     return state.world.grid.voxels[x + y * state.world.grid.width + z * state.world.grid.width * state.world.grid.depth];
@@ -178,6 +181,10 @@ function targetIdentity(target: WorldRef | undefined): Pick<ActionVisualView, 't
 
 function worldRefLocation(state: SimulationState, lookup: StateLookup, target: WorldRef | undefined): Pick<ActionVisualView, 'targetCellId' | 'targetZ'> {
   if (!target) return {};
+  if (target.kind === 'work') {
+    const work = workById(state.world, target.workId);
+    return work ? { targetCellId: work.position.x + work.position.y * state.world.grid.width, targetZ: work.position.z } : {};
+  }
   if (target.kind === 'voxel') return {
     targetCellId: target.position.x + target.position.y * state.world.grid.width,
     targetZ: target.position.z,
@@ -373,6 +380,10 @@ function historyCellLabel(state: SimulationState, cellId: number, z?: number): s
 }
 
 function historyWorldRefLabel(state: SimulationState, lookup: StateLookup, target: WorldRef): string {
+  if (target.kind === 'work') {
+    const work = workById(state.world, target.workId);
+    return work ? `${work.summary} · ${historyCellLabel(state, work.position.x + work.position.y * state.world.grid.width, work.position.z)}` : '已消失的造物';
+  }
   if (target.kind === 'voxel') {
     const cellId = target.position.x + target.position.y * state.world.grid.width;
     return historyCellLabel(state, cellId, target.position.z);
@@ -740,7 +751,7 @@ export function toSocietyState(state: SimulationState): SocietyState {
         ...(marker ? { markerMaterialId: marker.materialId, inscription: marker.inscription } : {}),
       }];
     }),
-    structures: state.derived.structures.map((structure) => ({
+    structures: [...state.derived.structures.map((structure) => ({
       id: structure.id,
       name: structure.name,
       occupiedCells: [...structure.occupiedCells],
@@ -750,7 +761,7 @@ export function toSocietyState(state: SimulationState): SocietyState {
       effects: { weatherProtection: structure.weatherProtection, thermalInsulation: structure.thermalInsulation, capacity: structure.capacity },
       sourceEventIds: [...structure.sourceEventIds],
       materialIds: [...structure.materialIds],
-    })),
+    })), ...projectWorkStructures(state)],
     ...(electricalPower ? { electricalPower } : {}),
     intents: state.intents.filter((intent) => intent.status === 'active').map((intent) => {
       const person = lookup.peopleById.get(intent.ownerId);

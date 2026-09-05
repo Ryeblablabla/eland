@@ -94,6 +94,7 @@ function compactTarget(
     (target.kind === 'drop' && item.kind === 'drop' && item.dropId === target.dropId)
     || (target.kind === 'person' && item.kind === 'person' && item.personId === target.personId)
     || (target.kind === 'animal' && item.kind === 'animal' && item.animalId === target.animalId)
+    || (target.kind === 'work' && item.kind === 'work' && item.workId === target.workId)
     || (target.kind === 'container' && item.kind === 'container' && item.containerId === target.containerId)
   ));
   if (visible) return { kind: target.kind, handle: visible.handle };
@@ -116,143 +117,22 @@ function compactSocialContext(
   };
 }
 
-interface IndexedDecisionOption {
-  index: number;
-  option: DecisionRequestContext['options'][number];
-}
-
-function compactStableHash(value: string): number {
-  let hash = 0x811c9dc5;
-  for (const character of value) {
-    hash ^= character.codePointAt(0) ?? 0;
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
-
-function compactTargetKey(option: { target?: DecisionRequestContext['options'][number]['target'] }): string {
-  const target = option.target;
-  if (!target) return 'none';
-  if (target.kind === 'voxel') return `voxel:${decisionVoxelKey(target.position)}`;
-  if (target.kind === 'inventory-stack') return `inventory:${target.stackId}`;
-  if (target.kind === 'drop') return `drop:${target.dropId}`;
-  if (target.kind === 'person') return `person:${target.personId}`;
-  if (target.kind === 'animal') return `animal:${target.animalId}`;
-  if (target.kind === 'container') return `container:${target.containerId}`;
-  return `remains:${target.remainsId}`;
-}
-
-function diversifiedPrimaryOptions(
-  ranked: readonly IndexedDecisionOption[],
-  limit: number,
-): IndexedDecisionOption[] {
-  const selected: IndexedDecisionOption[] = [];
-  const selectedIndexes = new Set<number>();
-  const purposes = new Set<string>();
-  const targets = new Set<string>();
-  const take = (candidate: IndexedDecisionOption): void => {
-    if (selected.length >= limit || selectedIndexes.has(candidate.index)) return;
-    selected.push(candidate);
-    selectedIndexes.add(candidate.index);
-    purposes.add(candidate.option.semantics.purpose);
-    targets.add(compactTargetKey(candidate.option));
-  };
-  for (const candidate of ranked) {
-    if (!purposes.has(candidate.option.semantics.purpose)) take(candidate);
-  }
-  for (const candidate of ranked) {
-    if (!targets.has(compactTargetKey(candidate.option))) take(candidate);
-  }
-  for (const candidate of ranked) take(candidate);
-  return selected;
-}
-
-/**
- * Keeps authority/commitment options complete, then exposes a small diverse
- * view of ordinary affordances. Omitted actions remain locally legal; the
- * model can also preserve a candidate-external aim through agenda reflection.
- */
+/** Preserve every executable choice; compression must not choose behaviours. */
 export function compactDecisionOptionIndices(context: DecisionRequestContext): number[] {
-  const indexed: IndexedDecisionOption[] = context.options.map((option, index) => ({
-    index,
-    option,
-  }));
-  const modelVisible = indexed.filter(({ option }) => !(
-    option.semantics.conversation?.turn === 'opening'
-      && option.semantics.conversation.topic !== 'open'
-  ));
-  const protectedOptions = modelVisible.filter(({ option }) => (
-    option.semantics.obligation === 'required-response'
-    || option.semantics.obligation === 'commitment-action'
-    || (option.semantics.conversation?.turn === 'opening'
-      && option.semantics.conversation.topic === 'open')
-    || Boolean(option.characterAgendaItemId)
-    || Boolean(option.projectId)
-  ));
-  const protectedIndexes = new Set(protectedOptions.map(({ index }) => index));
-  const ordinary = modelVisible
-    .filter(({ index }) => !protectedIndexes.has(index))
-    .sort((left, right) => left.option.id.localeCompare(right.option.id) || left.index - right.index);
-  const primary = diversifiedPrimaryOptions(ordinary, 8);
-  const selectedIndexes = new Set([...protectedIndexes, ...primary.map(({ index }) => index)]);
-  const explorationCandidates = ordinary
-    .filter(({ index }) => !selectedIndexes.has(index))
-    .sort((left, right) => left.option.id.localeCompare(right.option.id) || left.index - right.index);
-  const exploration = explorationCandidates.length
-    ? explorationCandidates[(compactStableHash(context.person.id) + context.clock.elapsedMonths) % explorationCandidates.length]
-    : undefined;
-  return [
-    ...protectedOptions.map(({ index }) => index),
-    ...primary.map(({ index }) => index),
-    ...(exploration ? [exploration.index] : []),
-  ];
+  return context.options.map((_option, index) => index);
 }
 
 function compactFollowUpOptionIndices(
   context: DecisionRequestContext,
   selectedOptions: readonly DecisionRequestContext['options'][number][],
 ): number[] {
-  const openingIds = selectedOptions.filter((option) => option.requiresFollowUp).map((option) => option.id);
-  if (!openingIds.length) return [];
-  const hasExplicitMatching = context.followUpOptions.some((option) => Array.isArray(option.matchesOptionIds));
-  const relevant = context.followUpOptions
-    .map((option, index) => ({ index, option }))
-    .filter(({ option }) => !hasExplicitMatching
-      || option.matchesOptionIds.some((optionId) => openingIds.includes(optionId)));
-  const protectedIndexes = new Set<number>();
-  for (const openingId of openingIds) {
-    const match = relevant.find(({ option }) => option.matchesOptionIds?.includes(openingId));
-    if (match) protectedIndexes.add(match.index);
-  }
-  const ordinary = relevant.filter(({ index }) => !protectedIndexes.has(index));
-  const diverse: typeof ordinary = [];
-  const purposes = new Set<string>();
-  const targets = new Set<string>();
-  for (const candidate of ordinary) {
-    const purpose = candidate.option.semantics?.purpose ?? 'other';
-    const target = compactTargetKey(candidate.option);
-    if (diverse.length >= 3) break;
-    if (purposes.has(purpose) && targets.has(target)) continue;
-    diverse.push(candidate);
-    purposes.add(purpose);
-    targets.add(target);
-  }
-  const chosen = new Set([...protectedIndexes, ...diverse.map(({ index }) => index)]);
-  const explorationCandidates = ordinary
-    .filter(({ index }) => !chosen.has(index))
-    .sort((left, right) => left.option.id.localeCompare(right.option.id) || left.index - right.index);
-  const exploration = explorationCandidates.length
-    ? explorationCandidates[(compactStableHash(context.person.id) + context.clock.elapsedMonths) % explorationCandidates.length]
-    : undefined;
-  return [...protectedIndexes, ...diverse.map(({ index }) => index), ...(exploration ? [exploration.index] : [])];
+  const openingIds = new Set(selectedOptions.filter((option) => option.requiresFollowUp).map((option) => option.id));
+  return context.followUpOptions.flatMap((option, index) => (
+    option.matchesOptionIds.some((id) => openingIds.has(id)) ? [index] : []
+  ));
 }
 
-/**
- * Smaller, causally local view for a single person's model deliberation.
- * Required responses, commitment actions and explicit agenda/project steps
- * remain complete. Ordinary affordances are a diverse, rotating view rather
- * than a claim that the shortlist exhausts the person's subjective space.
- */
+/** Concise factual fields, with all distinct executable choices retained. */
 export function buildCompactDecisionRequestContext(
   context: DecisionRequestContext,
   handles: DecisionProbeHandleMap = buildDecisionProbeHandleMap(context),
@@ -429,6 +309,7 @@ export function buildCompactDecisionRequestContext(
     },
     recentDialogue: (context.recentDialogue ?? []).slice(0, 4),
     commitments: {
+      recentCompletedWork: context.recentCompletedWork ?? [],
       ...(context.activeIntent ? { activeIntent: context.activeIntent } : {}),
       ...(context.activeProject ? { activeProject: {
         summary: context.activeProject.summary,
@@ -445,11 +326,11 @@ export function buildCompactDecisionRequestContext(
             }
           : context.activeProject.materialPlan,
       } } : {}),
-      characterAgenda: (context.person.characterAgenda ?? []).slice(0, 4).map(({ id, aim, theme, importance, horizonMonths, targetAtMonth, status, lastReviewedAtMonth, approaches }) => ({
+      characterAgenda: (context.person.characterAgenda ?? []).slice(0, 4).map(({ id, aim, theme, importance, horizonMonths, targetAtMonth, createdAtMonth, status, lastReviewedAtMonth, approaches }) => ({
         handle: handles.agendas.find((candidate) => candidate.itemId === id)?.handle,
-        aim, theme, importance, horizonMonths, targetAtMonth, status, lastReviewedAtMonth,
-        approaches: approaches.slice(0, 2).map(({ summary, disposition, latestOutcome }) => ({
-          summary, disposition, ...(latestOutcome ? { latestOutcome } : {}),
+        aim, theme, importance, horizonMonths, targetAtMonth, createdAtMonth, status, lastReviewedAtMonth,
+        approaches: approaches.slice(0, 2).map(({ summary, disposition, latestOutcome, evaluationCount, recentEvaluations }) => ({
+          summary, disposition, evaluationCount, recentEvaluations, ...(latestOutcome ? { latestOutcome } : {}),
         })),
       })),
       suspendedIntents: context.suspendedIntents.map((intent) => ({
@@ -466,6 +347,8 @@ export function buildCompactDecisionRequestContext(
       agreements: context.agreements.slice(0, 3).map((agreement) => ({
         kind: agreement.kind,
         status: agreement.status,
+        proposedAtMonth: agreement.proposedAtMonth,
+        pendingResponderNames: agreement.pendingResponderNames,
         ...(agreement.dueAtMonth !== undefined ? { dueAtMonth: agreement.dueAtMonth } : {}),
         requiresOwnResponse: agreement.requiredResponderIds.includes(context.person.id),
         acceptedBySelf: agreement.acceptedByPersonIds.includes(context.person.id),

@@ -1,7 +1,7 @@
 import { materialDefinition, materialHas, type MaterialId } from './material';
-import type { ActionFact, PhysicalStructure } from './model';
+import type { ActionFact, EnvironmentFact, PhysicalStructure } from './model';
 import type { PersonId } from './person';
-import { WORK_SHELTER_COVER_THRESHOLD, workShelterCoverAt, type WorkState } from './works';
+import { physicalActionUseEvidencePaths, workAt, type WorkState } from './works';
 import {
   cellId,
   cellX,
@@ -21,6 +21,8 @@ export interface ShelterGeometry {
   openSides: number;
   weatherProtection: number;
   thermalInsulation: number;
+  /** Physical works whose computed cover actually supplied this shelter. */
+  workIds: string[];
 }
 
 export const STRUCTURE_USE_RECEIPT_VERSION = 'structure-use-receipt-v1' as const;
@@ -75,36 +77,44 @@ function targetCells(event: ActionFact): number[] {
   return [];
 }
 
-function structureUseEvidencePaths(event: ActionFact): string[] {
-  if (event.action.kind === 'move' && event.pathSegment.length) return ['pathSegment'];
-  return Object.entries(event.diff)
-    .filter(([, value]) => value !== undefined
-      && value !== null
-      && (!Array.isArray(value) || value.length > 0)
-      && (typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length > 0))
-    .map(([key]) => `diff.${key}`)
-    .slice(0, 8);
-}
-
 /**
  * 通过真实行为的发生地回放结构使用。同一结构的建造事件被明确排除；
  * “打算建一座工坊”或结构的名字都不会产生这种回执。
  */
 export function observePhysicalStructureUseReceipts(
   structure: PhysicalStructure,
-  events: readonly ActionFact[],
+  events: readonly (ActionFact | EnvironmentFact)[],
 ): StructureUseReceipt[] {
   if (!structure.complete || structure.capacity <= 0) return [];
   const usableCells = new Set(structure.interiorCells.length
     ? structure.interiorCells
     : structure.occupiedCells);
   return events.flatMap((event) => {
+    if (event.kind === 'environment') {
+      const use = event.diff.shelterUse as {
+        position?: { cellId?: number; z?: number };
+        coldLoadWithoutShelter?: number; coldLoad?: number;
+        heatLoadWithoutShelter?: number; heatLoad?: number;
+      } | undefined;
+      if (event.change !== 'body' || !event.who || !use?.position
+        || !structure.interiorPositions.some((position) => position.cellId === use.position?.cellId && position.z === use.position.z)) return [];
+      const reduced = (typeof use.coldLoadWithoutShelter === 'number' && typeof use.coldLoad === 'number' && use.coldLoadWithoutShelter > use.coldLoad)
+        || (typeof use.heatLoadWithoutShelter === 'number' && typeof use.heatLoad === 'number' && use.heatLoadWithoutShelter > use.heatLoad);
+      if (!reduced) return [];
+      return [{
+        version: STRUCTURE_USE_RECEIPT_VERSION,
+        id: `structure-use:${structure.id}:${event.id}`,
+        structureId: structure.id, kind: 'use' as const, functionKey: 'thermal-protection',
+        actorId: event.who, witnessIds: [], atMonth: event.atMonth,
+        sourceEventId: event.id, evidencePaths: ['diff.shelterUse'],
+      }];
+    }
     if (event.status !== 'completed' || structure.sourceEventIds.includes(event.id)) return [];
     const touched = usableCells.has(event.toCellId)
       || (event.action.kind !== 'move' && usableCells.has(event.cellId))
       || targetCells(event).some((candidate) => usableCells.has(candidate));
     if (!touched) return [];
-    const evidencePaths = structureUseEvidencePaths(event);
+    const evidencePaths = physicalActionUseEvidencePaths(event);
     if (!evidencePaths.length) return [];
     const witnessIds = structuredWitnessIds(event.diff).filter((personId) => personId !== event.who);
     const kind = witnessIds.length ? 'demonstration' as const : 'use' as const;
@@ -157,29 +167,29 @@ export function shelterGeometryAt(world: VoxelWorld, position: StandingPosition)
   const overhead = materialDefinition(overheadMaterialId);
   const weatherProtection = Math.min(100, 58 + enclosedSides * 10 + (overhead.tags.includes('insulating') ? 8 : 0));
   const thermalInsulation = Math.min(100, 16 + enclosedSides * 18 + (overhead.tags.includes('insulating') ? 18 : 0));
-  return { position, overheadMaterialId, enclosedSides, openSides, weatherProtection, thermalInsulation };
+  return { position, overheadMaterialId, enclosedSides, openSides, weatherProtection, thermalInsulation, workIds: [] };
 }
 
-/**
- * 生存向住所判定：规则住所（体素几何）优先；没有规则住所时，
- * 人物亲手搭的 Works（棚架/垒堆/框架）按 cover 提供应急遮蔽。
- * 项目压力仍只读当下的物理遮蔽。文明观察是另一条路径：无论体素
- * 结构还是 Works，都要在实际使用后才会进入文明证据。
- */
+/** Shelter comes from actual geometry; nearby works identify the contributing matter. */
 export function survivalShelterAt(
   state: { world: { grid: VoxelWorld; works?: WorkState[] } },
   position: StandingPosition,
 ): ShelterGeometry | null {
   const geometry = shelterGeometryAt(state.world.grid, position);
-  if (geometry) return geometry;
-  const cover = workShelterCoverAt(state.world, position);
-  if (cover < WORK_SHELTER_COVER_THRESHOLD) return null;
+  if (!geometry) return null;
+  const contributingPositions = [
+    { x: cellX(position.cellId), y: cellY(position.cellId), z: position.z + 2 },
+    ...neighbors4(position.cellId).flatMap((neighbor) => [
+      { x: cellX(neighbor), y: cellY(neighbor), z: position.z },
+      { x: cellX(neighbor), y: cellY(neighbor), z: position.z + 1 },
+    ]),
+  ];
   return {
-    position,
-    overheadMaterialId: 0,
-    enclosedSides: 1,
-    openSides: 3,
-    weatherProtection: cover,
-    thermalInsulation: Math.round(cover * 0.45),
+    ...geometry,
+    workIds: [...new Set(contributingPositions.flatMap((position) => {
+      const work = workAt(state.world, position);
+      const material = voxelAt(state.world.grid, position.x, position.y, position.z);
+      return work && materialHas(material, 'solid') ? [work.id] : [];
+    }))],
   };
 }

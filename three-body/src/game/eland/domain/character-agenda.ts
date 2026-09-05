@@ -48,6 +48,7 @@ export interface CharacterAgendaVoxelRef {
 /** Opaque local refs only: probes never name a material, output, or recipe. */
 export type CharacterAgendaObservationTargetRef =
   | CharacterAgendaVoxelRef
+  | { kind: 'work'; workId: string }
   | { kind: 'drop'; dropId: string }
   | { kind: 'container'; containerId: string }
   | { kind: 'own-inventory-stack'; stackId: string }
@@ -343,6 +344,7 @@ function normalizeObservationTarget(
 ): CharacterAgendaObservationTargetRef | undefined {
   if (!value) return undefined;
   if (value.kind === 'voxel') return normalizeVoxelRef(value);
+  if (value.kind === 'work' && value.workId?.trim()) return { kind: value.kind, workId: value.workId.trim() };
   if (value.kind === 'drop' && value.dropId?.trim()) return { kind: value.kind, dropId: value.dropId.trim() };
   if (value.kind === 'container' && value.containerId?.trim()) return { kind: value.kind, containerId: value.containerId.trim() };
   if (value.kind === 'own-inventory-stack' && value.stackId?.trim()) return { kind: value.kind, stackId: value.stackId.trim() };

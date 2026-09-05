@@ -18,7 +18,6 @@ import {
   isRequiredSocialOption,
   isStateAchievementGoal,
 } from '../rule-planner';
-import { actionOptionSemantics } from '../../domain/action-option-semantics';
 import { characterAgendaStateOf } from '../../domain/character-agenda';
 import { compileOpenConversationOption } from '../conversation-options';
 import { agendaMemorySignals } from '../../domain/agent-memory';
@@ -107,7 +106,7 @@ export function decisionBudgetExemption(context: DecisionContext, atMonth: numbe
 export function lastModelDecisionMonth(state: Pick<SimulationState, 'world'>, personId: PersonId): number | null {
   for (let index = state.world.past.length - 1; index >= 0; index -= 1) {
     const event = state.world.past[index];
-    if (event.kind === 'decision' && event.usedModel && event.who === personId) return event.atMonth;
+    if (event.kind === 'decision' && event.usedModel && !event.planContinuation && event.who === personId) return event.atMonth;
   }
   return null;
 }
@@ -188,13 +187,10 @@ export function decisionProbability(state: SimulationState, context: DecisionCon
   if (characterAgendaModelReviewDue(context, atMonth)) {
     return { probability: 1, reasons: ['长期关切出现了新证据或到了复核时点'] };
   }
-  const socialOpening = context.options.some((option) => (
-    option.domain === 'social'
-    && actionOptionSemantics(option).obligation === 'optional'
-  ));
-  return socialOpening
-    ? { probability: 0.55, reasons: ['眼前出现了自主交流或协商机会'] }
-    : { probability: 0.08, reasons: ['稳定意图仍允许偶尔重新思考'] };
+  // Calendar cadence opens a chance to think; it does not decide which aim
+  // wins. A productive project is still part of a person's life and cannot
+  // suppress their monthly consideration of relationships and new ideas.
+  return { probability: 1, reasons: ['月度回顾实际结果，决定延续、修订或改变当前安排'] };
 }
 
 /**
@@ -206,25 +202,23 @@ export function validateModelDecision(
   proposed: Decision,
   localDecision?: Decision,
 ): Decision | null {
-  const required = context.options.filter(isRequiredSocialOption);
-  const fulfillment = context.options.filter(isFulfillmentOption);
+  // Social obligations remain facts with deadlines and consequences. They
+  // cannot decide whether a person may think, leave, ignore, or attempt an
+  // unrelated action; the chosen action is checked against world facts below.
   if (proposed.kind === 'idle') {
-    return required.length || fulfillment.length
-      ? null
-      : {
-          kind: 'idle',
-          reason: proposed.reason,
-          ...(proposed.characterAgendaUpdate
-            ? { characterAgendaUpdate: structuredClone(proposed.characterAgendaUpdate) }
-            : {}),
-          ...(proposed.executionProbe
-            ? { executionProbe: structuredClone(proposed.executionProbe) }
-            : {}),
-          ...(proposed.mentalAct ? { mentalAct: structuredClone(proposed.mentalAct) } : {}),
-        };
+    return {
+      kind: 'idle',
+      reason: proposed.reason,
+      ...(proposed.characterAgendaUpdate
+        ? { characterAgendaUpdate: structuredClone(proposed.characterAgendaUpdate) }
+        : {}),
+      ...(proposed.executionProbe
+        ? { executionProbe: structuredClone(proposed.executionProbe) }
+        : {}),
+      ...(proposed.mentalAct ? { mentalAct: structuredClone(proposed.mentalAct) } : {}),
+    };
   }
   if (proposed.kind === 'suspend') {
-    if (required.length || fulfillment.length) return null;
     if (!context.activeIntent || proposed.intentId !== context.activeIntent.id) return null;
     return {
       kind: 'suspend',
@@ -234,7 +228,6 @@ export function validateModelDecision(
     };
   }
   if (proposed.kind === 'resume') {
-    if (required.length || fulfillment.length) return null;
     const candidate = context.state.intents.find((intent) => intent.id === proposed.intentId);
     if (candidate?.ownerId !== context.person.id
       || candidate.status !== 'suspended'
@@ -248,7 +241,6 @@ export function validateModelDecision(
     };
   }
   if (proposed.kind === 'abandon') {
-    if (required.length || fulfillment.length) return null;
     const candidate = context.activeIntent?.id === proposed.intentId
       ? context.activeIntent
       : context.state.intents.find((intent) => intent.id === proposed.intentId);
@@ -265,8 +257,6 @@ export function validateModelDecision(
   if (proposed.kind !== 'start' && proposed.kind !== 'revise') return null;
   const selected = context.options.find((option) => option.id === proposed.optionId);
   if (!selected) return null;
-  if (required.length && !required.some((option) => option.id === selected.id)) return null;
-  if (!required.length && fulfillment.length && !fulfillment.some((option) => option.id === selected.id)) return null;
   if (!composeIntentChoice(context.options, context.followUpOptions, selected.id, proposed.followUpOptionId)) return null;
 
   const communication = selected.nextAction.kind === 'talk'
@@ -283,19 +273,12 @@ export function validateModelDecision(
     return null;
   }
   if (!selected.openConversationGrounding && proposedGrounding !== undefined) return null;
-  const contradictoryStructuredReply = Boolean(proposedUtterance && communication) && (
-    communication?.speakerMeaning.kind === 'accept'
-      ? /拒绝|不同意|不愿意|不接受|[?？]/u.test(proposedUtterance ?? '')
-      : communication?.speakerMeaning.kind === 'reject'
-        ? /同意|接受|愿意|成交/u.test(proposedUtterance ?? '')
-        : false
-  );
 
   const shared = {
     optionId: selected.id,
     ...(proposed.followUpOptionId ? { followUpOptionId: proposed.followUpOptionId } : {}),
     reason: proposed.reason,
-    ...(proposedUtterance && !contradictoryStructuredReply ? { utterance: proposedUtterance } : {}),
+    ...(proposedUtterance ? { utterance: proposedUtterance } : {}),
     ...(selected.openConversationGrounding ? { groundingSourceFactIds: [...proposedGrounding!] } : {}),
     ...(proposed.sourceInteractionId ? { sourceInteractionId: proposed.sourceInteractionId } : {}),
     ...(proposed.characterAgendaProposal
@@ -313,9 +296,9 @@ export function validateModelDecision(
   const localForSameOption = localDecision?.kind === 'revise' && localDecision.optionId === selected.id
     ? localDecision
     : null;
-  const interruptionKind = required.length
+  const interruptionKind = isRequiredSocialOption(selected)
     ? 'required-response' as const
-    : fulfillment.length
+    : isFulfillmentOption(selected)
       ? 'fulfillment' as const
       : selected.recordUseBasis
         ? 'record-use' as const
@@ -325,7 +308,8 @@ export function validateModelDecision(
   const survivalHibernationInterruption = localForSameOption?.interruptionKind === 'survival-reflex'
     && selected.nextAction.kind === 'act'
     && selected.nextAction.operation === 'dehydrate';
-  const canInterrupt = isResumableIntent(active) || survivalHibernationInterruption;
+  const canInterrupt = !proposed.followUpOptionId
+    && (isResumableIntent(active) || survivalHibernationInterruption);
   return {
     kind: 'revise',
     intentId: active.id,

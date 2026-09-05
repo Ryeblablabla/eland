@@ -1,5 +1,6 @@
 import { MONTHS_PER_YEAR } from './calendar';
-import type { ActionOption, Intent, IntentDecision, PrimitiveAction, WorldRef } from './action';
+import type { ActionOption, Intent, IntentDecision, IntentOutcomeReceipt, PlanPreflightReceipt, PrimitiveAction, WorldRef } from './action';
+import type { MentalAct, MentalPlanTranslation, PlanCompletionAssessment, PlanMilestoneReceipt } from './mental-act';
 import type { MaterialId } from './material';
 import type { PersonId, PersonState } from './person';
 import type { VoxelWorld } from '../world/grid';
@@ -117,6 +118,17 @@ export interface DecisionContext {
   currentMonthEvents?: WorldEvent[];
   /** Unified subjective read view; optional only for old fixtures/adapters. */
   mind?: PersonMindView;
+  /** An already chosen Mind intention awaiting only translation of its next step. */
+  continuingPlan?: {
+    sourceIntentId: string;
+    sourceDecisionEventId: string;
+    mentalAct: MentalAct;
+    plan: MentalPlanTranslation;
+    outcomeReceipts: IntentOutcomeReceipt[];
+    completionAssessment?: PlanCompletionAssessment;
+    milestones?: PlanMilestoneReceipt[];
+    preflightReceipt?: PlanPreflightReceipt;
+  };
 }
 
 export type Decision = IntentDecision;
@@ -141,6 +153,8 @@ export interface ModelInvocationMetadata {
 }
 export interface BatchDecider {
   decideAll(contexts: DecisionContext[]): Promise<(Decision | null)[]>;
+  /** Recompile a chosen plan against actual outcomes without another Mind turn. */
+  continuePlans?(contexts: DecisionContext[]): Promise<(Decision | null)[]>;
   /** Null/error fallback and later local ticks must not invent subjective social choices. */
   readonly ownsVoluntarySocialChoices?: boolean;
   /** Optional infrastructure policy. Omitted by deterministic tests and legacy callers. */
@@ -232,6 +246,12 @@ export interface DecisionFact extends BaseEvent {
   characterAgendaEvidence?: CharacterAgendaDecisionEvidence[];
   /** The one outward language wave emitted by a model-authored decision. */
   languageBroadcast?: LanguageBroadcast;
+  /** A silent translation of an existing intention, not a new language wave. */
+  planContinuation?: {
+    sourceIntentId: string;
+    sourceDecisionEventId: string;
+    plan: MentalPlanTranslation;
+  };
   result: string;
 }
 

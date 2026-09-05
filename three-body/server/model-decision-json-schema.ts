@@ -1,9 +1,9 @@
+import { SPEECH_PROPOSAL_KINDS } from '../src/game/eland/infrastructure-api';
+import { MATERIAL_PALETTE } from '../src/game/eland/domain/material';
 import type {
   DecisionProbeHandleMap,
-} from '../src/game/eland/application/model-decision/capability-handles';
-import type {
   MentalActRequestContext,
-} from '../src/game/eland/application/model-decision/mental-act-context';
+} from '../src/game/eland/infrastructure-api';
 import type { ModelJsonSchema } from './model-client';
 
 interface MentalActSchemaProtocol {
@@ -150,6 +150,9 @@ function worldActionSchema(protocol: MentalActSchemaProtocol): JsonSchema {
         items: handleSchema(targets, '动作明确作用的当前对象'),
       },
       expectedResult: stringSchema(180, '人物主观希望或猜测的结果，不是世界事实'),
+      ...(protocol.requestContext.knownMethods?.length ? {
+        methodHandle: handleSchema(protocol.requestContext.knownMethods.map((method) => method.handle), '参考已学方法进行本次重新绑定与试验，不复制旧结果'),
+      } : {}),
     },
   };
 }
@@ -235,6 +238,34 @@ function relationshipAppraisalSchema(protocol: MentalActSchemaProtocol): JsonSch
   };
 }
 
+function speechIntentSchema(protocol: MentalActSchemaProtocol): JsonSchema {
+  const people = protocol.handles.visible.filter((item) => item.kind === 'person').map((item) => item.handle);
+  const references = protocol.handles.speechReferences ?? [];
+  const referenceKinds = {
+    accept: 'agreement', reject: 'agreement', 'end-agreement': 'agreement',
+    'revoke-permission': 'permission', 'leave-collective': 'collective', 'share-knowledge': 'knowledge',
+  };
+  const variant = (kind: string, properties: Record<string, JsonSchema> = {}): JsonSchema => ({
+    type: 'object', additionalProperties: false, required: ['kind', ...Object.keys(properties)],
+    properties: { kind: { type: 'string', enum: [kind] }, ...properties },
+  });
+  return {
+    description: '人物自己说明这句话的实际含义；普通表达不建立协议，Plan 不能增加本人未选择的承诺',
+    oneOf: [
+      ...['expression', 'prediction', 'request-information'].map((kind) => variant(kind)),
+      ...(people.length ? [variant('proposal', {
+        proposalKind: { type: 'string', enum: [...SPEECH_PROPOSAL_KINDS] },
+        counterpartHandles: { type: 'array', minItems: 1, uniqueItems: true, items: handleSchema(people, '本人提议的可见对方') },
+        commitment: stringSchema(240, '本人具体提出的事项；只代表自己的提议，不表示对方同意'),
+      })] : []),
+      ...Object.entries(referenceKinds).flatMap(([kind, referenceKind]) => {
+        const refs = references.filter((item) => item.kind === referenceKind).map((item) => item.handle);
+        return refs.length ? [variant(kind, { referenceHandle: handleSchema(refs, 'speechReferences 中这句话实际针对的事项') })] : [];
+      }),
+    ],
+  };
+}
+
 function mentalActProperties(protocol: MentalActSchemaProtocol): Record<string, JsonSchema> {
   const memoryHandles = protocol.handles.memories.map((item) => item.handle);
   return {
@@ -244,6 +275,7 @@ function mentalActProperties(protocol: MentalActSchemaProtocol): Record<string, 
       enum: ['whisper', 'normal', 'call'],
       description: 'whisper 低强度、normal 正常、call 高强度；只改变传播，不指定听者',
     },
+    speechIntent: speechIntentSchema(protocol),
     goal: stringSchema(240, '人物此刻真正想达到或弄清的事情'),
     strategy: stringSchema(320, '人物现在准备采用的可失败方法'),
     assumptions: {
@@ -355,7 +387,7 @@ function mindIntentionSchema(protocol: MentalActSchemaProtocol): JsonSchema {
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['utterance', 'delivery', 'goal', 'orientation', 'horizon'],
+    required: ['utterance', 'delivery', 'goal', 'orientation', 'horizon', 'speechIntent'],
     properties: {
       utterance: stringSchema(180, '人物此刻形成并向外传播的第一人称原话'),
       delivery: {
@@ -363,6 +395,7 @@ function mindIntentionSchema(protocol: MentalActSchemaProtocol): JsonSchema {
         enum: ['whisper', 'normal', 'call'],
         description: '语言波强度；不选择听者',
       },
+      speechIntent: speechIntentSchema(protocol),
       goal: stringSchema(240, '人物此刻真正想达到、维持或弄清的事情'),
       orientation: {
         type: 'string',
@@ -399,7 +432,7 @@ function modelPlanSchema(protocol: MentalActSchemaProtocol): JsonSchema {
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['steps', 'disposition'],
+    required: ['steps', 'disposition', 'completion'],
     properties: {
       disposition: {
         type: 'string',
@@ -411,6 +444,7 @@ function modelPlanSchema(protocol: MentalActSchemaProtocol): JsonSchema {
         minItems: 1,
         items: stringSchema(240, '围绕冻结意图形成的一个领域规划步骤；不要求固定步数'),
       },
+      completion: planCompletionSchema(protocol),
       ...(stepHandles.length ? {
         firstStepHandle: handleSchema(
           stepHandles,
@@ -443,6 +477,63 @@ function modelPlanSchema(protocol: MentalActSchemaProtocol): JsonSchema {
       worldAction: worldActionSchema(protocol),
       ...(feedback ? { feedback } : {}),
     },
+  };
+}
+
+function planCompletionSchema(protocol: MentalActSchemaProtocol): JsonSchema {
+  const targets = worldTargetHandles(protocol);
+  const visibleTargets = new Set(targets);
+  const workTargets = [
+    'produced-work',
+    ...protocol.handles.visible.filter((target) => target.kind === 'work' && visibleTargets.has(target.handle)).map((target) => target.handle),
+    ...protocol.handles.voxels.filter((target) => visibleTargets.has(target.handle)).map((target) => target.handle),
+  ];
+  const voxelTargets = protocol.handles.voxels.filter((target) => visibleTargets.has(target.handle)).map((target) => target.handle);
+  const material = handleSchema(MATERIAL_PALETTE.filter((material) => material.id !== 0).map((material) => material.key), '真实基础材料');
+  const quantity = { type: 'integer', minimum: 1 };
+  const physicalValue = { type: 'number', minimum: 0, maximum: 100 };
+  const variant = (kind: string, properties: Record<string, JsonSchema>, required = Object.keys(properties)): JsonSchema => ({
+    type: 'object', additionalProperties: false, required: ['kind', ...required],
+    properties: { kind: { type: 'string', enum: [kind] }, ...properties },
+  });
+  const condition = { oneOf: [
+    variant('inventory-at-least', { materialKey: material, quantity }),
+    variant('near-target', { targetHandle: handleSchema(targets, '当前需要保持在附近的可见对象'), maxDistance: physicalValue }),
+    variant('reached-target', { targetHandle: handleSchema(targets, '本计划中需要实际到访一次的对象；到达事件会被保留，不要求之后一直站在那里'), maxDistance: physicalValue }),
+    ...(voxelTargets.length ? [variant('voxel-is', {
+      targetHandle: handleSchema(voxelTargets, '需要实际变成该材料的精确位置'), materialKey: material,
+    })] : []),
+    variant('body-at-least', { field: { type: 'string', enum: ['health', 'hydration', 'nutrition'] }, value: physicalValue }),
+    variant('sheltered', {}),
+    variant('work-state', {
+      targetHandle: handleSchema(workTargets, '已有构件用 w 引用；本次新造物用 produced-work，执行后绑定真实实体；v 只表示精确槽位'),
+      minCondition: physicalValue,
+      minProfile: {
+        type: 'object', additionalProperties: false,
+        properties: { cover: physicalValue, rigidity: physicalValue, stability: physicalValue },
+      },
+      components: {
+        type: 'array', items: {
+          type: 'object', additionalProperties: false, required: ['materialKey', 'quantity'],
+          properties: { materialKey: material, quantity },
+        },
+      },
+    }, ['targetHandle']),
+  ] };
+  const check = {
+    type: 'object', additionalProperties: false, required: ['description', 'conditions'],
+    properties: {
+      description: stringSchema(240, '该步骤或总目标具体达到什么状态才算完成'),
+      conditions: {
+        type: 'array',
+        description: '全部条件同时满足才完成；不具备当前可核验条件时可为空，系统会记为未验证，绝不凭名称宣布成功',
+        items: condition,
+      },
+    },
+  };
+  return {
+    type: 'object', additionalProperties: false, required: ['step', 'goal'],
+    properties: { step: check, goal: check },
   };
 }
 
@@ -486,33 +577,78 @@ export function buildModelPlanJsonSchema(protocol: MentalActSchemaProtocol): Mod
   return { name: 'eland_model_plan_v1', schema: modelPlanSchema(protocol) };
 }
 
-export function buildWorldResolutionJsonSchema(protocol: MentalActSchemaProtocol): ModelJsonSchema {
+/** Typed mutation vocabulary teaches the resolver how to materialize unfamiliar ideas.
+ * Object identity is restricted to the actor's own request, never a generated id.
+ */
+export function buildWorldResolutionJsonSchema(
+  protocol: MentalActSchemaProtocol,
+  worldAction?: { targetHandles: string[] },
+): ModelJsonSchema {
+  const targets = worldAction?.targetHandles ?? worldTargetHandles(protocol);
+  const target = handleSchema(targets, '人物已选中、由世界解析的真实对象');
+  const material = handleSchema(MATERIAL_PALETTE.filter((item) => item.id !== 0).map((item) => item.key),
+    '实际基础材料；新复合造物使用 assemble，不需要预制同名材料');
+  const quantity = { type: 'integer', minimum: 1, maximum: 8 };
+  const summary = stringSchema(160, '本次变化的具体描述或人物命名');
+  const arrangement = { type: 'string', enum: ['support', 'pile', 'lash', 'form'] };
+  const layout = {
+    type: 'array', minItems: 1,
+    description: '相对造物固定锚点的完整实体布局；每个体素使用一份对应材料，必须包含零偏移锚点。modify-structure 提供修改后全布局，省略则保留原布局。墙顶效果来自真实位置与空腔，不来自名称或 cover 分数',
+    items: {
+      type: 'object', additionalProperties: false, required: ['offset', 'materialKey'],
+      properties: {
+        offset: { type: 'object', additionalProperties: false, required: ['x', 'y', 'z'], properties: {
+          x: { type: 'integer' }, y: { type: 'integer' }, z: { type: 'integer' },
+        } },
+        materialKey: handleSchema(MATERIAL_PALETTE.filter((item) => item.id !== 0 && item.phase === 'solid').map((item) => item.key), '本件原有组件或本次实际 consume 的固体材料'),
+      },
+    },
+  };
+  const variant = (kind: string, properties: Record<string, JsonSchema>, required = Object.keys(properties)): JsonSchema => ({
+    type: 'object',
+    additionalProperties: false,
+    required: ['kind', ...required],
+    properties: { kind: { type: 'string', enum: [kind] }, ...properties },
+  });
+  const effects = [
+    variant('knowledge', { summary: stringSchema(240, '人物亲历的新观察') }),
+    variant('world-state', { targetHandle: target, stateKey: stringSchema(64), stateValue: stringSchema(160), summary }),
+    variant('consume', { targetHandle: target, quantity }),
+    variant('produce', { materialKey: material, quantity, destination: { type: 'string', enum: ['inventory', 'ground'] } }),
+    variant('relocate', { targetHandle: target, destinationHandle: target, quantity }),
+    variant('replace-voxel', { targetHandle: target, materialKey: material }),
+    variant('move-self', { targetHandle: target, withinDistance: { type: 'number', minimum: 0, description: '需要靠近至多远；与本次完成条件一致，不填时使用实际接触距离' } }, ['targetHandle']),
+    variant('assemble', { targetHandle: target, arrangement, summary, layout }, ['targetHandle', 'arrangement', 'summary']),
+    variant('modify-structure', { targetHandle: target, arrangement, summary, layout }, ['targetHandle']),
+    variant('bond-animal', { targetHandle: target, summary }),
+    variant('body', {
+      targetHandle: handleSchema([...new Set(['self', ...targets])], '本人或已点名人物的身体'),
+      field: { type: 'string', enum: ['health', 'hydration', 'nutrition'] },
+      delta: { type: 'integer', minimum: -25, maximum: 25 },
+    }),
+  ];
   return {
-    name: 'eland_world_resolution_v1',
+    name: 'eland_world_resolution_v2',
     schema: {
       type: 'object',
       additionalProperties: false,
-      required: ['status', 'result', 'effects'],
+      required: ['effects', 'status', 'result'],
       properties: {
-        status: { type: 'string', enum: ['completed', 'blocked', 'failed'] },
-        result: stringSchema(320, '仅描述这次动作在世界中实际发生的结果'),
         effects: {
           type: 'array',
           maxItems: 8,
-          items: {
-            type: 'object',
-            required: ['kind'],
-            additionalProperties: true,
-            properties: { kind: stringSchema(32) },
-          },
+          description: '先编译本次实际动作：移动用 move-self，物资转移用 consume+produce 或 relocate，构造用 assemble；knowledge 不能替代上述实际变化',
+          items: { oneOf: effects },
         },
+        status: { type: 'string', enum: ['completed', 'blocked', 'failed'] },
+        result: stringSchema(320, '仅描述本次实际发生、并与 effects 一致的结果'),
         feedback: {
           type: 'object',
           additionalProperties: false,
           required: ['correction', 'adjustment'],
           properties: {
-            correction: stringSchema(240),
-            adjustment: stringSchema(240),
+            correction: stringSchema(240, '实际未满足或被试验否定的具体条件'),
+            adjustment: stringSchema(240, '人物之后可以修正的条件或做法'),
           },
         },
       },

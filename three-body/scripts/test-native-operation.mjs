@@ -1093,6 +1093,106 @@ try {
   assert.equal(missingDropTaking.diff.quantity, undefined);
   assert.equal(api.voxelAt(terrainState.world.grid, 15, 13, 1), api.Material.WetSoil, 'a missing Drop must never be reinterpreted as terrain');
 
+  // One transaction reserves physical sources cumulatively. Repeated uses
+  // within the available quantity are legal; object key order is not identity.
+  const allocationFixture = (quantity, sourceKind = 'inventory-stack') => {
+    const world = api.createInitialState(31, { endpoint: { kind: 'months', value: 2 } });
+    const actor = world.people[0];
+    world.people = [actor];
+    world.world.drops = [];
+    for (let x = 10; x <= 16; x++) for (let y = 10; y <= 16; y++) {
+      for (let z = 0; z < world.world.grid.levels; z++) api.setVoxel(world.world.grid, x, y, z,
+        z === 0 ? api.Material.Stone : api.Material.Air);
+    }
+    actor.position = { ...actor.position, cellId: api.cellId(12, 12), z: 1 };
+    actor.inventory = [];
+    const source = sourceKind === 'inventory-stack'
+      ? { kind: 'inventory-stack', personId: actor.id, stackId: 'allocation-clay' }
+      : { kind: 'drop', dropId: 'allocation-clay' };
+    if (sourceKind === 'inventory-stack') actor.inventory.push({ id: source.stackId,
+      materialId: api.Material.Clay, quantity, sourceEventIds: ['controlled-clay'] });
+    else world.world.drops.push({ id: source.dropId, materialId: api.Material.Clay, quantity,
+      cellId: actor.position.cellId, z: 1, createdAtMonth: 0, sourceEventIds: ['controlled-clay'] });
+    const site = { kind: 'voxel', position: { x: 13, y: 12, z: 1 } };
+    const context = { state: world, person: actor, visiblePeople: [], visibleAnimals: [], visibleDrops: world.world.drops,
+      visibleCells: [api.cellId(12, 12), api.cellId(13, 12), api.cellId(14, 12), api.cellId(12, 13)], options: [], followUpOptions: [] };
+    const physical = () => structuredClone({ inventory: actor.inventory, drops: world.world.drops,
+      works: world.world.works ?? [], voxels: world.world.grid.voxels });
+    return { world, actor, source, site, context, physical };
+  };
+  const directAllocation = (fixture, effects, sequence) => api.executePrimitiveAction(fixture.world, fixture.actor, {
+    kind: 'world-interact', adjudication: { version: 'world-adjudicated-interaction-v1',
+      request: '执行本次明确的材料分配', result: '尝试分配实际材料', status: 'completed',
+      targets: effects.flatMap((effect) => [...(effect.target ? [effect.target] : []), ...(effect.destination ? [effect.destination] : [])]), effects },
+  }, 1, sequence, { cause: 'intent', actionTick: 1 });
+  const scarce = allocationFixture(1);
+  const duplicateAssembly = { kind: 'assemble', target: scarce.site, arrangement: 'form', summary: '两份黏土的组合',
+    inputs: [{ target: scarce.source, quantity: 1 }, { target: scarce.source, quantity: 1 }] };
+  const scarceBefore = scarce.physical();
+  const exactDuplicate = directAllocation(scarce, [
+    { kind: 'consume', target: scarce.source, quantity: 1 }, { kind: 'consume', target: scarce.source, quantity: 1 },
+    { kind: 'assemble', target: scarce.site, arrangement: 'form', summary: '两份黏土的组合' },
+  ], 2000);
+  assert.equal(exactDuplicate.status, 'blocked');
+  assert.deepEqual(scarce.physical(), scarceBefore, 'cumulative shortage neither consumes nor creates a Work');
+  const insufficientCompile = api.compileNativeOperation(scarce.context, duplicateAssembly, 'insufficient-assembly-inputs');
+  assert.equal(insufficientCompile.ok, false);
+  assert.equal(insufficientCompile.problem.code, 'missing-evidence');
+  assert.match(insufficientCompile.problem.message, /累计安排2份.*只有1份/);
+  assert.deepEqual(scarce.physical(), scarceBefore, 'known insufficient World parameters are compilation feedback');
+
+  scarce.actor.inventory[0].quantity = 2;
+  const enoughCompile = api.compileNativeOperation(scarce.context, duplicateAssembly, 'sufficient-repeated-inputs');
+  assert(enoughCompile.ok, 'two uses of one stack are legal when its actual total is sufficient');
+  scarce.actor.inventory[0].quantity = 1;
+  const changedBeforeExecution = scarce.physical();
+  const changedStock = api.executePrimitiveAction(scarce.world, scarce.actor, enoughCompile.option.nextAction,
+    1, 2001, { cause: 'intent', actionTick: 1 });
+  assert.equal(changedStock.status, 'blocked', 'the executor rechecks stock changed since compilation');
+  assert.deepEqual(scarce.physical(), changedBeforeExecution);
+  scarce.actor.inventory[0].quantity = 2;
+  const enough = api.executePrimitiveAction(scarce.world, scarce.actor, enoughCompile.option.nextAction,
+    1, 2002, { cause: 'intent', actionTick: 1 });
+  assert.equal(enough.status, 'completed', enough.result);
+  assert.equal(scarce.actor.inventory.length, 0);
+  assert.equal(scarce.world.world.works[0].components.reduce((sum, part) => sum + part.quantity, 0), 2);
+
+  for (const sourceKind of ['inventory-stack', 'drop']) for (const available of [1, 2]) {
+    const mixed = allocationFixture(available, sourceKind);
+    const alias = sourceKind === 'inventory-stack'
+      ? { stackId: mixed.source.stackId, personId: mixed.actor.id, kind: 'inventory-stack' }
+      : { dropId: mixed.source.dropId, kind: 'drop' };
+    const before = mixed.physical();
+    const outcome = directAllocation(mixed, [
+      { kind: 'consume', target: mixed.source, quantity: 1 },
+      { kind: 'relocate', target: alias, quantity: 1, destination: { kind: 'voxel', position: { x: 14, y: 12, z: 1 } } },
+      { kind: 'assemble', target: mixed.site, arrangement: 'form', summary: '一份黏土的组合' },
+    ], 2010 + available);
+    assert.equal(outcome.status, available === 1 ? 'blocked' : 'completed', outcome.result);
+    if (available === 1) assert.deepEqual(mixed.physical(), before, 'consume and relocate share the same actual reservation');
+    else {
+      assert.equal(mixed.world.world.works[0].components.reduce((sum, part) => sum + part.quantity, 0), 1);
+      assert.equal(mixed.world.world.drops.reduce((sum, drop) => sum + drop.quantity, 0), 1);
+      assert.equal(mixed.actor.inventory.length, 0);
+    }
+  }
+  const componentSource = allocationFixture(3);
+  const componentCompilation = api.compileNativeOperation(componentSource.context, { kind: 'assemble', target: componentSource.site,
+    arrangement: 'form', inputs: [{ target: componentSource.source, quantity: 3 }] }, 'multi-portion-component');
+  assert(componentCompilation.ok);
+  const componentBuilt = api.executePrimitiveAction(componentSource.world, componentSource.actor, componentCompilation.option.nextAction,
+    1, 2020, { cause: 'intent', actionTick: 1 });
+  assert.equal(componentBuilt.status, 'completed', componentBuilt.result);
+  assert.equal(componentSource.world.world.works[0].components[0].quantity, 3);
+  const beforeVoxelUse = componentSource.physical();
+  const repeatedVoxel = directAllocation(componentSource, [
+    { kind: 'consume', target: componentSource.site, quantity: 1 },
+    { kind: 'consume', target: componentSource.site, quantity: 1 },
+    { kind: 'assemble', target: { kind: 'voxel', position: { x: 12, y: 13, z: 1 } }, arrangement: 'form', summary: '不能从同一体素重复取料' },
+  ], 2021);
+  assert.equal(repeatedVoxel.status, 'blocked', 'one voxel cannot supply its whole component quantity repeatedly');
+  assert.deepEqual(componentSource.physical(), beforeVoxelUse);
+
   // Optional real regression input: replay the saved actor's exact selection
   // on an isolated copy, never rewrite the original experiment or its history.
   if (process.argv[2]) {

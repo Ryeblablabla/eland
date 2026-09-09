@@ -10,6 +10,9 @@ const semanticsBundlePath = path.join(temporaryDirectory, 'semantics.mjs');
 const plannerBundlePath = path.join(temporaryDirectory, 'planner.mjs');
 const backendBundlePath = path.join(temporaryDirectory, 'backend.mjs');
 const simulationBundlePath = path.join(temporaryDirectory, 'simulation.mjs');
+const originalFetch = globalThis.fetch;
+let networkRequests = 0;
+globalThis.fetch = async () => { networkRequests++; throw new Error('Model authority regression uses only explicit batch fixtures'); };
 
 const option = (id, nextAction, extra = {}) => ({
   id,
@@ -370,7 +373,55 @@ try {
   assert.equal(noBudgetMonth.lastStep.some(isInventedVoluntarySocialAction), false,
     '额度不足时的本地保守计划不得代替模型发起开放社会行为');
 
+  const waitingState = createInitialState(31, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  waitingState.world.animals = [];
+  waitingState.world.drops = [];
+  for (const person of waitingState.people) {
+    person.body = { health: 100, hydration: 100, nutrition: 40 };
+    person.inventory = [];
+    person.conditions = [];
+  }
+  const bodyReviews = [];
+  const seenBodySources = new Set();
+  const afterWaiting = await stepSimulationAsync(waitingState, {
+    ownsVoluntarySocialChoices: true,
+    shouldDecide() { return true; },
+    async decideAll(contexts) {
+      return contexts.map((context) => {
+        const bodySources = (context.reconsideration?.sourceEventIds ?? []).flatMap((id) => {
+          const event = context.currentMonthEvents?.find((candidate) => candidate.id === id);
+          return event?.kind === 'environment' && event.change === 'body' ? [event] : [];
+        });
+        for (const source of bodySources) {
+          assert.equal(source.who, context.person.id, 'a bodily warning is offered only to the person who experienced it');
+          assert.equal(context.reconsideration.reason, 'experienced-outcome');
+          const key = `${context.person.id}:${source.id}`;
+          assert(!seenBodySources.has(key), 'one bodily fact cannot replay a model request');
+          seenBodySources.add(key);
+        }
+        if (bodySources.length) bodyReviews.push({ personId: context.person.id, tick: context.planningTick, bodySources });
+        // A new warning provides a choice. The model may still choose wait;
+        // the scheduler may not manufacture an acquire-food goal or speech.
+        return { ...(context.activeIntent ? { kind: 'suspend', intentId: context.activeIntent.id } : { kind: 'idle' }),
+          authoredAttempt: { kind: 'wait' }, reason: '本人仍选择暂时等待' };
+      });
+    },
+  });
+  const malnutritionReview = bodyReviews.find((review) => review.bodySources.some((source) => source.diff.bodyCauseCodes.includes('malnutrition')));
+  assert(malnutritionReview, 'waiting does not suppress an independent Mind opportunity when actual malnutrition first appears');
+  assert(afterWaiting.lastStep.some((event) => event.kind === 'decision' && event.usedModel
+    && event.who === malnutritionReview.personId && event.planningTick === malnutritionReview.tick
+    && event.decision.authoredAttempt?.kind === 'wait' && !event.decision.mentalAct && !event.decision.declaration),
+  'the independent response remains wait, without an injected goal or utterance');
+  const harmlessDrift = afterWaiting.lastStep.filter((event) => event.kind === 'environment' && event.change === 'body'
+    && event.diff.bodyCauseCodes?.length === 1 && event.diff.bodyCauseCodes[0] === 'elapsed-metabolism');
+  assert(harmlessDrift.length > 0);
+  assert(harmlessDrift.every((event) => !seenBodySources.has(`${event.who}:${event.id}`)),
+    'ordinary reserve drift is not enough to wake the model on every episode');
+  assert.equal(networkRequests, 0, 'the replayable batch fixture never calls an external provider');
+
   process.stdout.write('model-owned voluntary social authority tests passed\n');
 } finally {
+  globalThis.fetch = originalFetch;
   rmSync(temporaryDirectory, { recursive: true, force: true });
 }

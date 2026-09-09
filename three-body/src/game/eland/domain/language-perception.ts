@@ -427,7 +427,8 @@ export function broadcastLanguage(input: {
   return {
     version: LANGUAGE_BROADCAST_VERSION,
     sourceEventId: input.sourceFactId,
-    text: input.text.trim().replace(/\s+/gu, ' '),
+    // Keep the authored source verbatim; listener perception is derived separately.
+    text: input.text,
     receptions,
     perceivedByPersonIds: receptions.filter((reception) => reception.detected).map((reception) => reception.listenerId),
     decodedByPersonIds: receptions.filter((reception) => reception.decoded).map((reception) => reception.listenerId),

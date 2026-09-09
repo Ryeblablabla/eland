@@ -531,19 +531,18 @@ function mindIntentionSchema(protocol: MentalActSchemaProtocol): JsonSchema {
       },
       declaration: {
         type: 'object', additionalProperties: false,
-        description: '本次新原话、本人言语含义及真实依据；单独发言不改变目标或身体计划',
-        required: ['utterance', 'delivery', 'speechIntent'],
+        description: '本人已经选好的逐字原话与传播强度；世界只编译其含义，不能改字或再生成一句',
+        required: ['utterance', 'delivery'],
         properties: {
           utterance: stringSchema(180, '本人这次向外传播的第一人称原话'),
           delivery: { type: 'string', enum: ['whisper', 'normal', 'call'], description: '语言波强度，不选择听者' },
-          speechIntent: speechIntentSchema(protocol),
-          ...(memoryHandles.length ? { evidenceMemoryHandles: {
-            type: 'array', uniqueItems: true,
-            items: handleSchema(memoryHandles, '本轮可引用的本人记忆句柄'),
-          } } : {}),
-          ...(relationshipAppraisal ? { relationshipAppraisal } : {}),
         },
       },
+      ...(memoryHandles.length ? { evidenceMemoryHandles: {
+        type: 'array', uniqueItems: true,
+        items: handleSchema(memoryHandles, '本人形成此次打算或理解所依据的真实记忆；不要求发言'),
+      } } : {}),
+      ...(relationshipAppraisal ? { relationshipAppraisal } : {}),
   };
   return {
     type: 'object', additionalProperties: false, required: ['attempt'],
@@ -717,11 +716,21 @@ function batchSchema(
 }
 
 export function buildMindIntentionJsonSchema(protocol: MentalActSchemaProtocol): ModelJsonSchema {
-  return { name: 'eland_mind_intention_v4', schema: mindIntentionSchema(protocol) };
+  return { name: 'eland_mind_intention_v5', schema: mindIntentionSchema(protocol) };
 }
 
 /** Only realizes the actor's selected meaning; no physical operation or new goal. */
-export function buildWorldSpeechJsonSchema(protocol: MentalActSchemaProtocol): ModelJsonSchema {
+export function buildWorldSpeechJsonSchema(protocol: MentalActSchemaProtocol, frozenWords = false): ModelJsonSchema {
+  if (frozenWords) return { name: 'eland_world_speech_semantics_v1', schema: { oneOf: [
+    { type: 'object', additionalProperties: false, required: ['speechIntent'], properties: {
+      speechIntent: speechIntentSchema(protocol),
+    } },
+    { type: 'object', additionalProperties: false, required: ['uncompiled'], properties: {
+      uncompiled: { type: 'object', additionalProperties: false, required: ['reason'], properties: {
+        reason: stringSchema(480, '原话和传播强度已经冻结；仅在其实际含义或引用尚不能绑定时说明原因'),
+      } },
+    } },
+  ] } };
   return { name: 'eland_world_speech_v1', schema: { oneOf: [
     { type: 'object', additionalProperties: false, required: ['declaration'], properties: {
       declaration: { type: 'object', additionalProperties: false, required: ['utterance', 'delivery', 'speechIntent'],

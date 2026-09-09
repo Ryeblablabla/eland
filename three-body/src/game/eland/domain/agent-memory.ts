@@ -1207,7 +1207,7 @@ function dynamicMemories(state: AgentMemoryReadState, person: PersonState): Reca
     ...person.knownPlaces.map((place): RecalledMemory => ({
       id: `place:${person.id}:${place.id}`,
       lane: 'semantic',
-      gist: `记得${materialDefinition(place.materialId).name}曾在一个已知地点出现`,
+      gist: `记得在位置（${place.position.x}, ${place.position.y}, ${place.position.z}）见过${materialDefinition(place.materialId).name}；最后在第${place.lastConfirmedAtMonth}月确认，当前位置的状况仍需亲自确认`,
       precision: 'specific',
       confidence: clamp(82 - Math.max(0, state.clock.elapsedMonths - place.lastConfirmedAtMonth)),
       salience: 48,

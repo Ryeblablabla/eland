@@ -274,7 +274,7 @@ export interface DecisionRequestContext {
       perception: PerceivedMaterialProfile; quantity: number;
       mechanicalCondition?: PerceivedPhysicalMaterialProfile['mechanicalCondition'];
     }>;
-    knowledge: Array<{ id: string; kind: string; summary: string; confidence: number }>;
+    knowledge: Array<{ id: string; kind: string; summary: string; confidence: number; learnedAtMonth: number }>;
     procedures?: Array<{ id: string; summary: string; confidence: number; method: NonNullable<DecisionContext['person']['knowledge'][number]['procedural']> }>;
     knownPlaces: Array<{ name: string; position: { x: number; y: number; z: number }; lastConfirmedAtMonth: number }>;
     /** The person's only model-visible memory document. */
@@ -936,7 +936,7 @@ export function buildDecisionRequestContext(
           quantity: stack.quantity,
         };
       }),
-      knowledge: projectedKnowledge.map(({ id, kind, summary, confidence }) => ({ id, kind, summary, confidence })),
+      knowledge: projectedKnowledge.map(({ id, kind, summary, confidence, learnedAtMonth }) => ({ id, kind, summary, confidence, learnedAtMonth })),
       procedures: person.knowledge.filter((fact) => fact.procedural)
         .sort((left, right) => (right.procedural!.experiences.at(-1)?.atMonth ?? 0) - (left.procedural!.experiences.at(-1)?.atMonth ?? 0))
         .slice(0, 8).map((fact) => ({ id: fact.id, summary: fact.summary, confidence: fact.confidence, method: structuredClone(fact.procedural!) })),

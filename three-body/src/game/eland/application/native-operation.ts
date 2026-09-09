@@ -573,6 +573,19 @@ function compileSimpleOperation(context: DecisionContext, request: NativeOperati
       ok: false, problem: { code: 'invalid-operation', message: '新组装需要本人实际持物、正整数用量与排布方式；原造物可用空投入明确重排布局或方式',
         fields: ['inputs', 'arrangement', 'layout'] },
     };
+    const requestedByStack = new Map<string, number>();
+    for (const input of request.inputs) {
+      if (input.target.kind !== 'inventory-stack') continue; // Validated above.
+      requestedByStack.set(input.target.stackId, (requestedByStack.get(input.target.stackId) ?? 0) + input.quantity);
+    }
+    for (const [stackId, quantity] of requestedByStack) {
+      const stack = context.person.inventory.find((candidate) => candidate.id === stackId);
+      const available = Math.max(0, stack?.quantity ?? 0);
+      if (quantity > available) return { ok: false, problem: {
+        code: 'missing-evidence', fields: ['inputs'],
+        message: `本次为本人持物${stack ? materialDefinition(stack.materialId).name : stackId}累计安排${quantity}份，当前实际只有${available}份，尚缺${quantity - available}份；本次组装尚未编译`,
+      } };
+    }
     const effects: WorldInteractionEffect[] = request.inputs.map((input) => ({ kind: 'consume',
       target: structuredClone(input.target), quantity: input.quantity }));
     if (request.target.kind === 'voxel') effects.push({ kind: 'assemble', target: structuredClone(request.target),

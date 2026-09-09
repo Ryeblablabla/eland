@@ -1344,7 +1344,8 @@ export function buildMentalActRequestContext(
       }
       if (reference.kind === 'knowledge') {
         const knowledge = context.person.knowledge.find((item) => item.id === reference.id);
-        return { ref: reference.handle, kind: reference.kind, summary: knowledge?.summary, knowledgeKind: knowledge?.kind };
+        return { ref: reference.handle, kind: reference.kind, summary: knowledge?.summary,
+          knowledgeKind: knowledge?.kind, learnedAtMonth: knowledge?.learnedAtMonth };
       }
       if (reference.kind === 'collective') return { ref: reference.handle, kind: reference.kind,
         purpose: context.collectives.find((item) => item.id === reference.id)?.purposeSummary };
@@ -1459,6 +1460,7 @@ function nativeCapabilityBrief(context: MentalActRequestContext) {
     return { ...reference,
       ...(summary ? { summary } : {}),
       ...(source?.knowledgeKind ? { knowledgeKind: source.knowledgeKind } : {}),
+      ...(typeof source?.learnedAtMonth === 'number' ? { learnedAtMonth: source.learnedAtMonth } : {}),
       ...(source?.state ? { state: source.state } : {}),
     };
   });

@@ -18,7 +18,8 @@ try {
     export { createActivityWorkBudget } from './src/game/eland/domain/action-work';
     export { advanceBodyTime, advanceBodies } from './src/game/eland/domain/monthly-processes';
     export { executePrimitiveAction } from './src/game/eland/domain/action-executor';
-    export { commitDecision } from './src/game/eland/application/simulation/intent-execution';
+    export { commitDecision, executeProtectiveInterruption } from './src/game/eland/application/simulation/intent-execution';
+    export { chooseSurvivalReflex } from './src/game/eland/domain/survival-reflex';
     export { createMonthExecution, executePlanningTick, finishMonthExecution } from './src/game/eland/application/simulation/month-execution';
     export { simulationObservationProjector } from './src/game/eland/projection/simulation-observation-projector';
     export { cellId, setVoxel, voxelAt } from './src/game/eland/world/grid';
@@ -186,6 +187,56 @@ try {
   near(secondWalk.diff.spentWork, 6, 'second route uses only the remaining work');
   near(shared.remainingEffort, 0, 'no fresh budget for a second movement');
   assert.equal(walker.person.position.cellId, api.cellId(16, 15));
+
+  // Reproduce natural-05: a weak person has paid most of a two-work edge,
+  // then a fresh Mind goal installs a different survival interruption.
+  const continuity = structuredClone(walker.state);
+  const weakWalker = continuity.people[0];
+  continuity.intents = [];
+  delete weakWalker.activeIntentId;
+  delete weakWalker.actionWork;
+  delete weakWalker.movementWork;
+  weakWalker.position.cellId = api.cellId(12, 15);
+  weakWalker.position.z = 1;
+  weakWalker.body = { health: 100, hydration: 0, nutrition: 0 };
+  api.setVoxel(continuity.world.grid, 14, 15, 0, api.Material.Water);
+  const continuityEvents = [];
+  const chooseNewGoal = (destination, tick) => {
+    const option = { id: `controlled-new-goal-${tick}`, summary: '继续处理本人新选择的事情', reason: '受控意图更换',
+      goal: { kind: 'at-cell', cellId: destination, z: 1 }, nextAction: { kind: 'move', toCellId: destination, toZ: 1 },
+      estimatedDuration: 'one-month', sourceFactIds: [], domain: 'strategic' };
+    api.commitDecision(continuity, weakWalker, { state: continuity, person: weakWalker,
+      visibleCells: [], visiblePeople: [], visibleDrops: [], visibleAnimals: [], options: [option], followUpOptions: [],
+      activeIntent: continuity.intents.find((intent) => intent.id === weakWalker.activeIntentId) },
+    { kind: 'start', optionId: option.id, reason: option.reason }, false, 1, continuityEvents, tick);
+    return weakWalker.activeIntentId;
+  };
+  const parentBefore = chooseNewGoal(api.cellId(20, 15), 1);
+  const bankStep = api.chooseSurvivalReflex(continuity, weakWalker);
+  assert.equal(bankStep.toCellId, api.cellId(13, 15));
+  const firstInterruptedMove = api.executeProtectiveInterruption(continuity, weakWalker, bankStep,
+    'survival-reflex', 1, 1, continuityEvents, api.createActivityWorkBudget());
+  assert.equal(firstInterruptedMove.status, 'progressed');
+  assert.equal(weakWalker.position.cellId, api.cellId(12, 15));
+  near(weakWalker.movementWork.completedWork, 1.6, 'actual first-edge work is owned by the body');
+  const changedPremises = structuredClone(continuity);
+  const parentAfter = chooseNewGoal(api.cellId(21, 15), 2);
+  assert.notEqual(parentAfter, parentBefore, 'the scenario really replaces the parent intention');
+  const secondBudget = api.createActivityWorkBudget();
+  const secondInterruptedMove = api.executeProtectiveInterruption(continuity, weakWalker,
+    api.chooseSurvivalReflex(continuity, weakWalker), 'survival-reflex', 1, 2, continuityEvents, secondBudget);
+  assert.notEqual(secondInterruptedMove.intentId, firstInterruptedMove.intentId, 'the survival child identity really changes');
+  assert.equal(secondInterruptedMove.status, 'completed', 'equivalent new intent must finish the partially paid edge');
+  assert.equal(weakWalker.position.cellId, api.cellId(13, 15));
+  near(secondInterruptedMove.diff.spentWork, 2, 'only the unpaid 0.4 physical work remains');
+  assert(secondInterruptedMove.diff.workCompletionSourceEventIds.includes(firstInterruptedMove.id));
+  assert.equal(weakWalker.movementWork, undefined);
+  const changedWalker = changedPremises.people[0];
+  api.setVoxel(changedPremises.world.grid, 13, 15, 0, api.Material.PackedSoil);
+  const changedRoad = api.executePrimitiveAction(changedPremises, changedWalker, bankStep, 1, 1100,
+    { cause: 'intent', actionTick: 2, workBudget: api.createActivityWorkBudget() });
+  near(changedRoad.diff.spentWork, 5, 'a changed edge cost invalidates the old premise rather than granting a free step');
+  assert(!changedRoad.diff.workCompletionSourceEventIds?.includes(firstInterruptedMove.id));
 
   walker.person.inventory = [{ id: 'slow-timber', materialId: api.Material.Wood, quantity: 1, sourceEventIds: ['controlled-slow-timber'] }];
   const slowTarget = { x: 17, y: 15, z: 1 };

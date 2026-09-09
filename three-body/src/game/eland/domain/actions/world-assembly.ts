@@ -24,8 +24,10 @@ export function prepareWorldAssembly(
     if (target.kind === 'voxel') {
       const materialId = voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z);
       const source = workMaterialAt(state.world, target.position);
-      return materialId !== Material.Air ? { materialId, quantity: 1,
+      return materialId !== Material.Air ? {
         ...(source ? { ...source.component, ...workComponentSources(source.work, source.component) } : {}),
+        // A component can span several portions, but this exact voxel is one.
+        materialId, quantity: 1,
         sourceLineageKeys: [...new Set([...(source?.component.sourceLineageKeys ?? []),
           ...(source ? [`work:${source.work.id}`] : []), `voxel:${target.position.x}:${target.position.y}:${target.position.z}`])],
       } : undefined;
@@ -36,12 +38,17 @@ export function prepareWorldAssembly(
     if (effect.kind !== 'consume' && effect.kind !== 'relocate') continue;
     const source = materialAt(effect.target);
     if (!source) return { ok: false, reason: '点名的投入材料已经不存在，需要重新取材' };
-    const key = JSON.stringify(effect.target);
+    const target = effect.target;
+    // Reference object key order does not change the underlying source.
+    const key = target.kind === 'inventory-stack' ? JSON.stringify([target.kind, target.personId, target.stackId])
+      : target.kind === 'drop' ? JSON.stringify([target.kind, target.dropId])
+        : target.kind === 'voxel' ? JSON.stringify([target.kind, target.position.x, target.position.y, target.position.z])
+          : JSON.stringify(target);
     const allocation = allocations.get(key) ?? { available: source.quantity, allocated: 0 };
     allocation.allocated += effect.quantity;
     allocations.set(key, allocation);
     if (allocation.allocated > allocation.available) {
-      return { ok: false, reason: '同一份材料被重复分配；需要减少本次用量或先取得余下材料' };
+      return { ok: false, reason: `同一来源当前只有${allocation.available}份材料，本次累计安排${allocation.allocated}份；尚未消耗或成型` };
     }
     if (effect.kind === 'consume') components.push({ materialId: source.materialId, quantity: effect.quantity,
       ...(source.sourceEventIds?.length ? { sourceEventIds: [...source.sourceEventIds] } : {}),

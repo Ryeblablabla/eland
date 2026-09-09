@@ -39,7 +39,7 @@ import type {
 import type { Decision, MentalAct, MentalActKind, TokenUsage } from '../src/game/eland/simulation';
 import { loadServerEnvValue } from './env';
 import { ModelRequestError, requestModelText, type ModelMessage } from './model-client';
-import { resolveModelEndpoint, type ResolvedModelEndpoint } from './model-config';
+import { resolveModelEndpoint, type ModelThinking, type ResolvedModelEndpoint } from './model-config';
 import {
   buildMindIntentionJsonSchema,
   buildWorldPlanJsonSchema,
@@ -79,9 +79,23 @@ function decisionTimeout(endpoint: ResolvedModelEndpoint): number {
   return Math.max(1_000, Math.min(300_000, timeoutMs));
 }
 
-function decisionMaxOutputTokens(): number {
-  const configured = Number(loadServerEnvValue('MODEL_DECISION_MAX_OUTPUT_TOKENS') || 1_200);
-  return Number.isFinite(configured) ? Math.max(128, Math.min(2_400, Math.floor(configured))) : 1_200;
+function decisionMaxOutputTokens(endpoint: ResolvedModelEndpoint): number {
+  const thinking = endpoint.thinking === true || typeof endpoint.thinking === 'string';
+  const fallback = endpoint.protocol === 'ollama-chat' && thinking ? 6_000 : 1_200;
+  const configured = Number(loadServerEnvValue('MODEL_DECISION_MAX_OUTPUT_TOKENS') || fallback);
+  return Number.isFinite(configured) ? Math.max(128, Math.min(16_384, Math.floor(configured))) : fallback;
+}
+
+/** Request-local settings only: routing, model identity and saved endpoint
+ * configuration remain unchanged. Missing overrides inherit the endpoint. */
+function decisionPhaseEndpoint(endpoint: ResolvedModelEndpoint, phase: 'mind' | 'world'): ResolvedModelEndpoint {
+  const variable = phase === 'mind' ? 'MODEL_MIND_THINKING' : 'MODEL_WORLD_THINKING';
+  const raw = loadServerEnvValue(variable).trim().toLowerCase();
+  if (!raw) return endpoint;
+  const thinking: ModelThinking | undefined = raw === 'true' ? true : raw === 'false' ? false
+    : raw === 'low' || raw === 'medium' || raw === 'high' || raw === 'max' ? raw : undefined;
+  if (thinking === undefined) throw new Error(`${variable}需要true、false、low、medium、high或max；未设置时继承端点配置`);
+  return { ...endpoint, thinking };
 }
 
 function decisionPhaseTemperature(phase: 'mind' | 'plan'): number {
@@ -321,7 +335,8 @@ function sanitizeBoundAttempt(input: unknown): MentalAct['attempt'] {
 interface MindDeltaChoice {
   decision?: Decision;
   intention?: MindIntentionOutput;
-  speech?: { description: string; intention?: MindIntentionOutput };
+  speech?: { description: string; intention?: MindIntentionOutput;
+    frozenWords?: Pick<MindDeclarationOutput, 'utterance' | 'delivery'> };
   /** A new attempt can continue a real purpose without declaring that purpose anew. */
   retainedGoal?: { sourceDecisionEventId?: string; declaration?: NonNullable<Decision['declaration']> };
 }
@@ -359,7 +374,8 @@ function mindMentalAct(intention: MindIntentionOutput, protocol: DecisionModelRe
   };
 }
 
-/** The actor chooses an operation once. Only a creative description needs a second author to compile it. */
+/** Mind chooses its purpose, activity and optional words. Physical and social
+ * protocol binding belongs to the world compilers, not this choice format. */
 function sanitizeMindDelta(
   input: unknown,
   context: DecisionRequestContext,
@@ -367,107 +383,93 @@ function sanitizeMindDelta(
   onInvalid: (problem: string) => void,
 ): MindDeltaChoice | undefined {
   const raw = record(input);
-  if (!raw || Object.keys(raw).some((key) => !['intentionChange', 'declaration', 'attempt'].includes(key))) {
-    onInvalid('Mind 只返回本次 intentionChange、declaration、attempt 字段，不返回其它状态或执行参数');
+  if (!raw || Object.keys(raw).some((key) => ![
+    'intentionChange', 'declaration', 'attempt', 'evidenceMemoryHandles', 'relationshipAppraisal',
+  ].includes(key))) {
+    onInvalid('Mind只选择目标、当前安排、可选原话和本人依据/关系理解，不填写操作或社会协议API');
     return undefined;
   }
-  const retained = normalizeRetainedDeclarationModelOutput({ attention: 'keep-current',
-    ...(raw.declaration !== undefined ? { declaration: raw.declaration } : {}),
-  }, protocol, onInvalid);
-  if (!retained) return undefined;
-  if (raw.attempt === undefined && raw.intentionChange === undefined) return { decision: retained };
-  if (raw.attempt === undefined) {
-    const change = record(raw.intentionChange), declaration = record(raw.declaration);
-    if (!change || Object.keys(change).some((key) => !['goal', 'orientation', 'horizon'].includes(key))) {
-      onInvalid('新目标需要goal、orientation、horizon；是否发言和身体尝试独立选择'); return undefined;
-    }
-    const intention = sanitizeMindIntention({ ...(declaration ?? {}), ...change }, protocol.handles, onInvalid);
-    if (!intention) return undefined;
-    const mentalAct = mindMentalAct(intention, protocol);
-    const characterAgendaUpdate = intention.horizon === 'ongoing' && protocol.characterAgendaProposal
-      ? concernUpdateForMentalAct({ kind: 'create' }, undefined, intention.evidenceMemoryHandles, mentalAct, protocol.handles)
-      : undefined;
-    return { decision: { kind: 'idle', reason: '本人形成新目标，尚未改变当前操作', mentalAct,
-      ...(characterAgendaUpdate ? { characterAgendaUpdate } : {}),
-    } };
-  }
   const attempt = record(raw.attempt);
-  if (!attempt || !['native', 'creative', 'speak', 'continue', 'wait'].includes(String(attempt.kind))
-    || Object.keys(attempt).some((key) => !['kind', ...(attempt.kind === 'native' ? ['nativeOperation']
-      : attempt.kind === 'creative' || attempt.kind === 'speak' ? ['description'] : [])].includes(key))) {
-    onInvalid('attempt只保留一种当前安排及其必要字段；具体尝试需description，continue和wait不附加另一动作'); return undefined;
+  if (!attempt || !['creative', 'speak', 'continue', 'wait'].includes(String(attempt.kind))
+    || Object.keys(attempt).some((key) => !['kind', ...(attempt.kind === 'creative' || attempt.kind === 'speak' ? ['description'] : [])].includes(key))) {
+    onInvalid('attempt必须选择creative、speak、continue或wait；具体尝试/说话需description'); return undefined;
   }
   const description = attempt.kind === 'creative' || attempt.kind === 'speak' ? text(attempt.description, 480) : undefined;
   if ((attempt.kind === 'creative' || attempt.kind === 'speak') && !description) {
     onInvalid('creative或speak需要本人已选的具体活动或说话意思description'); return undefined;
   }
+  const evidenceMemoryHandles = Array.isArray(raw.evidenceMemoryHandles)
+    ? [...new Set(raw.evidenceMemoryHandles.map((value) => text(value, 24)).filter(Boolean))]
+      .filter((handle) => protocol.handles.memories.some((memory) => memory.handle === handle)).slice(0, 4) : [];
+  const relationshipAppraisal = sanitizeMindRelationshipAppraisal(raw.relationshipAppraisal, protocol.handles);
+  if (raw.relationshipAppraisal !== undefined && !relationshipAppraisal) {
+    onInvalid('本人关系理解需要可辨认的对方与实际相关记忆，不能由世界补写'); return undefined;
+  }
+  const reflection = { evidenceMemoryHandles, ...(relationshipAppraisal ? { relationshipAppraisal } : {}) };
+  const privateDeclaration: NonNullable<Decision['declaration']> | undefined = evidenceMemoryHandles.length || relationshipAppraisal ? {
+    utterance: '', delivery: 'normal',
+    sourceEventIds: [...new Set(evidenceMemoryHandles.flatMap((handle) =>
+      protocol.handles.memories.find((memory) => memory.handle === handle)?.sourceFactIds ?? []))],
+    ...(relationshipAppraisal ? { relationshipAppraisal } : {}),
+  } : undefined;
+  let frozenWords: NonNullable<MindDeltaChoice['speech']>['frozenWords'];
+  if (raw.declaration !== undefined) {
+    const words = record(raw.declaration);
+    if (!words || Object.keys(words).some((key) => !['utterance', 'delivery'].includes(key))
+      || typeof words.utterance !== 'string' || !words.utterance.trim() || words.utterance.length > 180
+      || !['whisper', 'normal', 'call'].includes(String(words.delivery))) {
+      onInvalid('declaration只包含完整utterance与delivery；语义和协议引用由世界编译'); return undefined;
+    }
+    frozenWords = { utterance: words.utterance, delivery: words.delivery as MindDeclarationOutput['delivery'] };
+  }
   let intention: MindIntentionOutput | undefined;
   if (raw.intentionChange !== undefined) {
     const change = record(raw.intentionChange);
-    const declaration = record(raw.declaration);
     if (!change || Object.keys(change).some((key) => !['goal', 'orientation', 'horizon'].includes(key))) {
-      onInvalid('intentionChange只写goal、orientation、horizon；declaration独立可选'); return undefined;
+      onInvalid('intentionChange只写goal、orientation、horizon，不包含言语或操作参数'); return undefined;
     }
-    intention = sanitizeMindIntention({ ...(declaration ?? {}), ...change,
-      ...(description ? { nextAttempt: description } : {}),
-    }, protocol.handles, onInvalid);
-    if (!intention) return undefined;
+    const chosen = sanitizeMindIntention({ ...change, ...(description ? { nextAttempt: description } : {}) }, protocol.handles, onInvalid);
+    if (!chosen) return undefined;
+    intention = { ...chosen, ...reflection };
   }
+  const speech: MindDeltaChoice['speech'] = frozenWords || attempt.kind === 'speak' ? {
+    description: attempt.kind === 'speak' ? description! : frozenWords!.utterance,
+    ...(frozenWords ? { frozenWords } : {}), ...(intention ? { intention } : {}),
+  } : undefined;
+  const speechChoice = speech ? { speech } : {};
   const origin = intention ? undefined : context.currentIntention;
-  const declaration = retained.declaration;
-  if (attempt.kind === 'speak') {
-    const speech = { description: description!, ...(intention ? { intention } : {}) };
-    // Exact words selected by Mind are already the declaration. Do not ask a
-    // compiler to paraphrase or append another speech act in the same turn.
-    return declaration ? { decision: speechChoiceDecision(speech, protocol, declaration) } : { speech };
-  }
   if (attempt.kind === 'creative') {
-    // Retaining a purpose is not another MentalAct. This temporary request
-    // draft is stripped from the decision after WorldPlan has translated it.
     const frozen = origin?.mentalAct;
     return { intention: intention ?? {
-      utterance: declaration?.utterance ?? '',
-      delivery: declaration?.delivery ?? 'normal',
-      speechIntent: declaration?.speechIntent ?? { kind: 'expression' },
+      utterance: '', delivery: 'normal', speechIntent: { kind: 'expression' },
       goal: frozen?.goal ?? description!, nextAttempt: description!,
       orientation: frozen?.orientation ?? 'inquiry', horizon: frozen?.horizon ?? 'momentary',
-      evidenceMemoryHandles: [],
+      ...reflection,
     }, ...(!intention ? { retainedGoal: {
       ...(origin ? { sourceDecisionEventId: origin.sourceDecisionEventId } : {}),
-      ...(declaration ? { declaration } : {}),
-    } } : {}) };
+      ...(privateDeclaration ? { declaration: privateDeclaration } : {}),
+    } } : {}), ...speechChoice };
   }
   const mentalAct = intention ? mindMentalAct(intention, protocol, attempt.kind === 'wait' ? 'wait' : 'pursue') : undefined;
   const characterAgendaUpdate = mentalAct && intention?.horizon === 'ongoing' && protocol.characterAgendaProposal
     ? concernUpdateForMentalAct({ kind: 'create' }, undefined, intention.evidenceMemoryHandles, mentalAct, protocol.handles)
     : undefined;
+  const fields = {
+    ...(mentalAct ? { mentalAct } : privateDeclaration ? { declaration: privateDeclaration } : {}),
+    ...(characterAgendaUpdate ? { characterAgendaUpdate } : {}),
+  };
+  if (attempt.kind === 'speak') return { decision: {
+    kind: 'idle', attention: 'keep-current', reason: description!, ...fields,
+  }, ...speechChoice };
   if (attempt.kind === 'continue') return { decision: {
-    kind: 'idle', reason: '本人选择保持当前身体工作或空闲',
-    ...(mentalAct ? { mentalAct } : { attention: 'keep-current' as const, ...(declaration ? { declaration } : {}) }),
-    ...(characterAgendaUpdate ? { characterAgendaUpdate } : {}),
-  } };
+    kind: 'idle', attention: 'keep-current', reason: '本人选择保持当前身体工作或空闲', ...fields,
+  }, ...speechChoice };
   const authoredAttempt: NonNullable<Decision['authoredAttempt']> = {
-    kind: attempt.kind as 'native' | 'wait',
-    ...(origin ? { intentionSourceDecisionEventId: origin.sourceDecisionEventId } : {}),
+    kind: 'wait', ...(origin ? { intentionSourceDecisionEventId: origin.sourceDecisionEventId } : {}),
   };
-  const shared = { authoredAttempt,
-    ...(mentalAct ? { mentalAct } : declaration ? { declaration } : {}),
-    ...(characterAgendaUpdate ? { characterAgendaUpdate } : {}),
-  };
-  if (attempt.kind === 'wait') return { decision: context.activeIntent
-    ? { kind: 'suspend', intentId: context.activeIntent.id, reason: '本人选择暂时停下', ...shared }
-    : { kind: 'idle', reason: '本人选择等待', ...shared } };
-  let problem = '所选原生操作的参数或对象尚未绑定';
-  const operation = compileModelNativeOperation(attempt.nativeOperation,
-    protocol.targetContext ?? protocol.requestContext, protocol.handles, undefined,
-    (message) => { problem = message; });
-  if (!operation || operation.kind === 'speech') return { decision: {
-    kind: 'idle', reason: '本人操作选择已保留，参数尚未编译', ...shared,
-    compilationFailure: { code: 'invalid-operation', message: operation?.kind === 'speech'
-      ? '本次新原话由declaration提交，不再另排speech操作' : problem, fields: ['attempt.nativeOperation'] },
-  } };
-  return { decision: { kind: 'idle', reason: mentalAct?.strategy ?? '本人选择下一步操作',
-    ...shared, nativeOperation: operation } };
+  return { decision: context.activeIntent
+    ? { kind: 'suspend', intentId: context.activeIntent.id, reason: '本人选择暂时停下', authoredAttempt, ...fields }
+    : { kind: 'idle', reason: '本人选择等待', authoredAttempt, ...fields }, ...speechChoice };
 }
 
 /** Public seam for the real actor delta contract; creative choices are translated by decideOne. */
@@ -1177,13 +1179,14 @@ async function requestMindIntention(
     role: 'user',
     content: '上一轮只返回了内部推理，没有最终 JSON。直接输出一个 Mind intention JSON。',
   });
-  const response = await requestModelText(endpoint, {
+  const phaseEndpoint = decisionPhaseEndpoint(endpoint, 'mind');
+  const response = await requestModelText(phaseEndpoint, {
     messages,
     temperature: decisionPhaseTemperature('mind'),
-    maxOutputTokens: decisionMaxOutputTokens(),
+    maxOutputTokens: decisionMaxOutputTokens(phaseEndpoint),
     jsonObject: true,
     jsonSchema: buildMindIntentionJsonSchema(protocol),
-    timeoutMs: decisionTimeout(endpoint),
+    timeoutMs: decisionTimeout(phaseEndpoint),
   });
   return { content: response.text, usage: response.usage };
 }
@@ -1225,10 +1228,11 @@ async function requestWorldPlan(
     { role: 'assistant', content: correction.invalidContent },
     { role: 'user', content: `上一个 WorldPlan 输出无法绑定：${correction.problem}。保持本人冻结的 goal 和 nextAttempt 及当前真实事实，只修正 plan/resolution 的格式、对象或具体做法；不产生新的本人意图或语言。` },
   );
-  const response = await requestModelText(endpoint, {
+  const phaseEndpoint = decisionPhaseEndpoint(endpoint, 'world');
+  const response = await requestModelText(phaseEndpoint, {
     messages, temperature: decisionPhaseTemperature('plan'),
-    maxOutputTokens: decisionMaxOutputTokens() * 2,
-    jsonObject: true, jsonSchema: buildWorldPlanJsonSchema(protocol, protocol.actorAttempt), timeoutMs: decisionTimeout(endpoint),
+    maxOutputTokens: Math.min(16_384, decisionMaxOutputTokens(phaseEndpoint) * 2),
+    jsonObject: true, jsonSchema: buildWorldPlanJsonSchema(protocol, protocol.actorAttempt), timeoutMs: decisionTimeout(phaseEndpoint),
   });
   return { content: response.text, usage: response.usage };
 }
@@ -1242,8 +1246,11 @@ async function requestWorldAttempt(
   protocol: DecisionModelRequestProtocol,
   intention: MindIntentionOutput,
   correction?: { invalidContent: string; problem: string },
+  selectedSpeech?: MindDeltaChoice['speech'],
 ): Promise<{ content: string; usage: TokenUsage }> {
   const context = { ...buildWorldAttemptRequestContext(protocol.requestContext, intention), ...planAgentWorldContext() };
+  if (selectedSpeech) context.declaration = { status: selectedSpeech.frozenWords ? 'selected-words' : 'selected-meaning',
+    meaning: '本人已经选定本轮语言，由独立的言语路径编译；不重复发言，也不将言语编译问题变成身体动作。' };
   const messages: ModelMessage[] = [
     { role: 'system', content: WORLD_ATTEMPT_SYSTEM_PROMPT_V1 },
     { role: 'user', content: JSON.stringify(context) },
@@ -1252,9 +1259,10 @@ async function requestWorldAttempt(
     { role: 'assistant', content: correction.invalidContent },
     { role: 'user', content: `当前操作尚未绑定：${correction.problem}。只修正已选尝试的参数或引用；若尚不能表达，返回uncompiled原因，不另定目标、安排他人行动或声明成功。` },
   );
-  const response = await requestModelText(endpoint, {
-    messages, temperature: decisionPhaseTemperature('plan'), maxOutputTokens: decisionMaxOutputTokens(),
-    jsonObject: true, jsonSchema: buildWorldAttemptJsonSchema(protocol), timeoutMs: decisionTimeout(endpoint),
+  const phaseEndpoint = decisionPhaseEndpoint(endpoint, 'world');
+  const response = await requestModelText(phaseEndpoint, {
+    messages, temperature: decisionPhaseTemperature('plan'), maxOutputTokens: decisionMaxOutputTokens(phaseEndpoint),
+    jsonObject: true, jsonSchema: buildWorldAttemptJsonSchema(protocol), timeoutMs: decisionTimeout(phaseEndpoint),
   });
   return { content: response.text, usage: response.usage };
 }
@@ -1262,14 +1270,15 @@ async function requestWorldAttempt(
 async function requestWorldSpeech(
   endpoint: ResolvedModelEndpoint,
   protocol: DecisionModelRequestProtocol,
-  description: string,
+  choice: NonNullable<MindDeltaChoice['speech']>,
   correction?: { invalidContent: string; problem: string },
 ): Promise<{ content: string; usage: TokenUsage }> {
   const mind = protocol.mindContext;
   const context = {
-    schemaVersion: 'world-speech-context-v1',
+    schemaVersion: 'world-speech-context-v2',
     actor: { id: mind.person.id, name: mind.person.name },
-    selectedSpeech: description,
+    selectedSpeech: choice.description,
+    ...(choice.frozenWords ? { frozenUtterance: choice.frozenWords.utterance, frozenDelivery: choice.frozenWords.delivery } : {}),
     situation: { time: mind.situation.time, socialSituation: mind.situation.socialSituation },
     visible: mind.visible,
     speechReferences: mind.speechReferences ?? [],
@@ -1282,9 +1291,10 @@ async function requestWorldSpeech(
   ];
   if (correction) messages.push({ role: 'assistant', content: correction.invalidContent },
     { role: 'user', content: `言语编译尚未形成可提交原话：${correction.problem}。只修正本人selectedSpeech的表达和引用；缺少交易条款可以原样提问，不新增承诺、他人回应或物理操作。` });
-  const response = await requestModelText(endpoint, {
-    messages, temperature: decisionPhaseTemperature('plan'), maxOutputTokens: decisionMaxOutputTokens(),
-    jsonObject: true, jsonSchema: buildWorldSpeechJsonSchema(protocol), timeoutMs: decisionTimeout(endpoint),
+  const phaseEndpoint = decisionPhaseEndpoint(endpoint, 'world');
+  const response = await requestModelText(phaseEndpoint, {
+    messages, temperature: decisionPhaseTemperature('plan'), maxOutputTokens: decisionMaxOutputTokens(phaseEndpoint),
+    jsonObject: true, jsonSchema: buildWorldSpeechJsonSchema(protocol, Boolean(choice.frozenWords)), timeoutMs: decisionTimeout(phaseEndpoint),
   });
   return { content: response.text, usage: response.usage };
 }
@@ -1294,7 +1304,7 @@ function normalizeWorldSpeechOutput(
   protocol: DecisionModelRequestProtocol, onInvalid: (problem: string) => void,
 ): Decision | undefined {
   const raw = record(input);
-  if (!raw || Object.keys(raw).length !== 1) { onInvalid('只返回declaration或uncompiled，不附加身体操作或新目标'); return undefined; }
+  if (!raw || Object.keys(raw).length !== 1) { onInvalid('只返回本轮言语编译字段或uncompiled，不附加身体操作或新目标'); return undefined; }
   if (raw.uncompiled !== undefined) {
     const issue = record(raw.uncompiled), reason = text(issue?.reason, 480);
     if (!issue || !reason || Object.keys(issue).some((key) => key !== 'reason')) {
@@ -1302,13 +1312,20 @@ function normalizeWorldSpeechOutput(
     }
     return speechChoiceDecision(choice, protocol, undefined, reason);
   }
-  const declared = record(raw.declaration);
+  const declared = choice.frozenWords
+    ? raw.speechIntent && record(raw.speechIntent) ? { ...choice.frozenWords, speechIntent: raw.speechIntent } : undefined
+    : record(raw.declaration);
   if (!declared || !record(declared.speechIntent)
     || Object.keys(declared).some((key) => !['utterance', 'delivery', 'speechIntent'].includes(key))) {
-    onInvalid('declaration需要本人utterance、delivery和speechIntent，不编写关系感受或其它字段'); return undefined;
+    onInvalid(choice.frozenWords ? '原话与delivery已冻结，只返回speechIntent；不返回或改写declaration'
+      : 'declaration需要本人utterance、delivery和speechIntent，不编写关系感受或其它字段'); return undefined;
   }
   const normalized = normalizeRetainedDeclarationModelOutput({ attention: 'keep-current', declaration: declared }, protocol, onInvalid);
-  return normalized?.declaration ? speechChoiceDecision(choice, protocol, normalized.declaration) : undefined;
+  if (!normalized?.declaration || normalized.declaration.speechIntent?.kind !== record(declared.speechIntent)?.kind) {
+    onInvalid('原话选择的言语含义或实际引用尚未绑定，不改成另一种言语行为'); return undefined;
+  }
+  const declaration = { ...normalized.declaration, ...(choice.frozenWords ?? {}) };
+  return speechChoiceDecision(choice, protocol, declaration);
 }
 
 async function resolveWorldSpeech(
@@ -1322,7 +1339,7 @@ async function resolveWorldSpeech(
   try {
     for (let attempt = 0; attempt < 2; attempt++) {
       providerRequests++;
-      const completion = await requestWorldSpeech(endpoint, protocol, choice.description, correction);
+      const completion = await requestWorldSpeech(endpoint, protocol, choice, correction);
       usage = addUsage(usage, completion.usage);
       let raw: unknown;
       try { raw = parseJson(completion.content); } catch { raw = undefined; }
@@ -1335,6 +1352,36 @@ async function resolveWorldSpeech(
     }
   } catch (error) { failure = error instanceof Error ? error.message : String(error); }
   return { decision: speechChoiceDecision(choice, protocol, undefined, failure), usage, providerRequests, failure };
+}
+
+/** Merge an independently compiled utterance without replacing body control,
+ * the durable goal or the actor's privately authored relationship appraisal. */
+function attachIndependentSpeech(
+  decision: Decision,
+  choice: NonNullable<MindDeltaChoice['speech']>,
+  spoken: DecisionResult,
+): { decision: Decision; failure?: string } {
+  const language = spoken.decision?.mentalAct ?? spoken.decision?.declaration;
+  if (language?.utterance.trim()) {
+    const own = decision.mentalAct ?? decision.declaration;
+    const declaration: NonNullable<Decision['declaration']> = {
+      utterance: language.utterance, delivery: language.delivery, speechIntent: language.speechIntent,
+      sourceEventIds: [...new Set([...(own?.sourceEventIds ?? []), ...language.sourceEventIds])],
+      ...(own?.relationshipAppraisal ? { relationshipAppraisal: own.relationshipAppraisal } : {}),
+    };
+    return { decision: decision.mentalAct ? { ...decision, mentalAct: { ...decision.mentalAct, ...declaration } }
+      : { ...decision, declaration }, ...(spoken.failure ? { failure: spoken.failure } : {}) };
+  }
+  const selected = choice.frozenWords
+    ? `本轮冻结原话尚未发出：${JSON.stringify(choice.frozenWords)}`
+    : `本轮已选说话意思尚未发出：${choice.description}`;
+  const failure = `${selected}；言语编译：${spoken.failure ?? '未形成可提交的语义'}`;
+  const retained = { ...decision, reason: `${decision.reason}；${failure}` };
+  // A speech diagnostic must never suppress an already compiled body probe.
+  if (retained.kind === 'idle' && !retained.nativeOperation && !retained.executionProbe && !retained.compilationFailure) {
+    retained.compilationFailure = { code: 'invalid-operation', message: failure, fields: ['world-speech'] };
+  }
+  return { decision: retained, failure };
 }
 
 function worldAttemptParts(input: unknown): { body: unknown; speechHandoff: boolean } | undefined {
@@ -2084,7 +2131,14 @@ async function decideOne(
   let providerRequests = 0;
   let selectedIntention: MindIntentionOutput | undefined;
   let selectedSpeech: MindDeltaChoice['speech'];
+  let selectedSpeechResult: DecisionResult | undefined;
   let retainedGoal: MindDeltaChoice['retainedGoal'];
+  const finish = (decision: Decision, failure?: string): DecisionResult => {
+    const combined: { decision: Decision; failure?: string } = selectedSpeech && selectedSpeechResult
+      ? attachIndependentSpeech(decision, selectedSpeech, selectedSpeechResult) : { decision };
+    const problem = [...new Set([failure, combined.failure].filter((value): value is string => Boolean(value)))].join('；');
+    return { decision: combined.decision, usage, providerRequests, ...(problem ? { failure: problem } : {}) };
+  };
   try {
   const frozen = context.continuingPlan?.mentalAct;
   const mind: MindResult = continuationOnly
@@ -2099,12 +2153,13 @@ async function decideOne(
     : await decideMind(context, protocol, endpoint);
   usage = mind.usage;
   providerRequests = mind.providerRequests;
-  if (mind.decision) return { decision: mind.decision, usage, providerRequests, ...(mind.failure ? { failure: mind.failure } : {}) };
   if (mind.speech) {
     selectedSpeech = mind.speech;
-    const spoken = await resolveWorldSpeech(endpoint, protocol, mind.speech);
-    return { ...spoken, usage: addUsage(usage, spoken.usage), providerRequests: providerRequests + spoken.providerRequests };
+    selectedSpeechResult = await resolveWorldSpeech(endpoint, protocol, mind.speech);
+    usage = addUsage(usage, selectedSpeechResult.usage);
+    providerRequests += selectedSpeechResult.providerRequests;
   }
+  if (mind.decision) return finish(mind.decision, mind.failure);
   if (!mind.intention) return { decision: null, usage, providerRequests, failure: mind.failure ?? 'Mind 未返回可解析的本人意图' };
   selectedIntention = mind.intention;
   retainedGoal = mind.retainedGoal;
@@ -2112,7 +2167,7 @@ async function decideOne(
   if (!continuationOnly) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       providerRequests += 1;
-      const completion = await requestWorldAttempt(endpoint, protocol, mind.intention, correction);
+      const completion = await requestWorldAttempt(endpoint, protocol, mind.intention, correction, mind.speech);
       usage = addUsage(usage, completion.usage);
       let raw: unknown;
       try { raw = parseJson(completion.content); } catch { raw = undefined; }
@@ -2124,7 +2179,7 @@ async function decideOne(
         let compiled = preserveAttemptAuthorship(decision, mind.retainedGoal);
         let failure = decision.kind === 'idle' ? decision.compilationFailure?.message : undefined;
         const selectedWords = compiled.declaration?.utterance ?? compiled.mentalAct?.utterance;
-        if (parts.speechHandoff && !selectedWords?.trim()) {
+        if (parts.speechHandoff && !mind.speech && !selectedWords?.trim()) {
           // Hand off the exact actor sentence, not another World-authored
           // paraphrase. Speech and a compiled physical prefix are independent.
           const spoken = await resolveWorldSpeech(endpoint, protocol, { description: mind.intention.nextAttempt! });
@@ -2146,13 +2201,13 @@ async function decideOne(
             }
           }
         }
-        return { decision: compiled, usage, providerRequests, ...(failure ? { failure } : {}) };
+        return finish(compiled, failure);
       }
       correction = { invalidContent: completion.content, problem };
     }
     const failure = correction?.problem ?? '当前尝试尚未编译';
     const incomplete = normalizeWorldAttemptModelOutput(context, mind.intention, { uncompiled: { reason: failure } }, protocol)!;
-    return { decision: preserveAttemptAuthorship(incomplete, mind.retainedGoal), usage, providerRequests, failure };
+    return finish(preserveAttemptAuthorship(incomplete, mind.retainedGoal), failure);
   }
   // Existing stored plans retain their own explicit continuation path. New
   // creative choices above no longer create plans for this path to advance.
@@ -2196,15 +2251,12 @@ async function decideOne(
   return { decision: continuationOnly ? incomplete : preserveAttemptAuthorship(incomplete, mind.retainedGoal), usage, providerRequests, failure };
   } catch (error) {
     const failure = error instanceof Error ? error.message : String(error);
-    if (selectedSpeech) return { decision: speechChoiceDecision(selectedSpeech, protocol, undefined, failure),
-      usage, providerRequests, failure };
-    return {
-      decision: selectedIntention ? (continuationOnly
-        ? uncompiledMindDecision(context, selectedIntention, protocol, failure)
-        : preserveAttemptAuthorship(normalizeWorldAttemptModelOutput(context, selectedIntention,
-          { uncompiled: { reason: failure } }, protocol)!, retainedGoal)) : null,
-      usage, providerRequests, failure,
-    };
+    if (selectedIntention) return finish(continuationOnly
+      ? uncompiledMindDecision(context, selectedIntention, protocol, failure)
+      : preserveAttemptAuthorship(normalizeWorldAttemptModelOutput(context, selectedIntention,
+        { uncompiled: { reason: failure } }, protocol)!, retainedGoal), failure);
+    if (selectedSpeech) return finish(speechChoiceDecision(selectedSpeech, protocol, undefined, failure), failure);
+    return { decision: null, usage, providerRequests, failure };
   }
 }
 

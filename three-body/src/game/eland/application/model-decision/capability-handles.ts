@@ -95,6 +95,14 @@ export function buildDecisionProbeHandleMap(context: DecisionRequestContext): De
     seenVoxelKeys.add(key);
     voxels.push({ handle: voxelHandle(visible.position), position: { ...visible.position } });
   }
+  // Remembering a place is enough to point or walk back to its coordinates.
+  // This adds no current material, stock, reachability or ownership claim.
+  for (const place of context.person.knownPlaces ?? []) {
+    const key = decisionVoxelKey(place.position);
+    if (seenVoxelKeys.has(key)) continue;
+    seenVoxelKeys.add(key);
+    voxels.push({ handle: voxelHandle(place.position), position: { ...place.position } });
+  }
   for (const option of [...context.options, ...context.followUpOptions]) {
     if (option.target?.kind !== 'voxel') continue;
     const key = decisionVoxelKey(option.target.position);

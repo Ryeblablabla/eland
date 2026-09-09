@@ -22,6 +22,7 @@ import {
   decisionBudgetExemption,
   lastModelDecisionMonth,
   validateModelDecision,
+  personCanDecide,
 } from './model-review';
 import {
   applyPlanningDecisions,
@@ -284,6 +285,54 @@ function cognitiveTriggerPersonIds(state: SimulationState, events: readonly Worl
   return people;
 }
 
+/** The body process already identifies meaningful harm. Ordinary metabolic
+ * drift is not another thought request; a newly present cause or injury is. */
+function bodyChangeSources(
+  state: SimulationState,
+  events: readonly WorldEvent[],
+  planning: ModelMonthPlanningState,
+  priorConditions: ReadonlyMap<PersonId, ReadonlyMap<string, number>>,
+): Map<PersonId, string[]> {
+  const sources = new Map<PersonId, Set<string>>();
+  const eventIds = new Set(events.map((event) => event.id));
+  const add = (personId: unknown, sourceEventId: string) => {
+    if (typeof personId !== 'string' || planning.reviewedBodySources.has(`${personId}:${sourceEventId}`)) return;
+    const known = sources.get(personId) ?? new Set<string>();
+    known.add(sourceEventId); sources.set(personId, known);
+  };
+  for (const event of events) {
+    if (event.kind === 'environment' && event.change === 'body' && event.who) {
+      const causes = new Set((Array.isArray(event.diff.bodyCauseCodes) ? event.diff.bodyCauseCodes : [])
+        .filter((cause): cause is string => typeof cause === 'string'
+          && !['elapsed-metabolism', 'favorable-recovery', 'dehydrated-hibernation'].includes(cause)));
+      const previous = planning.bodyCauseStates.get(event.who) ?? new Set<string>();
+      if ([...causes].some((cause) => !previous.has(cause))) add(event.who, event.id);
+      // Improvement clears the boundary, so a later genuinely renewed need
+      // can be perceived without replaying an old warning forever.
+      planning.bodyCauseStates.set(event.who, causes);
+      if (!('elapsedDays' in event.diff) && Number(event.diff.healthDelta) < 0) add(event.who, event.id);
+    }
+    if (event.kind === 'action') {
+      if (Number(event.diff.damage) > 0) add(event.diff.victimId, event.id);
+      if (Number(event.diff.counterDamage) > 0) add(event.who, event.id);
+      for (const settlement of Array.isArray(event.diff.supportSettlements) ? event.diff.supportSettlements : []) {
+        if (settlement && typeof settlement === 'object' && Number(settlement.healthDamage) > 0) add(settlement.personId, event.id);
+      }
+      for (const effect of Array.isArray(event.diff.appliedEffects) ? event.diff.appliedEffects : []) {
+        if (effect?.kind === 'body' && effect.field === 'health' && Number(effect.delta) < 0) add(effect.personId, event.id);
+      }
+    }
+  }
+  for (const person of state.people) {
+    const previous = priorConditions.get(person.id);
+    for (const condition of person.conditions) {
+      if (previous?.has(condition.id) && previous.get(condition.id)! >= condition.stage) continue;
+      for (const sourceEventId of condition.sourceEventIds) if (eventIds.has(sourceEventId)) add(person.id, sourceEventId);
+    }
+  }
+  return new Map([...sources].map(([personId, ids]) => [personId, [...ids]]));
+}
+
 function directAttemptReviewInputs(prepared: PreparedMonth, consumed: ReadonlySet<string>): Map<PersonId, {
   keys: string[]; sourceEventIds: string[]; technical: boolean;
 }> {
@@ -321,6 +370,8 @@ export interface ModelMonthPlanningState {
   initialized: boolean;
   reviewedLanguageSources: Map<PersonId, Set<string>>;
   reviewedSocialSources: Map<PersonId, Set<string>>;
+  bodyCauseStates: Map<PersonId, Set<string>>;
+  reviewedBodySources: Set<string>;
   consumedPlanOutcomes: Set<string>;
   consumedDirectOutcomes: Set<string>;
   stoppedPlans: Set<string>;
@@ -330,6 +381,7 @@ export interface ModelMonthPlanningState {
 }
 export function createModelMonthPlanningState(): ModelMonthPlanningState {
   return { initialized: false, reviewedLanguageSources: new Map(), reviewedSocialSources: new Map(),
+    bodyCauseStates: new Map(), reviewedBodySources: new Set(),
     consumedPlanOutcomes: new Set(), consumedDirectOutcomes: new Set(), stoppedPlans: new Set(),
     pendingPlanIntentIds: new Set(), openingMindIds: new Map(), queuedDecisionEventCount: 0 };
 }
@@ -510,6 +562,8 @@ export function* modelPlanningTick(
   const priorActiveIntentIds = batch.continuePlans
     ? prepared.state.people.flatMap((person) => person.activeIntentId ? [person.activeIntentId] : [])
     : [];
+  const priorConditions = new Map(prepared.state.people.map((person) => [person.id,
+    new Map(person.conditions.map((condition) => [condition.id, condition.stage]))]));
   const tick = executePlanningTick(execution, actorController);
   if (tick.actionTick >= PLANNING_TICKS_PER_MONTH
     || !batch.ownsVoluntarySocialChoices) return tick;
@@ -517,7 +571,8 @@ export function* modelPlanningTick(
   const heardSources = unreviewedLanguageSources(prepared.events, reviewedLanguageSources);
   const socialSources = unreviewedSocialActionSources(prepared.state, prepared.events, reviewedSocialSources);
   const directReviews = directAttemptReviewInputs(prepared, consumedDirectOutcomes);
-  const reconsideringPeople = new Set([...heardSources.keys(), ...socialSources.keys(), ...directReviews.keys()]);
+  const bodySources = bodyChangeSources(prepared.state, tick.events, planning, priorConditions);
+  const reconsideringPeople = new Set([...heardSources.keys(), ...socialSources.keys(), ...directReviews.keys(), ...bodySources.keys()]);
   if (execution.controlledPersonId) reconsideringPeople.add(execution.controlledPersonId);
   const planContexts = batch.continuePlans
     ? planContinuationContexts(prepared, priorActiveIntentIds, tick.events, nextTick, consumedPlanOutcomes, stoppedPlans, reconsideringPeople, pendingPlanIntentIds, carry.latestMindIds)
@@ -535,8 +590,7 @@ export function* modelPlanningTick(
     .filter((personId) => personId !== execution.controlledPersonId && !planPeople.has(personId))
     .flatMap((personId) => {
       const person = personById(prepared.state, personId);
-      if (!person || !isAlive(person) || isDehydratedHibernating(person)
-        || lifePlanningStage(person, prepared.atMonth) === 'dependent-child') return [];
+      if (!person || !isAlive(person) || isDehydratedHibernating(person)) return [];
       const context = buildCurrentMonthDecisionContext(
         prepared.state,
         person,
@@ -544,13 +598,15 @@ export function* modelPlanningTick(
         nextTick,
         prepared.events,
       );
+      if (!personCanDecide(prepared.state, context, prepared.atMonth)) return [];
       const sourceEventIds = [...new Set([...(heardSources.get(personId) ?? []), ...(socialSources.get(personId) ?? []),
+        ...(bodySources.get(personId) ?? []),
         ...(directReviews.get(personId)?.sourceEventIds ?? []),
         ...tick.events.flatMap((event) => (
         event.kind === 'action' && event.who === personId ? [event.id] : []
       ))])];
       context.reconsideration = {
-        reason: socialSources.has(personId) ? 'experienced-outcome' : heardSources.has(personId) ? 'heard-language'
+        reason: socialSources.has(personId) || bodySources.has(personId) ? 'experienced-outcome' : heardSources.has(personId) ? 'heard-language'
           : directReviews.get(personId)?.technical ? 'compilation-feedback' : 'experienced-outcome', sourceEventIds,
       };
       return [context];
@@ -561,6 +617,7 @@ export function* modelPlanningTick(
     // on every activity tick. Its source remains in personal memory.
     acknowledgeLanguageSources(reviewedLanguageSources, context.person.id, heardSources.get(context.person.id) ?? []);
     acknowledgeSocialActionSources(reviewedSocialSources, context.person.id, socialSources.get(context.person.id) ?? []);
+    for (const sourceId of bodySources.get(context.person.id) ?? []) planning.reviewedBodySources.add(`${context.person.id}:${sourceId}`);
     for (const key of directReviews.get(context.person.id)?.keys ?? []) consumedDirectOutcomes.add(key);
   });
   execution.attempted.total += triggeredContexts.length;

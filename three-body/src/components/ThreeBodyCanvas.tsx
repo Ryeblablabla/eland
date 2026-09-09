@@ -32,6 +32,13 @@ import {
 } from '@/lib/threebody';
 import type { CosmosSnapshot } from '@/game/societyContract';
 import { PinchTransitionGesture } from '@/game/pinch-transition-gesture';
+import type {
+  CosmosCaptureCameraPose,
+  ThreeBodyCaptureApi,
+  ThreeBodyCaptureOptions,
+} from './cosmosCaptureControls';
+
+export type { ThreeBodyCaptureApi, ThreeBodyCaptureOptions } from './cosmosCaptureControls';
 
 export interface SimStats {
   resetToken: number;
@@ -67,6 +74,8 @@ interface Props {
   onPlanetFocusChange?: (focused: boolean) => void;
   onPlanetDive?: () => void;                 // 聚焦后继续滚轮或双指放大越过阈值 → 请求俯冲进入人间
   exitFocusToken?: number;                   // 自增 = 退出聚焦，相机回星系质心
+  /** Presentation capture configured at mount; restoreSnapshot remains authoritative. */
+  capture?: ThreeBodyCaptureOptions;
 }
 
 const DT = 0.001;
@@ -224,10 +233,13 @@ export default function ThreeBodyCanvas(props: Props) {
   // 主循环（three.js 场景）
   useEffect(() => {
     const canvas = canvasRef.current!;
+    const captureAtMount = propsRef.current.capture;
+    const manualCapture = Boolean(captureAtMount && captureAtMount.manual !== false);
     const renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: true,
       powerPreference: 'high-performance',
+      preserveDrawingBuffer: Boolean(captureAtMount),
     });
     renderer.setClearColor('#02030a'); // 与 2D 版边缘底色一致，保持深空近黑
 
@@ -237,6 +249,7 @@ export default function ThreeBodyCanvas(props: Props) {
 
     // 可交互视角：拖拽旋转 / 滚轮缩放（不平移，永远围绕星系质心）
     const controls = new OrbitControls(camera, canvas);
+    controls.enabled = !captureAtMount;
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
     controls.enablePan = false;
@@ -748,7 +761,9 @@ export default function ThreeBodyCanvas(props: Props) {
     let W = 0, H = 0, dpr = 1;
     const resize = () => {
       const rect = canvas.parentElement!.getBoundingClientRect();
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      dpr = propsRef.current.capture
+        ? Math.max(0.25, propsRef.current.capture.pixelRatio ?? 1)
+        : Math.min(window.devicePixelRatio || 1, 2);
       W = rect.width;
       H = rect.height;
       renderer.setPixelRatio(dpr);
@@ -762,19 +777,28 @@ export default function ThreeBodyCanvas(props: Props) {
     ro.observe(canvas.parentElement!);
     resize();
 
-    let lastNow = performance.now();
+    let lastNow = manualCapture ? 0 : performance.now();
     let raf = 0;
+    let captureStepRemainder = 0;
+    let capturePose: CosmosCaptureCameraPose | null = null;
+    const applyCaptureCamera = () => {
+      if (!capturePose) return;
+      camera.position.set(...capturePose.position);
+      camera.lookAt(...capturePose.target);
+      if (capturePose.fov !== undefined && capturePose.fov !== camera.fov) {
+        camera.fov = capturePose.fov;
+        camera.updateProjectionMatrix();
+      }
+      camera.updateMatrixWorld(true);
+    };
 
-    const tick = () => {
-      raf = 0;
-      if (document.hidden) return;
-      raf = requestAnimationFrame(tick);
+    const renderFrame = (now: number) => {
       const w = world.current;
       if (!w) return;
       const p = propsRef.current;
-      const now = performance.now();
-      const frameDt = Math.min((now - lastNow) / 1000, 0.1); // 秒
+      const frameDt = Math.max(0, Math.min((now - lastNow) / 1000, 0.1)); // 秒
       lastNow = now;
+      if (capturePose) applyCaptureCamera();
 
       // ---- 物理推进：缓动追帧 ----
       // targetT 模式：差距越大追得越快（平滑加速）；可见时追平后转入极慢的环境漂移；
@@ -796,11 +820,11 @@ export default function ThreeBodyCanvas(props: Props) {
         w.pendingCollapse = null;
       }
 
-      if (p.running && !w.pendingCollapse) {
+      if (p.running && !w.pendingCollapse && (!captureAtMount || frameDt > 0)) {
         let steps: number;
         if (p.targetT !== undefined) {
           const gap = p.targetT - w.t;
-          if (gap <= DT * 0.5) {
+          if (gap <= DT * 0.5 || (captureAtMount && frameDt === 0)) {
             steps = 0;
           } else {
             const rate = frozen
@@ -809,6 +833,12 @@ export default function ThreeBodyCanvas(props: Props) {
             const targetSteps = Math.max(0, Math.floor((gap + 1e-9) / DT));
             steps = Math.min(targetSteps, Math.max(1, Math.round(rate * frameDt / DT)), 120);
           }
+        } else if (captureAtMount) {
+          // Preserve the regular 60fps simulation rate while allowing offline
+          // 30fps capture and repeated rendering of one timestamp.
+          captureStepRemainder += Math.max(1, Math.round(p.speed * 6)) * 60 * frameDt;
+          steps = Math.floor(captureStepRemainder + 1e-9);
+          captureStepRemainder -= steps;
         } else {
           steps = Math.max(1, Math.round(p.speed * 6));
         }
@@ -894,7 +924,7 @@ export default function ThreeBodyCanvas(props: Props) {
 
       // ---- 视野自适应（只跟随恒星）----
       const targetR = Math.min(Math.max(maxRadiusFromCOM(w.sys) * 1.3, 1.7), 40);
-      w.viewR += (targetR - w.viewR) * 0.03;
+      w.viewR += (targetR - w.viewR) * (captureAtMount ? 1 - Math.pow(0.97, frameDt * 60) : 0.03);
 
       // ---- 相机：可交互视角 + 行星聚焦 ----
       // 聚焦中：轨道中心跟随行星，行星实体化放大，滚轮越过阈值触发俯冲；
@@ -922,7 +952,8 @@ export default function ThreeBodyCanvas(props: Props) {
           // 从当前等效像素半径无缝起步（不设下限，避免点击瞬间的尺寸跳变）
           focus.planetR = 2.2 / (Math.min(W, H) / 2 / w.viewR);
         }
-        focus.planetR += (0.06 - focus.planetR) * 0.045; // 实体化到固定世界半径（丝滑）
+        focus.planetR += (0.06 - focus.planetR)
+          * (captureAtMount ? 1 - Math.pow(0.955, frameDt * 60) : 0.045); // 实体化到固定世界半径（丝滑）
         controls.minDistance = focus.planetR * 2.2;
         controls.maxDistance = Math.max(dist * 6, 1);
       } else {
@@ -930,7 +961,9 @@ export default function ThreeBodyCanvas(props: Props) {
         controls.maxDistance = dist * 6;
       }
 
-      if (focus.active) {
+      if (capturePose) {
+        applyCaptureCamera();
+      } else if (focus.active) {
         planetVec.set(w.sys.state[PLANET_IDX * 2], w.sys.state[PLANET_IDX * 2 + 1], 0);
         const diveApproaching = focus.diveApproachStartedAt >= 0;
         controls.target.lerp(planetVec, diveApproaching ? 0.38 : 0.14);
@@ -1101,7 +1134,15 @@ export default function ThreeBodyCanvas(props: Props) {
       composer.render();
     };
 
+    const tick = () => {
+      raf = 0;
+      if (document.hidden) return;
+      raf = requestAnimationFrame(tick);
+      renderFrame(performance.now());
+    };
+
     const onVisibilityChange = () => {
+      if (manualCapture) return;
       if (document.hidden) {
         cancelAnimationFrame(raf);
         raf = 0;
@@ -1111,8 +1152,65 @@ export default function ThreeBodyCanvas(props: Props) {
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
-    raf = requestAnimationFrame(tick);
+    if (!manualCapture) raf = requestAnimationFrame(tick);
+    const captureApi: ThreeBodyCaptureApi = {
+      scene,
+      renderer,
+      camera,
+      renderAt: renderFrame,
+      setCamera: (pose) => {
+        capturePose = { position: [...pose.position], target: [...pose.target], fov: pose.fov };
+        applyCaptureCamera();
+      },
+      focusPlanet: (active = true) => {
+        focus.seenExitToken = propsRef.current.exitFocusToken ?? 0;
+        if (focus.active === active) return;
+        focus.active = active;
+        focus.justActivated = active;
+        focus.dove = false;
+        focus.diveHold = 0;
+        focus.diveApproachStartedAt = -1;
+        propsRef.current.onPlanetFocusChange?.(active);
+      },
+      getSnapshot: () => {
+        const w = world.current;
+        if (!w) return null;
+        return {
+          schemaVersion: 1,
+          presetKey: propsRef.current.presetKey,
+          state: Array.from(w.sys.state),
+          masses: Array.from(w.sys.masses),
+          randomState: w.randomState,
+          respawnSequence: w.respawnSequence,
+          t: w.t,
+          viewR: w.viewR,
+          civilizations: w.civilizations,
+          extinct: w.extinct,
+          pendingCollapse: w.pendingCollapse,
+          fluxBase: w.fluxBase,
+          planetR: w.planetR,
+        };
+      },
+      getPlanet: () => {
+        const w = world.current;
+        if (!w) return null;
+        return {
+          position: [w.sys.state[PLANET_IDX * 2], w.sys.state[PLANET_IDX * 2 + 1], 0],
+          radius: focus.active && !focus.justActivated
+            ? focus.planetR
+            : 2.2 / (Math.min(W, H) / 2 / w.viewR),
+          viewRadius: w.viewR,
+        };
+      },
+      resize,
+    };
+    let captureDisposed = false;
+    queueMicrotask(() => {
+      if (!captureDisposed) captureAtMount?.onReady(captureApi);
+    });
     return () => {
+      captureDisposed = true;
+      captureAtMount?.onReady(null);
       cancelAnimationFrame(raf);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       ro.disconnect();

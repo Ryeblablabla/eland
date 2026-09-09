@@ -1,0 +1,2135 @@
+[
+  {
+    "id": "e-19-environment-weather-0",
+    "kind": "environment",
+    "atMonth": 19,
+    "orderInMonth": 0,
+    "cellId": 0,
+    "change": "weather",
+    "result": "本月天气转为降雨",
+    "diff": {
+      "kind": "rain",
+      "intensity": 2
+    },
+    "planningTick": 0,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-19-environment-material-0",
+    "kind": "environment",
+    "atMonth": 19,
+    "orderInMonth": 1,
+    "cellId": 0,
+    "change": "material",
+    "result": "7 个格子的物质因自然过程发生变化",
+    "diff": {
+      "changes": [
+        {
+          "cellId": 1335,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 1636,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 1678,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 2175,
+          "from": 2,
+          "to": 3,
+          "process": "rain-soak"
+        },
+        {
+          "cellId": 2419,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 2878,
+          "from": 2,
+          "to": 3,
+          "process": "rain-soak"
+        },
+        {
+          "cellId": 3059,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        }
+      ]
+    },
+    "planningTick": 0,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-19-opportunity-potianfeng",
+    "kind": "decision-opportunity",
+    "atMonth": 19,
+    "orderInMonth": 2,
+    "planningTick": 0,
+    "orderInTick": 2,
+    "who": "potianfeng",
+    "cellId": 2962,
+    "probability": 0.645,
+    "sample": 0.6237614015117288,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "破天锋本月重新考虑下一步"
+  },
+  {
+    "id": "e-19-opportunity-rei-ayanami",
+    "kind": "decision-opportunity",
+    "atMonth": 19,
+    "orderInMonth": 3,
+    "planningTick": 0,
+    "orderInTick": 3,
+    "who": "rei-ayanami",
+    "cellId": 1031,
+    "probability": 0.645,
+    "sample": 0.8150134023744613,
+    "triggered": false,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "绫波丽本月延续已有意图"
+  },
+  {
+    "id": "e-19-opportunity-freyja",
+    "kind": "decision-opportunity",
+    "atMonth": 19,
+    "orderInMonth": 4,
+    "planningTick": 0,
+    "orderInTick": 4,
+    "who": "freyja",
+    "cellId": 3991,
+    "probability": 0.045,
+    "sample": 0.04887504247017205,
+    "triggered": false,
+    "reasons": [
+      "每月非零重新考虑概率"
+    ],
+    "result": "芙蕾雅本月延续已有意图"
+  },
+  {
+    "id": "e-19-opportunity-cai-wenji",
+    "kind": "decision-opportunity",
+    "atMonth": 19,
+    "orderInMonth": 5,
+    "planningTick": 0,
+    "orderInTick": 5,
+    "who": "cai-wenji",
+    "cellId": 4073,
+    "probability": 0.645,
+    "sample": 0.2801151142921299,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "蔡文姬本月重新考虑下一步"
+  },
+  {
+    "id": "e-19-opportunity-sun-wu",
+    "kind": "decision-opportunity",
+    "atMonth": 19,
+    "orderInMonth": 6,
+    "planningTick": 0,
+    "orderInTick": 6,
+    "who": "sun-wu",
+    "cellId": 2962,
+    "probability": 0.645,
+    "sample": 0.5586768176872283,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "孙武本月重新考虑下一步"
+  },
+  {
+    "id": "e-19-opportunity-aphrodite",
+    "kind": "decision-opportunity",
+    "atMonth": 19,
+    "orderInMonth": 7,
+    "planningTick": 0,
+    "orderInTick": 7,
+    "who": "aphrodite",
+    "cellId": 4159,
+    "probability": 0.525,
+    "sample": 0.1749511519446969,
+    "triggered": true,
+    "reasons": [
+      "未完成的生产目标已经停滞",
+      "必须回应一项社会请求"
+    ],
+    "result": "阿佛洛狄忒本月必须回应一项社会请求"
+  },
+  {
+    "id": "e-19-opportunity-houyi",
+    "kind": "decision-opportunity",
+    "atMonth": 19,
+    "orderInMonth": 8,
+    "planningTick": 0,
+    "orderInTick": 8,
+    "who": "houyi",
+    "cellId": 2962,
+    "probability": 0.645,
+    "sample": 0.7936529666185379,
+    "triggered": false,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "后羿本月延续已有意图"
+  },
+  {
+    "id": "e-19-opportunity-born-16-cai-wenji-7",
+    "kind": "decision-opportunity",
+    "atMonth": 19,
+    "orderInMonth": 9,
+    "planningTick": 0,
+    "orderInTick": 9,
+    "who": "born-16-cai-wenji-7",
+    "cellId": 4073,
+    "probability": 0.45,
+    "sample": 0.10886366618797183,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标"
+    ],
+    "result": "孙疏影本月重新考虑下一步"
+  },
+  {
+    "id": "e-19-decision-potianfeng-1-10",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 10,
+    "planningTick": 1,
+    "orderInTick": 0,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "project:project-19-potianfeng-high-heat-capability:local-search-project-logistics:project-19-potianfeng-high-heat-capability:0:search",
+      "reason": "当前没有本人可执行的已知来源；目标只来自可见可达地形和项目缺料事实，并保持到抵达或预算耗尽"
+    },
+    "intentId": "intent-19-potianfeng-378",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "破天锋决定：沿已固定的局部方向搜索黏土"
+  },
+  {
+    "id": "e-19-decision-cai-wenji-1-11",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 11,
+    "planningTick": 1,
+    "orderInTick": 1,
+    "cellId": 4073,
+    "who": "cai-wenji",
+    "decision": {
+      "kind": "start",
+      "optionId": "rejoin-companion:aphrodite:e-6-action-aphrodite-19",
+      "reason": "双方已通过对话形成结伴承诺，但现在彼此分离"
+    },
+    "intentId": "intent-19-cai-wenji-379",
+    "domain": "social",
+    "usedModel": false,
+    "result": "蔡文姬决定：重新与同伴阿佛洛狄忒会合"
+  },
+  {
+    "id": "e-19-decision-sun-wu-1-12",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 12,
+    "planningTick": 1,
+    "orderInTick": 2,
+    "cellId": 2962,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "conversation:failure:19:sun-wu:potianfeng",
+      "reason": "本人记得一次真实失败，可以向身边人表达挫折并寻求理解"
+    },
+    "intentId": "intent-19-sun-wu-380",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：与破天锋谈失败与挫折：向破天锋说明本人记得的失败“回应破天锋关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节失败：这段生活对话已经回应过”，并邀请对方一起复盘"
+  },
+  {
+    "id": "e-19-decision-aphrodite-1-13",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 13,
+    "planningTick": 1,
+    "orderInTick": 3,
+    "cellId": 4159,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-14-aphrodite-232",
+      "optionId": "respond-conversation:e-18-action-cai-wenji-93:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "required-response",
+      "reason": "先完成必须由本人作出的回应"
+    },
+    "intentId": "intent-19-aphrodite-interrupt-381",
+    "domain": "social",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：去找蔡文姬，回应关于失败与挫折的话"
+  },
+  {
+    "id": "e-19-decision-rei-ayanami-1-14",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 14,
+    "planningTick": 1,
+    "orderInTick": 4,
+    "cellId": 1031,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "repeat-inventory-combine:stack-rei-ayanami-13-2:stack-rei-ayanami-23-17",
+      "reason": "自己已有这项物质经验"
+    },
+    "intentId": "intent-19-rei-ayanami-382",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "绫波丽决定：尝试复现“木材与绳可结合为木制生产工具”"
+  },
+  {
+    "id": "e-19-action-rei-ayanami-15",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 19,
+    "orderInMonth": 15,
+    "cellId": 1031,
+    "who": "rei-ayanami",
+    "intentId": "intent-19-rei-ayanami-382",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "combine",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "rei-ayanami",
+          "stackId": "stack-rei-ayanami-13-2"
+        },
+        {
+          "kind": "inventory-stack",
+          "personId": "rei-ayanami",
+          "stackId": "stack-rei-ayanami-23-17"
+        }
+      ]
+    },
+    "fromCellId": 1031,
+    "toCellId": 1031,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1031
+    ],
+    "status": "completed",
+    "result": "木材与绳结合为木制生产工具",
+    "diff": {
+      "techniqueId": "technique:combine-inventory:13x1+23x1:41",
+      "inputMaterialIds": [
+        13,
+        23
+      ],
+      "outputMaterialId": 41,
+      "outputQuantity": 1,
+      "baseOutputQuantity": 1,
+      "outputStackId": "stack-rei-ayanami-41-2",
+      "sourceEventId": "e-19-action-rei-ayanami-15"
+    },
+    "planningTick": 1,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-19-action-potianfeng-16",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 19,
+    "orderInMonth": 16,
+    "cellId": 3046,
+    "who": "potianfeng",
+    "intentId": "intent-19-potianfeng-378",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3052,
+      "toZ": 5
+    },
+    "fromCellId": 2962,
+    "toCellId": 3046,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962,
+      3046
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.0661157024793386,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-19-action-freyja-17",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 19,
+    "orderInMonth": 17,
+    "cellId": 4075,
+    "who": "freyja",
+    "intentId": "intent-15-freyja-250",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 4159,
+      "toZ": 5
+    },
+    "fromCellId": 3991,
+    "toCellId": 4075,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3991,
+      4075
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 7
+  },
+  {
+    "id": "e-19-action-houyi-18",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 19,
+    "orderInMonth": 18,
+    "cellId": 2962,
+    "who": "houyi",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "act",
+      "operation": "ingest",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "houyi",
+          "stackId": "stack-houyi-ration"
+        }
+      ]
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "completed",
+    "result": "摄入了食物",
+    "diff": {
+      "materialId": 21,
+      "nutrition": 48,
+      "hydration": 4,
+      "health": 0,
+      "consumedStackId": "stack-houyi-ration",
+      "consumedSourceEventIds": [],
+      "consumedSourceLineageKeys": []
+    },
+    "planningTick": 1,
+    "orderInTick": 8
+  },
+  {
+    "id": "e-19-decision-aphrodite-1-19",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 19,
+    "planningTick": 1,
+    "orderInTick": 9,
+    "cellId": 4159,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-19-aphrodite-interrupt-381",
+      "optionId": "survival-reflex:19:1:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-19-aphrodite-interrupt-383",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-19-action-aphrodite-20",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 19,
+    "orderInMonth": 20,
+    "cellId": 4075,
+    "who": "aphrodite",
+    "intentId": "intent-19-aphrodite-interrupt-383",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 4154,
+      "toZ": 5
+    },
+    "fromCellId": 4159,
+    "toCellId": 4075,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4159,
+      4075
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 4075,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 10
+  },
+  {
+    "id": "e-19-action-sun-wu-21",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 19,
+    "orderInMonth": 21,
+    "cellId": 2962,
+    "who": "sun-wu",
+    "intentId": "intent-19-sun-wu-380",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "conversation:failure:19:sun-wu:potianfeng",
+        "kind": "claim",
+        "summary": "向破天锋说明本人记得的失败“回应破天锋关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节失败：这段生活对话已经回应过”，并邀请对方一起复盘",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-18-action-sun-wu-34",
+          "topic": "failure",
+          "turn": "opening",
+          "speakerId": "sun-wu",
+          "listenerId": "potianfeng",
+          "sourceFactIds": [
+            "e-18-action-sun-wu-34"
+          ]
+        }
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "blocked",
+    "result": "受众不在当前沟通范围",
+    "diff": {},
+    "planningTick": 1,
+    "orderInTick": 11
+  },
+  {
+    "id": "e-19-action-cai-wenji-22",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 19,
+    "orderInMonth": 22,
+    "cellId": 4074,
+    "who": "cai-wenji",
+    "intentId": "intent-19-cai-wenji-379",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 4075,
+      "toZ": 5
+    },
+    "fromCellId": 4073,
+    "toCellId": 4074,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4073,
+      4074
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.4965034965034962,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 12
+  },
+  {
+    "id": "e-19-action-potianfeng-23",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 19,
+    "orderInMonth": 23,
+    "cellId": 3130,
+    "who": "potianfeng",
+    "intentId": "intent-19-potianfeng-378",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3052,
+      "toZ": 5
+    },
+    "fromCellId": 3046,
+    "toCellId": 3130,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3046,
+      3130
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.0661157024793386,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-19-decision-houyi-2-24",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 24,
+    "planningTick": 2,
+    "orderInTick": 1,
+    "cellId": 2962,
+    "who": "houyi",
+    "decision": {
+      "kind": "start",
+      "optionId": "teach:19:houyi:technique:combine:1:0:1:sun-wu",
+      "reason": "自己可靠掌握这项技术，而身边达到学习年龄的人还不会；一次明确教导即可传授"
+    },
+    "intentId": "intent-19-houyi-384",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后羿决定：把“石与空气可结合为石”教给孙武"
+  },
+  {
+    "id": "e-19-action-houyi-25",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 19,
+    "orderInMonth": 25,
+    "cellId": 2962,
+    "who": "houyi",
+    "intentId": "intent-19-houyi-384",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "teach:19:houyi:technique:combine:1:0:1:sun-wu",
+        "kind": "claim",
+        "summary": "石与空气可结合为石",
+        "factId": "technique:combine:1:0:1"
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "completed",
+    "result": "后羿向孙武表达：石与空气可结合为石",
+    "diff": {
+      "audience": [
+        "sun-wu"
+      ],
+      "content": {
+        "id": "teach:19:houyi:technique:combine:1:0:1:sun-wu",
+        "kind": "claim",
+        "summary": "石与空气可结合为石",
+        "factId": "technique:combine:1:0:1"
+      },
+      "assertedFactId": "technique:combine:1:0:1",
+      "assertedFactSourceEventIds": [
+        "e-18-action-houyi-22",
+        "e-18-action-houyi-32"
+      ],
+      "teachingFactId": "technique:combine:1:0:1",
+      "teachingKnowledgeKind": "technique",
+      "teachingTeacherConfidence": 68,
+      "taughtAudienceIds": [
+        "sun-wu"
+      ],
+      "teachingReliableConfidence": 60
+    },
+    "planningTick": 2,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-19-action-cai-wenji-26",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 19,
+    "orderInMonth": 26,
+    "cellId": 4075,
+    "who": "cai-wenji",
+    "intentId": "intent-19-cai-wenji-379",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 4075,
+      "toZ": 5
+    },
+    "fromCellId": 4074,
+    "toCellId": 4075,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4074,
+      4075
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 43, 48 的高度 5",
+    "diff": {
+      "spentWork": 2.3310023310023307,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 2,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-19-decision-aphrodite-2-27",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 27,
+    "planningTick": 2,
+    "orderInTick": 4,
+    "cellId": 4075,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-19-aphrodite-interrupt-381",
+      "optionId": "survival-reflex:19:2:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-19-aphrodite-interrupt-385",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-19-action-aphrodite-28",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 19,
+    "orderInMonth": 28,
+    "cellId": 4074,
+    "who": "aphrodite",
+    "intentId": "intent-19-aphrodite-interrupt-385",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 4155,
+      "toZ": 5
+    },
+    "fromCellId": 4075,
+    "toCellId": 4074,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4075,
+      4074
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-19-decision-freyja-3-29",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 29,
+    "planningTick": 3,
+    "orderInTick": 0,
+    "cellId": 4075,
+    "who": "freyja",
+    "decision": {
+      "kind": "start",
+      "optionId": "rejoin-companion:aphrodite:e-8-action-freyja-14",
+      "reason": "双方已通过对话形成结伴承诺，但现在彼此分离"
+    },
+    "intentId": "intent-19-freyja-386",
+    "domain": "social",
+    "usedModel": false,
+    "result": "芙蕾雅决定：重新与同伴阿佛洛狄忒会合"
+  },
+  {
+    "id": "e-19-action-freyja-30",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 19,
+    "orderInMonth": 30,
+    "cellId": 4074,
+    "who": "freyja",
+    "intentId": "intent-19-freyja-386",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 4074,
+      "toZ": 5
+    },
+    "fromCellId": 4075,
+    "toCellId": 4074,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4075,
+      4074
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 42, 48 的高度 5",
+    "diff": {
+      "spentWork": 2.727272727272727,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-19-decision-aphrodite-3-31",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 31,
+    "planningTick": 3,
+    "orderInTick": 2,
+    "cellId": 4074,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-19-aphrodite-interrupt-381",
+      "optionId": "survival-reflex:19:3:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-19-aphrodite-interrupt-387",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-19-action-aphrodite-32",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 19,
+    "orderInMonth": 32,
+    "cellId": 4073,
+    "who": "aphrodite",
+    "intentId": "intent-19-aphrodite-interrupt-387",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 4069,
+      "toZ": 5
+    },
+    "fromCellId": 4074,
+    "toCellId": 4073,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4074,
+      4073
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 4073,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 3,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-19-action-potianfeng-33",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 19,
+    "orderInMonth": 33,
+    "cellId": 3131,
+    "who": "potianfeng",
+    "intentId": "intent-19-potianfeng-378",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3052,
+      "toZ": 5
+    },
+    "fromCellId": 3130,
+    "toCellId": 3131,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3130,
+      3131
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.0661157024793386,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-19-action-potianfeng-34",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 19,
+    "orderInMonth": 34,
+    "cellId": 3132,
+    "who": "potianfeng",
+    "intentId": "intent-19-potianfeng-378",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3052,
+      "toZ": 5
+    },
+    "fromCellId": 3131,
+    "toCellId": 3132,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3131,
+      3132
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.0661157024793386,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 4,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-19-decision-aphrodite-4-35",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 35,
+    "planningTick": 4,
+    "orderInTick": 1,
+    "cellId": 4073,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-19-aphrodite-interrupt-381",
+      "optionId": "survival-reflex:19:4:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-19-aphrodite-interrupt-388",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-19-action-aphrodite-36",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 19,
+    "orderInMonth": 36,
+    "cellId": 4072,
+    "who": "aphrodite",
+    "intentId": "intent-19-aphrodite-interrupt-388",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 4069,
+      "toZ": 5
+    },
+    "fromCellId": 4073,
+    "toCellId": 4072,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4073,
+      4072
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 4,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-19-action-potianfeng-37",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 19,
+    "orderInMonth": 37,
+    "cellId": 3048,
+    "who": "potianfeng",
+    "intentId": "intent-19-potianfeng-378",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3052,
+      "toZ": 5
+    },
+    "fromCellId": 3132,
+    "toCellId": 3048,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3132,
+      3048
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.0661157024793386,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 5,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-19-decision-aphrodite-5-38",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 38,
+    "planningTick": 5,
+    "orderInTick": 1,
+    "cellId": 4072,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-19-aphrodite-interrupt-381",
+      "optionId": "survival-reflex:19:5:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-19-aphrodite-interrupt-389",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-19-action-aphrodite-39",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 19,
+    "orderInMonth": 39,
+    "cellId": 4071,
+    "who": "aphrodite",
+    "intentId": "intent-19-aphrodite-interrupt-389",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 4067,
+      "toZ": 5
+    },
+    "fromCellId": 4072,
+    "toCellId": 4071,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4072,
+      4071
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 4071,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 5,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-19-action-potianfeng-40",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 19,
+    "orderInMonth": 40,
+    "cellId": 3049,
+    "who": "potianfeng",
+    "intentId": "intent-19-potianfeng-378",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3052,
+      "toZ": 5
+    },
+    "fromCellId": 3048,
+    "toCellId": 3049,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3048,
+      3049
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.0661157024793386,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 6,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-19-decision-aphrodite-6-41",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 41,
+    "planningTick": 6,
+    "orderInTick": 1,
+    "cellId": 4071,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-19-aphrodite-interrupt-381",
+      "optionId": "survival-reflex:19:6:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-19-aphrodite-interrupt-390",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-19-action-aphrodite-42",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 19,
+    "orderInMonth": 42,
+    "cellId": 3987,
+    "who": "aphrodite",
+    "intentId": "intent-19-aphrodite-interrupt-390",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 4066,
+      "toZ": 5
+    },
+    "fromCellId": 4071,
+    "toCellId": 3987,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4071,
+      3987
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 3987,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 6,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-19-decision-aphrodite-7-43",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 43,
+    "planningTick": 7,
+    "orderInTick": 0,
+    "cellId": 3987,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-19-aphrodite-interrupt-381",
+      "optionId": "survival-reflex:19:7:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-19-aphrodite-interrupt-391",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-19-action-aphrodite-44",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 19,
+    "orderInMonth": 44,
+    "cellId": 3986,
+    "who": "aphrodite",
+    "intentId": "intent-19-aphrodite-interrupt-391",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3982,
+      "toZ": 5
+    },
+    "fromCellId": 3987,
+    "toCellId": 3986,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3987,
+      3986
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 7,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-19-action-potianfeng-45",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 19,
+    "orderInMonth": 45,
+    "cellId": 3050,
+    "who": "potianfeng",
+    "intentId": "intent-19-potianfeng-378",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3052,
+      "toZ": 5
+    },
+    "fromCellId": 3049,
+    "toCellId": 3050,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3049,
+      3050
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.099173553719008,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 7,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-19-action-potianfeng-46",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 19,
+    "orderInMonth": 46,
+    "cellId": 3051,
+    "who": "potianfeng",
+    "intentId": "intent-19-potianfeng-378",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3052,
+      "toZ": 5
+    },
+    "fromCellId": 3050,
+    "toCellId": 3051,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3050,
+      3051
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.099173553719008,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 8,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-19-decision-aphrodite-8-47",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 47,
+    "planningTick": 8,
+    "orderInTick": 1,
+    "cellId": 3986,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-19-aphrodite-interrupt-381",
+      "optionId": "survival-reflex:19:8:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-19-aphrodite-interrupt-392",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-19-action-aphrodite-48",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 19,
+    "orderInMonth": 48,
+    "cellId": 3902,
+    "who": "aphrodite",
+    "intentId": "intent-19-aphrodite-interrupt-392",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3981,
+      "toZ": 5
+    },
+    "fromCellId": 3986,
+    "toCellId": 3902,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3986,
+      3902
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 8,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-19-action-potianfeng-49",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 19,
+    "orderInMonth": 49,
+    "cellId": 3052,
+    "who": "potianfeng",
+    "intentId": "intent-19-potianfeng-378",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3052,
+      "toZ": 5
+    },
+    "fromCellId": 3051,
+    "toCellId": 3052,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3051,
+      3052
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 28, 36 的高度 5",
+    "diff": {
+      "spentWork": 2.0661157024793386,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 9,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-19-decision-aphrodite-9-50",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 50,
+    "planningTick": 9,
+    "orderInTick": 1,
+    "cellId": 3902,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-19-aphrodite-interrupt-381",
+      "optionId": "survival-reflex:19:9:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-19-aphrodite-interrupt-393",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-19-action-aphrodite-51",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 19,
+    "orderInMonth": 51,
+    "cellId": 3901,
+    "who": "aphrodite",
+    "intentId": "intent-19-aphrodite-interrupt-393",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3897,
+      "toZ": 5
+    },
+    "fromCellId": 3902,
+    "toCellId": 3901,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3902,
+      3901
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 9,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-19-action-potianfeng-52",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 19,
+    "orderInMonth": 52,
+    "cellId": 3051,
+    "who": "potianfeng",
+    "intentId": "intent-19-potianfeng-378",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2706,
+      "toZ": 5
+    },
+    "fromCellId": 3052,
+    "toCellId": 3051,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3052,
+      3051
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.099173553719008,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 10,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-19-decision-aphrodite-10-53",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 53,
+    "planningTick": 10,
+    "orderInTick": 1,
+    "cellId": 3901,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-19-aphrodite-interrupt-381",
+      "optionId": "survival-reflex:19:10:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-19-aphrodite-interrupt-394",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-19-action-aphrodite-54",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 19,
+    "orderInMonth": 54,
+    "cellId": 3900,
+    "who": "aphrodite",
+    "intentId": "intent-19-aphrodite-interrupt-394",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3896,
+      "toZ": 5
+    },
+    "fromCellId": 3901,
+    "toCellId": 3900,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3901,
+      3900
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 10,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-19-action-potianfeng-55",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 19,
+    "orderInMonth": 55,
+    "cellId": 2967,
+    "who": "potianfeng",
+    "intentId": "intent-19-potianfeng-378",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2706,
+      "toZ": 5
+    },
+    "fromCellId": 3051,
+    "toCellId": 2967,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3051,
+      2967
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.0661157024793386,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 11,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-19-decision-aphrodite-11-56",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 56,
+    "planningTick": 11,
+    "orderInTick": 1,
+    "cellId": 3900,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-19-aphrodite-interrupt-381",
+      "optionId": "survival-reflex:19:11:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-19-aphrodite-interrupt-395",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-19-action-aphrodite-57",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 19,
+    "orderInMonth": 57,
+    "cellId": 3899,
+    "who": "aphrodite",
+    "intentId": "intent-19-aphrodite-interrupt-395",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3895,
+      "toZ": 5
+    },
+    "fromCellId": 3900,
+    "toCellId": 3899,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3900,
+      3899
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.6666666666666665,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 11,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-19-decision-aphrodite-12-58",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 58,
+    "planningTick": 12,
+    "orderInTick": 0,
+    "cellId": 3899,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-19-aphrodite-interrupt-381",
+      "optionId": "survival-reflex:19:12:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-19-aphrodite-interrupt-396",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-19-action-aphrodite-59",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 19,
+    "orderInMonth": 59,
+    "cellId": 3898,
+    "who": "aphrodite",
+    "intentId": "intent-19-aphrodite-interrupt-396",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3894,
+      "toZ": 5
+    },
+    "fromCellId": 3899,
+    "toCellId": 3898,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3899,
+      3898
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 4,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 12,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-19-action-potianfeng-60",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 19,
+    "orderInMonth": 60,
+    "cellId": 2883,
+    "who": "potianfeng",
+    "intentId": "intent-19-potianfeng-378",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2706,
+      "toZ": 5
+    },
+    "fromCellId": 2967,
+    "toCellId": 2883,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2967,
+      2883
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.0661157024793386,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 12,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-19-decision-aphrodite-13-61",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 61,
+    "planningTick": 13,
+    "orderInTick": 0,
+    "cellId": 3898,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-19-aphrodite-interrupt-381",
+      "optionId": "survival-reflex:19:13:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-19-aphrodite-interrupt-397",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-19-action-aphrodite-62",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 19,
+    "orderInMonth": 62,
+    "cellId": 3897,
+    "who": "aphrodite",
+    "intentId": "intent-19-aphrodite-interrupt-397",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3893,
+      "toZ": 5
+    },
+    "fromCellId": 3898,
+    "toCellId": 3897,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3898,
+      3897
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.6666666666666665,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 13,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-19-action-potianfeng-63",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 19,
+    "orderInMonth": 63,
+    "cellId": 2799,
+    "who": "potianfeng",
+    "intentId": "intent-19-potianfeng-378",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2706,
+      "toZ": 5
+    },
+    "fromCellId": 2883,
+    "toCellId": 2799,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2883,
+      2799
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.0661157024793386,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 13,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-19-decision-aphrodite-14-64",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 64,
+    "planningTick": 14,
+    "orderInTick": 0,
+    "cellId": 3897,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-19-aphrodite-interrupt-381",
+      "optionId": "survival-reflex:19:14:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-19-aphrodite-interrupt-398",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-19-action-aphrodite-65",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 19,
+    "orderInMonth": 65,
+    "cellId": 3896,
+    "who": "aphrodite",
+    "intentId": "intent-19-aphrodite-interrupt-398",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3892,
+      "toZ": 5
+    },
+    "fromCellId": 3897,
+    "toCellId": 3896,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3897,
+      3896
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 4,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 14,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-19-action-potianfeng-66",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 19,
+    "orderInMonth": 66,
+    "cellId": 2798,
+    "who": "potianfeng",
+    "intentId": "intent-19-potianfeng-378",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2706,
+      "toZ": 5
+    },
+    "fromCellId": 2799,
+    "toCellId": 2798,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2799,
+      2798
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.099173553719008,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 14,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-19-decision-aphrodite-15-67",
+    "kind": "decision",
+    "atMonth": 19,
+    "orderInMonth": 67,
+    "planningTick": 15,
+    "orderInTick": 0,
+    "cellId": 3896,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-19-aphrodite-interrupt-381",
+      "optionId": "survival-reflex:19:15:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-19-aphrodite-interrupt-399",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-19-action-aphrodite-68",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 19,
+    "orderInMonth": 68,
+    "cellId": 3895,
+    "who": "aphrodite",
+    "intentId": "intent-19-aphrodite-interrupt-399",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3891,
+      "toZ": 5
+    },
+    "fromCellId": 3896,
+    "toCellId": 3895,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3896,
+      3895
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.6666666666666665,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 15,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-19-action-potianfeng-69",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 19,
+    "orderInMonth": 69,
+    "cellId": 2797,
+    "who": "potianfeng",
+    "intentId": "intent-19-potianfeng-378",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2706,
+      "toZ": 5
+    },
+    "fromCellId": 2798,
+    "toCellId": 2797,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2798,
+      2797
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.0661157024793386,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 15,
+    "orderInTick": 2
+  }
+]

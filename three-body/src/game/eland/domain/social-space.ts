@@ -82,7 +82,7 @@ export function positionsCanTouch(world: VoxelWorld, first: StandingPosition, se
 }
 
 /** Find a reachable place beside the other person; sharing their exact voxel is unnecessary. */
-export function physicalRendezvous(state: SimulationState, mover: PersonState, other: PersonState): SocialRendezvous | null {
+export function physicalRendezvous(state: Pick<DecisionAuthorityState, 'world' | 'people'>, mover: PersonState, other: PersonState): SocialRendezvous | null {
   if (positionsCanTouch(state.world.grid, mover.position, other.position)) return {
     position: { cellId: mover.position.cellId, z: mover.position.z },
     path: [{ cellId: mover.position.cellId, z: mover.position.z }],

@@ -58,6 +58,7 @@ export interface ActionOptionSemanticsV1 {
       | 'assist'
       | 'exchange'
       | 'conversation'
+      | 'joint-action'
       | 'joint-project'
       | 'material-coordination'
       | 'reproduction'
@@ -129,6 +130,7 @@ const COOPERATION_KINDS = [
   'assist',
   'exchange',
   'conversation',
+  'joint-action',
   'joint-project',
   'material-coordination',
   'reproduction',
@@ -323,7 +325,7 @@ function inferredSocialContext(
     return normalizedSocialContext({
       cooperationKind,
       phase: 'proposal',
-      counterpartIds,
+      counterpartIds: proposal.kind === 'joint-action' ? proposal.inviteeIds : counterpartIds,
       referenceId: content.id,
       ...(proposal.kind === 'assist' ? { assistNeed: proposal.need } : {}),
       ...(proposal.kind === 'exchange' ? { materialId: proposal.offererMaterialId } : {}),

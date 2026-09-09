@@ -1,9 +1,14 @@
 import type { MaterialId } from './material';
-import { materialDefinition, materialHas } from './material';
+import { Material, materialDefinition, materialHas } from './material';
 import type { PersonId } from './person';
-import type { EnvironmentFact } from './model';
+import type { ItemMechanicalState } from './material-mechanics';
+import type { ActionFact, DropState, EnvironmentFact } from './model';
+import type { VoxelPosition } from './action';
+import { rootedSolidPath } from './solid-support';
 import { workOccupiedVoxels, type WorkLayout } from './work-layout';
-import { cellId, setVoxel, voxelAt, type VoxelWorld } from '../world/grid';
+import { reconcileWorkMaterials, workComponentSources } from './work-materials';
+import type { FireProcessEvidence, RainProtectedProcessingEvidence } from './thermal-process';
+import { cellId, cellX, cellY, isStandingPosition, setVoxel, voxelAt, type StandingPosition, type VoxelWorld } from '../world/grid';
 import { seededFraction } from '../world/generator';
 
 /**
@@ -35,6 +40,10 @@ export const WORK_ARRANGEMENT_NAMES: Record<WorkArrangement, string> = {
 export interface WorkComponent {
   materialId: MaterialId;
   quantity: number;
+  sourceEventIds?: string[];
+  sourceLineageKeys?: string[];
+  recordPayloadId?: string;
+  mechanicalState?: ItemMechanicalState;
 }
 
 export interface WorkProfile {
@@ -67,6 +76,9 @@ export interface WorkUseReceipt {
   atMonth: number;
   sourceEventId: string;
   evidencePaths: string[];
+  /** Movement use retains whether the actor chose it or moved protectively. */
+  cause?: ActionFact['cause'];
+  positions?: VoxelPosition[];
 }
 
 export interface WorkState {
@@ -127,7 +139,78 @@ export type ReplayableWorkUseAction = {
   status: 'progressed' | 'completed' | 'blocked' | 'failed';
   action: unknown;
   diff: Record<string, unknown>;
+  cause?: ActionFact['cause'];
 };
+
+export interface WorkSupportUseEvidence {
+  workId: string;
+  contacts: Array<{
+    pathIndex: number;
+    footPosition: VoxelPosition;
+    supportPosition: VoxelPosition;
+    supportMaterialId: MaterialId;
+  }>;
+}
+
+/** Sample only the path actually traversed, before its surface can compact. */
+export function captureWorkSupportUse(
+  world: { grid: VoxelWorld; works?: WorkState[] },
+  path: readonly StandingPosition[],
+): WorkSupportUseEvidence[] {
+  if (path.length < 2 || !path.some((position) => position.cellId !== path[0].cellId || position.z !== path[0].z)) return [];
+  const key = (position: VoxelPosition) => `${position.x}:${position.y}:${position.z}`;
+  const footing = path.flatMap((position, pathIndex) => isStandingPosition(world.grid, position) ? [{
+    pathIndex, footPosition: { x: cellX(position.cellId), y: cellY(position.cellId), z: position.z },
+    supportPosition: { x: cellX(position.cellId), y: cellY(position.cellId), z: position.z - 1 },
+  }] : []);
+  const needed = new Set(footing.map((contact) => key(contact.supportPosition)));
+  const owners = new Map<string, Array<{ workId: string; materialId: MaterialId }>>();
+  for (const work of world.works ?? []) {
+    if (work.condition <= WORK_COLLAPSE_CONDITION) continue;
+    for (const voxel of workOccupiedVoxels(work)) {
+      const id = key(voxel.position);
+      if (!needed.has(id) || materialDefinition(voxel.materialId).phase !== 'solid'
+        || voxelAt(world.grid, voxel.position.x, voxel.position.y, voxel.position.z) !== voxel.materialId
+        || !rootedSolidPath(world.grid, voxel.position)) continue;
+      owners.set(id, [...(owners.get(id) ?? []), { workId: work.id, materialId: voxel.materialId }]);
+    }
+  }
+  const byWork = new Map<string, WorkSupportUseEvidence>();
+  for (const contact of footing) {
+    const claims = owners.get(key(contact.supportPosition));
+    // A stale/overlapping ownership claim is not evidence for either object.
+    if (claims?.length !== 1) continue;
+    const owner = claims[0];
+    const evidence = byWork.get(owner.workId) ?? { workId: owner.workId, contacts: [] };
+    evidence.contacts.push({ ...contact, supportMaterialId: owner.materialId });
+    byWork.set(owner.workId, evidence);
+  }
+  return [...byWork.values()];
+}
+
+function movementSupportEvidence(event: ReplayableWorkUseAction): Array<{ evidence: WorkSupportUseEvidence; path: string }> {
+  const action = event.action as { kind?: string } | undefined;
+  const heights = event.diff.verticalPath;
+  if (!['move', 'world-interact'].includes(action?.kind ?? '')
+    || !['completed', 'progressed'].includes(event.status)
+    || typeof event.diff.movementCost !== 'number' || event.diff.movementCost <= 0
+    || event.pathSegment.length < 2 || !Array.isArray(heights) || heights.length !== event.pathSegment.length
+    || !Array.isArray(event.diff.workSupportUse)) return [];
+  return event.diff.workSupportUse.flatMap((value, index) => {
+    if (!value || typeof value !== 'object') return [];
+    const evidence = value as WorkSupportUseEvidence;
+    if (typeof evidence.workId !== 'string' || !Array.isArray(evidence.contacts) || !evidence.contacts.length) return [];
+    const valid = evidence.contacts.every((contact) => {
+      const foot = contact?.footPosition, support = contact?.supportPosition;
+      return Number.isInteger(contact?.pathIndex) && contact.pathIndex >= 0 && contact.pathIndex < event.pathSegment.length
+        && foot && support && Number.isInteger(foot.x) && Number.isInteger(foot.y) && Number.isInteger(foot.z)
+        && cellId(foot.x, foot.y) === event.pathSegment[contact.pathIndex] && foot.z === heights[contact.pathIndex]
+        && support.x === foot.x && support.y === foot.y && support.z === foot.z - 1
+        && Number.isInteger(contact.supportMaterialId) && materialDefinition(contact.supportMaterialId).phase === 'solid';
+    });
+    return valid ? [{ evidence, path: `diff.workSupportUse.${index}` }] : [];
+  });
+}
 
 export interface WorkAdoptionObservation {
   workId: string;
@@ -187,6 +270,8 @@ export function recordWorkUse(
     atMonth: number;
     sourceEventId: string;
     evidencePaths: readonly string[];
+    cause?: ActionFact['cause'];
+    positions?: readonly VoxelPosition[];
   },
 ): WorkUseReceipt {
   const work = workById(world, input.workId);
@@ -215,6 +300,8 @@ export function recordWorkUse(
     atMonth: input.atMonth,
     sourceEventId: input.sourceEventId,
     evidencePaths,
+    ...(input.cause ? { cause: input.cause } : {}),
+    ...(input.positions ? { positions: input.positions.map((position) => ({ ...position })) } : {}),
   };
   work.useReceipts = [...(work.useReceipts ?? []).filter((existing) => (
     existing.id !== id && existing.sourceEventId !== input.sourceEventId
@@ -247,6 +334,41 @@ export function recordWorkShelterUse(
   })] : []);
 }
 
+/** Movement supplies real supporting voxels; proximity and names supply none. */
+export function recordWorkSupportUse(
+  world: { works?: WorkState[] },
+  event: ActionFact,
+): WorkUseReceipt[] {
+  return movementSupportEvidence(event).flatMap(({ evidence, path }) => workById(world, evidence.workId) ? [recordWorkUse(world, {
+    workId: evidence.workId, kind: 'use', functionKey: 'body-support', actorId: event.who,
+    atMonth: event.atMonth, sourceEventId: event.id, evidencePaths: [path], cause: event.cause,
+    positions: evidence.contacts.map((contact) => contact.footPosition),
+  })] : []);
+}
+
+function thermalProcessingUseEvidence(event: ReplayableWorkUseAction): RainProtectedProcessingEvidence | undefined {
+  const action = event.action as { kind?: string; operation?: string } | undefined;
+  const use = event.diff.fireRainProtection as RainProtectedProcessingEvidence | undefined;
+  return action?.kind === 'act' && action.operation === 'expose' && event.status === 'completed'
+    && event.diff.targetMaterialId === Material.Fire && event.diff.inputQuantity === 1 && event.diff.outputQuantity === 1
+    && typeof event.diff.outputStackId === 'string' && use?.environmentEventId && use.fire?.cover?.workId
+    && use.fire.precipitation && use.fire.survived && !use.fire.rainExposed && !use.fire.naturalBurnout ? use : undefined;
+}
+
+/** Processing supplies a product; the referenced environmental outcome proves
+ * that this particular overhead Work kept its heat source through precipitation.
+ */
+export function recordWorkThermalProcessingUse(world: { works?: WorkState[] }, event: ActionFact): WorkUseReceipt[] {
+  const use = thermalProcessingUseEvidence(event);
+  const workId = use?.fire.cover?.workId;
+  return use && workId && workById(world, workId) ? [recordWorkUse(world, {
+    workId, kind: 'use', functionKey: 'rain-protected-processing', actorId: event.who,
+    atMonth: event.atMonth, sourceEventId: event.id, cause: event.cause,
+    evidencePaths: ['diff.fireRainProtection', 'diff.inputQuantity', 'diff.outputStackId', 'diff.outputQuantity'],
+    positions: [use.fire.position, use.fire.cover!.position],
+  })] : [];
+}
+
 /**
  * 从权威事件回放造物的采用情况。失败行为、建造行为本身、纯文本断言、
  * 无法在来源事件中核对的见证者，都不会被算成使用或传播。
@@ -269,6 +391,24 @@ export function observeWorkAdoption(
       const use = shelterUseEvidence(event);
       return use?.workIds.includes(work.id) && receipt.functionKey === 'thermal-protection'
         && receipt.evidencePaths.includes('diff.shelterUse') ? [{ ...receipt, witnessIds: [] }] : [];
+    }
+    const support = movementSupportEvidence(event).find(({ evidence, path }) => evidence.workId === work.id
+      && receipt.evidencePaths.includes(path));
+    if (support && receipt.functionKey === 'body-support' && receipt.cause === event.cause) return [{
+      ...receipt, witnessIds: [], positions: support.evidence.contacts.map((contact) => ({ ...contact.footPosition })),
+    }];
+    const processing = thermalProcessingUseEvidence(event);
+    if (processing?.fire.cover?.workId === work.id && receipt.functionKey === 'rain-protected-processing'
+      && receipt.evidencePaths.includes('diff.fireRainProtection')) {
+      const source = byId.get(processing.environmentEventId);
+      const fires = source?.kind === 'environment' && source.atMonth === event.atMonth
+        ? source.diff.fireProcesses as FireProcessEvidence[] | undefined : undefined;
+      const matched = fires?.some((fire) => fire.cover?.workId === work.id && fire.precipitation && fire.survived
+        && !fire.rainExposed && !fire.naturalBurnout && fire.position.x === processing.fire.position.x
+        && fire.position.y === processing.fire.position.y && fire.position.z === processing.fire.position.z
+        && fire.cover.position.x === processing.fire.cover!.position.x
+        && fire.cover.position.y === processing.fire.cover!.position.y && fire.cover.position.z === processing.fire.cover!.position.z);
+      if (matched) return [{ ...receipt, witnessIds: [] }];
     }
     // Existing ActionFact receipts from earlier versions used co-occurrence,
     // references or proximity as evidence. They do not prove causal use and
@@ -344,13 +484,18 @@ function mergeComponents(
   left: readonly WorkComponent[],
   right: readonly WorkComponent[],
 ): WorkComponent[] {
-  const merged = new Map<MaterialId, number>();
+  const merged: WorkComponent[] = [];
   for (const component of [...left, ...right]) {
-    merged.set(component.materialId, (merged.get(component.materialId) ?? 0) + component.quantity);
+    const existing = merged.find((part) => part.materialId === component.materialId
+      && part.recordPayloadId === component.recordPayloadId && !part.mechanicalState && !component.mechanicalState);
+    if (!existing) { merged.push(structuredClone(component)); continue; }
+    existing.quantity += component.quantity;
+    const sources = [...new Set([...(existing.sourceEventIds ?? []), ...(component.sourceEventIds ?? [])])].slice(-24);
+    const lineage = [...new Set([...(existing.sourceLineageKeys ?? []), ...(component.sourceLineageKeys ?? [])])].slice(-32);
+    if (sources.length) existing.sourceEventIds = sources;
+    if (lineage.length) existing.sourceLineageKeys = lineage;
   }
-  return [...merged]
-    .map(([materialId, quantity]) => ({ materialId, quantity }))
-    .sort((a, b) => a.materialId - b.materialId);
+  return merged.sort((a, b) => a.materialId - b.materialId);
 }
 
 /** 锚点体素材料：数量×硬度最高的组件，即实体"看起来主要是什么"。 */
@@ -448,15 +593,7 @@ export function advanceWorksMonth(
   world: {
     grid: VoxelWorld;
     works?: WorkState[];
-    drops: Array<{
-      id: string;
-      materialId: MaterialId;
-      cellId: number;
-      z: number;
-      quantity: number;
-      sourceEventIds: string[];
-      createdAtMonth: number;
-    }>;
+    drops: DropState[];
   },
   input: {
     seed: number;
@@ -470,7 +607,9 @@ export function advanceWorksMonth(
   const collapsed: WorkState[] = [];
   let decayed = 0;
   const survivors: WorkState[] = [];
-  for (const work of world.works) {
+  for (const recorded of [...world.works]) {
+    const work = reconcileWorkMaterials(world, recorded, input.atMonth);
+    if (!work) continue;
     let organic = 0;
     let mineral = 0;
     for (const component of work.components) {
@@ -485,17 +624,19 @@ export function advanceWorksMonth(
     const condition = intact ? Math.max(0, work.condition - decayRate * (2.2 + jitter)) : 0;
     if (condition <= WORK_COLLAPSE_CONDITION) {
       collapsed.push({ ...work, condition });
-      for (const component of work.components) {
+      for (const [componentIndex, component] of work.components.entries()) {
         const quantity = Math.floor(component.quantity / 2);
         if (quantity < 1) continue;
         world.drops.push({
-          id: input.makeDropId(work, component),
+          id: `${input.makeDropId(work, component)}${work.components.filter((part) => part.materialId === component.materialId).length > 1 ? `:${componentIndex}` : ''}`,
           materialId: component.materialId,
           cellId: workCell(work),
           z: work.position.z,
           quantity,
-          sourceEventIds: [...work.sourceEventIds.slice(-4)],
+          ...workComponentSources(work, component),
           createdAtMonth: input.atMonth,
+          ...(component.recordPayloadId ? { recordPayloadId: component.recordPayloadId } : {}),
+          ...(component.mechanicalState ? { mechanicalState: structuredClone(component.mechanicalState) } : {}),
         });
       }
       // 锚点体素随塌落消失，归还为空位，不产生新物质。

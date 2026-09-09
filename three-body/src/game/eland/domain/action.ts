@@ -1,4 +1,6 @@
+import type { ActionWorkProgress } from './action-work';
 import type { MaterialId } from './material';
+import type { AgreementStatus } from './agreement';
 import type {
   MechanicalPowerActionBasis,
   MechanicalPowerFaultObservationRef,
@@ -19,8 +21,9 @@ import type { SourcedMassMeasurementAction } from './measurement';
 import type { ActionOptionSemanticsV1 } from './action-option-semantics';
 import type { ProjectLeadershipSuccessionActionBasis } from './project-leadership';
 import type { CharacterAgendaProbe, CharacterAgendaProposal, CharacterAgendaUpdate } from './character-agenda';
-import type { MentalAct, MentalPlanTranslation } from './mental-act';
+import type { MentalAct, MentalDeclaration, MentalPlanTranslation } from './mental-act';
 import type { WorkLayout } from './work-layout';
+import type { NativeOperationCompilationProblem, NativeOperationRequest } from './native-operation';
 
 export interface VoxelPosition { x: number; y: number; z: number }
 
@@ -69,6 +72,13 @@ export type WorldRef =
 export type WorldInteractionEffect =
   | { kind: 'knowledge'; summary: string }
   | { kind: 'consume'; target: WorldRef; quantity: number }
+  | {
+      /** A physical taking/giving attempt; ownership and resistance resolve locally. */
+      kind: 'transfer';
+      target: Extract<WorldRef, { kind: 'inventory-stack' | 'drop' }>;
+      destination: Extract<WorldRef, { kind: 'person' | 'voxel' }>;
+      quantity: number;
+    }
   | { kind: 'produce'; materialId: MaterialId; quantity: number; destination: 'inventory' | 'ground' }
   | {
       kind: 'relocate';
@@ -344,6 +354,7 @@ export type RepresentationInput =
   | { id: string; kind: 'withdraw'; collectiveId: string; summary: string };
 
 export type SocialProposal =
+  | { kind: 'joint-action'; proposerId: PersonId; inviteeIds: PersonId[]; summary: string; expiresAtMonth?: number }
   | { kind: 'reproduce'; proposerId: PersonId; partnerId: PersonId; expiresAtMonth: number; basis?: RelationshipCausalBasis }
   | { kind: 'assist'; requesterId: PersonId; helperId: PersonId; need: 'water' | 'food' | 'shelter' | 'company'; expiresAtMonth: number }
   | {
@@ -410,6 +421,8 @@ export type PrimitiveAction =
       quantity: number;
       from: HolderRef;
       to: HolderRef;
+      /** Explicit terrain source; never inferred from a missing ground Drop. */
+      sourceVoxel?: VoxelPosition;
       dropId?: string;
       stackId?: string;
       /** Required when collecting a liquid voxel into one carried container. */
@@ -587,7 +600,7 @@ export type FactPredicate =
   | { kind: 'inventory-at-least'; materialId: MaterialId; quantity: number; personId?: PersonId }
   | { kind: 'record-held'; recordId: string; personId?: PersonId }
   | { kind: 'container-inventory-at-least'; containerId: string; materialId: MaterialId; quantity: number }
-  | { kind: 'at-cell'; cellId: number }
+  | { kind: 'at-cell'; cellId: number; z?: number }
   | { kind: 'sheltered' }
   | { kind: 'voxel-is'; position: VoxelPosition; materialId: MaterialId }
   | { kind: 'knowledge'; factId: string; minConfidence?: number; personId?: PersonId }
@@ -607,6 +620,9 @@ export type FactPredicate =
   | { kind: 'project-completed'; projectId: string }
   | { kind: 'technique-demonstrated'; projectId: string; requestEventId: string }
   | { kind: 'agreement-fulfilled'; agreementId: string }
+  | { kind: 'agreement-status'; agreementId: string; status: AgreementStatus }
+  /** A recorded individual response persists independently of current authorization. */
+  | { kind: 'agreement-response-recorded'; agreementId: string; personId: PersonId; response: 'accepted' | 'rejected' }
   | { kind: 'agreement-contribution-recorded'; agreementId: string; personId: PersonId }
   | { kind: 'death-mourned'; remainsId: string }
   | { kind: 'remains-interred'; remainsId: string }
@@ -710,7 +726,12 @@ export interface Intent {
   openingActionCompleted?: boolean;
   declarationFulfilledAtEventId?: string;
   nextAction: PrimitiveAction;
+  /** A model-specified simple atom keeps its exact arguments through local scheduling. */
+  nativeOperation?: NativeOperationRequest;
+  /** This executable episode was chosen directly by Mind, not WorldPlan. */
+  operationAuthorship?: 'mind';
   completionAction?: PrimitiveAction;
+  actionWork?: ActionWorkProgress;
   target?: WorldRef;
   status: IntentStatus;
   createdAtMonth: number;
@@ -775,6 +796,8 @@ export interface ActionOption {
   reason: string;
   goal: FactPredicate;
   nextAction: PrimitiveAction;
+  /** Present only for a directly compiled simple native operation, never a project shortcut. */
+  nativeOperation?: NativeOperationRequest;
   completionAction?: PrimitiveAction;
   target?: WorldRef;
   estimatedDuration: 'one-month' | 'several-months' | 'long' | 'unknown';
@@ -805,7 +828,14 @@ export interface ActionOption {
   semantics?: ActionOptionSemanticsV1;
 }
 
-export type IntentDecision =
+export interface AuthoredAttempt {
+  kind: 'native' | 'creative' | 'wait';
+  /** Server-bound original new Mind decision; omitted for a standalone attempt. */
+  intentionSourceDecisionEventId?: string;
+  plan?: MentalPlanTranslation;
+}
+
+export type IntentDecision = (
   | {
       kind: 'start'; optionId: string; followUpOptionId?: string; reason: string;
       lifeReview?: LifeReviewEvidence;
@@ -839,9 +869,19 @@ export type IntentDecision =
   | { kind: 'abandon'; intentId: string; reason: string; mentalAct?: MentalAct }
   | {
       kind: 'idle'; reason: string;
+      attention?: 'keep-current';
       /** Allows reflection to change a durable concern without inventing an executable option. */
       characterAgendaUpdate?: CharacterAgendaUpdate;
       /** Server-grounded one-turn physical probe; applyDecision compiles it into an ordinary Intent. */
       executionProbe?: CharacterAgendaProbe;
+      /** Model-authored operation semantics; the application resolves current domain evidence. */
+      nativeOperation?: NativeOperationRequest;
+      /** A valid personal choice whose world translation has not produced an operation. */
+      compilationFailure?: NativeOperationCompilationProblem;
       mentalAct?: MentalAct;
-    };
+    }
+) & {
+  /** A newly chosen statement independent of replacing or retaining the goal. */
+  declaration?: MentalDeclaration;
+  authoredAttempt?: AuthoredAttempt;
+};

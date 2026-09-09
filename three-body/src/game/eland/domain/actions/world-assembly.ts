@@ -1,8 +1,9 @@
 import type { WorldAdjudicatedInteraction, WorldRef } from '../action';
-import { Material, type MaterialId } from '../material';
+import { Material } from '../material';
 import type { SimulationState } from '../model';
 import type { PersonState } from '../person';
 import type { WorkComponent } from '../works';
+import { workComponentSources, workMaterialAt } from '../work-materials';
 import { voxelAt } from '../../world/grid';
 
 /** Snapshot the real inputs before an interaction consumes or moves them. */
@@ -13,7 +14,7 @@ export function prepareWorldAssembly(
 ): { ok: true; components: WorkComponent[] } | { ok: false; reason: string } {
   const allocations = new Map<string, { available: number; allocated: number }>();
   const components: WorkComponent[] = [];
-  const materialAt = (target: WorldRef): { materialId: MaterialId; quantity: number } | undefined => {
+  const materialAt = (target: WorldRef): WorkComponent | undefined => {
     if (target.kind === 'inventory-stack') {
       return target.personId === person.id
         ? person.inventory.find((stack) => stack.id === target.stackId)
@@ -22,7 +23,12 @@ export function prepareWorldAssembly(
     if (target.kind === 'drop') return state.world.drops.find((drop) => drop.id === target.dropId);
     if (target.kind === 'voxel') {
       const materialId = voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z);
-      return materialId !== Material.Air ? { materialId, quantity: 1 } : undefined;
+      const source = workMaterialAt(state.world, target.position);
+      return materialId !== Material.Air ? { materialId, quantity: 1,
+        ...(source ? { ...source.component, ...workComponentSources(source.work, source.component) } : {}),
+        sourceLineageKeys: [...new Set([...(source?.component.sourceLineageKeys ?? []),
+          ...(source ? [`work:${source.work.id}`] : []), `voxel:${target.position.x}:${target.position.y}:${target.position.z}`])],
+      } : undefined;
     }
     return undefined;
   };
@@ -37,7 +43,14 @@ export function prepareWorldAssembly(
     if (allocation.allocated > allocation.available) {
       return { ok: false, reason: '同一份材料被重复分配；需要减少本次用量或先取得余下材料' };
     }
-    if (effect.kind === 'consume') components.push({ materialId: source.materialId, quantity: effect.quantity });
+    if (effect.kind === 'consume') components.push({ materialId: source.materialId, quantity: effect.quantity,
+      ...(source.sourceEventIds?.length ? { sourceEventIds: [...source.sourceEventIds] } : {}),
+      sourceLineageKeys: [...new Set([...(source.sourceLineageKeys ?? []),
+        ...(effect.target.kind === 'inventory-stack' ? [`inventory:${effect.target.personId}:${effect.target.stackId}`]
+          : effect.target.kind === 'drop' ? [`drop:${effect.target.dropId}`] : [])])],
+      ...(source.recordPayloadId ? { recordPayloadId: source.recordPayloadId } : {}),
+      ...(source.mechanicalState ? { mechanicalState: structuredClone(source.mechanicalState) } : {}),
+    });
   }
   const assemblies = verdict.effects.filter((effect) => effect.kind === 'assemble' || effect.kind === 'modify-structure');
   if (assemblies.length && components.length && verdict.effects.some((effect) => effect.kind === 'produce')) {

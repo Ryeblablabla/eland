@@ -2,13 +2,17 @@ import * as THREE from 'three';
 import type { SocietyAgent, SocietyState, SpeechLineView } from '@/game/societyContract';
 import { Material } from '@/game/eland/domain/material';
 import { interpolatePath } from '@/game/pixelworld';
+import { featureDepth, FUNCTIONAL_MODEL_KEYS } from '@/game/voxel-assets/surface-decoration';
 import {
   FIGURE_SCALE,
+  FIGURE_HIP_HEIGHT,
+  FIGURE_HEAD_TOP,
   SPEECH_FONT_PX,
   buildFigure,
   disposeFigure,
   figureActionOf,
   figureActionView,
+  figureAgeOf,
   figureVisualKey,
   hueOf,
   nameTexture,
@@ -40,6 +44,8 @@ export interface FigureLayerFrame {
   selectedAgentId?: string | null;
   selectedObject?: FigureSelection;
   animationStartedAt: number;
+  hideNameLabels?: boolean;
+  hideSpeech?: boolean;
 }
 
 interface FigureLayerOptions {
@@ -87,6 +93,38 @@ export function sharedCellOffset(index: number, count: number): { x: number; z: 
     x: (index % columns - (columns - 1) / 2) * spacing,
     z: (Math.floor(index / columns) - (rows - 1) / 2) * spacing,
   };
+}
+
+/** Match interpolatePath's compressed movement segments, keeping feet above voxel steps. */
+export function figurePathStandingHeight(
+  path: readonly number[],
+  width: number,
+  progress: number,
+  destinationZ: number,
+  groundHeightAt: (cellId: number) => number,
+  cellOffset: { x: number; z: number } = { x: 0, z: 0 },
+): number {
+  const movingPath = path.filter((id, index) => index === 0 || id !== path[index - 1]);
+  if (movingPath.length < 2 || progress >= 1) return destinationZ;
+  const offset = THREE.MathUtils.clamp(progress, 0, 1) * (movingPath.length - 1);
+  const index = Math.min(movingPath.length - 2, Math.floor(offset));
+  const local = offset - index;
+  const fromId = movingPath[index], toId = movingPath[index + 1];
+  const from = groundHeightAt(fromId), to = groundHeightAt(toId);
+  // Preserve the authoritative final landing, including a person on an upper floor.
+  const landingOffset = destinationZ - groundHeightAt(movingPath[movingPath.length - 1]);
+  const dx = toId % width - fromId % width;
+  const dz = Math.floor(toId / width) - Math.floor(fromId / width);
+  const segmentLength = Math.hypot(dx, dz);
+  const crossing = 0.5 - (dx * cellOffset.x + dz * cellOffset.z) / Math.max(1, segmentLength ** 2);
+  const footClearance = 0.19 / Math.max(1, segmentLength);
+  // Rise before the leading foot reaches the upper cell; descend only after the
+  // trailing foot clears it. A linear height blend would cut straight into the riser.
+  const edge = THREE.MathUtils.clamp(crossing + (to > from ? -footClearance : footClearance), 0.04, 0.96);
+  const start = to > from ? Math.max(0, edge - 0.2) : edge;
+  const end = to > from ? edge : Math.min(1, edge + 0.2);
+  const blend = THREE.MathUtils.smoothstep(local, start, end);
+  return from + (to - from) * blend + landingOffset;
 }
 
 interface SpeechLayoutRect {
@@ -139,6 +177,31 @@ export function createFigureLayer({
   const speechWorldScale = new THREE.Vector3();
   const speechFocusCandidate = new THREE.Vector3();
   const activeSpeechBySpeaker = new Map<string, SpeechLineView>();
+  const constructionCells = new Set<number>();
+  const interiorFloors = new Map<number, number[]>();
+  let terrainWorld: SocietyState['world'] | null = null;
+  let terrainStructures: SocietyState['structures'] | null = null;
+
+  const syncTerrainMetadata = (world: SocietyState['world'], structures: SocietyState['structures']) => {
+    // One authoritative frame is replayed many times. Geometry/structure updates
+    // arrive with new references, while camera and animation frames reuse them.
+    if (world === terrainWorld && structures === terrainStructures) return;
+    constructionCells.clear();
+    interiorFloors.clear();
+    for (const structure of structures) {
+      if (!(structure.materialIds ?? []).some((id) => FUNCTIONAL_MODEL_KEYS.has(world.palette[id]?.key ?? ''))) {
+        for (const id of structure.occupiedCells) constructionCells.add(id);
+      }
+      if (!structure.complete) continue;
+      for (const position of structure.interiorPositions) {
+        const floors = interiorFloors.get(position.cellId);
+        if (floors) floors.push(position.z);
+        else interiorFloors.set(position.cellId, [position.z]);
+      }
+    }
+    terrainWorld = world;
+    terrainStructures = structures;
+  };
 
   const removeFigure = (figure: FigureParts) => {
     scene.remove(figure.group);
@@ -153,6 +216,7 @@ export function createFigureLayer({
     const frame = readFrame();
     const w = frame.society.world;
     const agents = frame.society.agents;
+    syncTerrainMetadata(w, frame.society.structures);
     const embodiedAgent = frame.embodiedAgentId;
     const motion = Math.min(1, (now - frame.animationStartedAt) / MONTH_PLAYBACK_MS);
     activeSpeechBySpeaker.clear();
@@ -216,7 +280,7 @@ export function createFigureLayer({
       }
       const f = figure;
       f.group.visible = agent.bodyDisposition !== 'interred' && agent.id !== embodiedAgent;
-      f.sprite.visible = embodiedAgent === null;
+      f.sprite.visible = embodiedAgent === null && !frame.hideNameLabels;
       if (!f.group.visible) continue;
       const path = agent.tickPath.length === RULE_TICKS + 1
         ? agent.tickPath
@@ -237,12 +301,22 @@ export function createFigureLayer({
       const incomingInteraction = incomingInteractionByAgent.get(agent.id);
       const action = figureActionOf(agent, activeIntent, moving);
       const phase = hueOf(agent.id) * Math.PI * 2;
-      const cycle = now * 0.012 + phase;
-      const bob = action === 'walk' && !dead && !sleeping ? Math.abs(Math.sin(cycle)) * 0.013 : 0;
+      const cycle = now * 0.009 + phase;
       const offset = cellOffsetByAgent.get(agent.id) ?? { x: 0, z: 0 };
+      const standingHeight = embodiedAgent ? agent.z : figurePathStandingHeight(
+        path, w.width, motion, agent.z,
+        (id) => {
+          const floors = interiorFloors.get(id);
+          if (floors?.length) return floors.reduce((nearest, floor) => (
+            Math.abs(floor - agent.z) < Math.abs(nearest - agent.z) ? floor : nearest
+          ));
+          return w.elevation[id] - featureDepth(w, id, constructionCells) + 1;
+        },
+        offset,
+      );
       f.group.position.set(
         point.x - w.width / 2 + 0.5 + offset.x,
-        agent.z * cellHeight + (dead ? 0.025 : bob),
+        standingHeight * cellHeight + (dead ? 0.025 : 0),
         point.y - w.height / 2 + 0.5 + offset.z,
       );
       if (moving && !dead) f.group.rotation.y = Math.atan2(dx, dz);
@@ -269,7 +343,7 @@ export function createFigureLayer({
         NAME_TAG_MAX_WORLD_H,
       );
       f.sprite.scale.set(labelHeight * 4, labelHeight, 1);
-      f.sprite.position.y = (sleeping ? 0.52 : 1.04) + labelHeight * 0.25;
+      f.sprite.position.y = (sleeping ? 0.52 : FIGURE_HEAD_TOP) + labelHeight * 0.25;
 
       const speechLine = activeSpeechBySpeaker.get(agent.id);
       const speechKey = speechLine ? `${speechLine.id}|${speechLine.text}` : '';
@@ -289,9 +363,9 @@ export function createFigureLayer({
           f.speechBubble.center.set(0.5, 0);
           f.speechPlacement = 'center';
         }
-        f.speechBubble.visible = Boolean(speechLine) && embodiedAgent === null;
         f.speechKey = speechKey;
       }
+      f.speechBubble.visible = Boolean(speechLine) && embodiedAgent === null && !frame.hideSpeech;
       if (speechLine) {
         const bubbleWorldHeight = THREE.MathUtils.clamp(
           SPEECH_TARGET_FONT_PX * (f.speechPixelHeight / SPEECH_FONT_PX) * worldUnitsPerPixel,
@@ -300,11 +374,12 @@ export function createFigureLayer({
         );
         const bubbleLocalHeight = bubbleWorldHeight / FIGURE_SCALE;
         f.speechBubble.scale.set(bubbleLocalHeight * f.speechAspect, bubbleLocalHeight, 1);
-        f.speechBubble.position.y = (sleeping ? 0.52 : 1.04) + labelHeight * 0.84;
+        f.speechBubble.position.y = (sleeping ? 0.52 : FIGURE_HEAD_TOP) + labelHeight * 0.84;
       }
 
-      f.upperBody.position.y = 0.3;
+      f.upperBody.position.set(0, FIGURE_HIP_HEIGHT, 0);
       f.upperBody.rotation.set(0, 0, 0);
+      f.head.rotation.set(0, 0, 0);
       f.legL.rotation.set(0, 0, 0);
       f.legR.rotation.set(0, 0, 0);
       f.armL.rotation.set(0, 0, 0);
@@ -312,7 +387,8 @@ export function createFigureLayer({
       f.spear.visible = false;
       f.handTool.visible = false;
       f.heldLoad.visible = false;
-      f.heldLoad.position.z = 0.33;
+      f.heldLoad.position.set(0, 0.46, 0.34);
+      f.heldLoad.rotation.set(0, 0, 0);
       f.balance.visible = false;
       f.balanceBeam.rotation.z = 0;
       f.tablet.visible = false;
@@ -321,14 +397,14 @@ export function createFigureLayer({
       const materialKey = actionView?.materialId !== undefined ? w.palette[actionView.materialId]?.key : undefined;
       const toolColor = actionView?.toolMaterialId !== undefined ? w.palette[actionView.toolMaterialId]?.color : undefined;
       const carriedColor = actionView?.materialId !== undefined ? w.palette[actionView.materialId]?.color : undefined;
-      if (toolColor) (f.toolHead.material as THREE.MeshLambertMaterial).color.setRGB(
+      if (toolColor) (f.toolHead.material as THREE.MeshStandardMaterial).color.setRGB(
         toolColor[0] / 255, toolColor[1] / 255, toolColor[2] / 255, THREE.SRGBColorSpace,
       );
       if (carriedColor) {
-        for (const mesh of [f.heldLoadFill, f.heldFood]) (mesh.material as THREE.MeshLambertMaterial).color.setRGB(
+        for (const mesh of [f.heldLoadFill, f.heldFood]) (mesh.material as THREE.MeshStandardMaterial).color.setRGB(
           carriedColor[0] / 255, carriedColor[1] / 255, carriedColor[2] / 255, THREE.SRGBColorSpace,
         );
-        (f.balanceLoad.material as THREE.MeshLambertMaterial).color.setRGB(
+        (f.balanceLoad.material as THREE.MeshStandardMaterial).color.setRGB(
           carriedColor[0] / 255, carriedColor[1] / 255, carriedColor[2] / 255, THREE.SRGBColorSpace,
         );
       }
@@ -337,7 +413,7 @@ export function createFigureLayer({
       f.outerwear.visible = Boolean(clothing);
       if (clothing) {
         const color = w.palette[clothing.materialId]?.color;
-        if (color) (f.outerwear.material as THREE.MeshLambertMaterial).color.setRGB(
+        if (color) (f.outerwear.material as THREE.MeshStandardMaterial).color.setRGB(
           color[0] / 255, color[1] / 255, color[2] / 255, THREE.SRGBColorSpace,
         );
       }
@@ -345,14 +421,28 @@ export function createFigureLayer({
       f.belly.visible = agent.conditions.some((condition) => condition.kind === 'pregnancy');
       if (!dead && !sleeping) {
         if (action === 'walk') {
-          const swing = Math.sin(cycle) * 0.55;
+          const swing = Math.sin(cycle) * 0.46;
+          f.upperBody.position.y = FIGURE_HIP_HEIGHT - 0.012 + Math.abs(Math.sin(cycle * 2)) * 0.012;
+          f.upperBody.rotation.x = 0.075;
+          f.upperBody.rotation.y = Math.sin(cycle) * 0.06;
+          f.upperBody.rotation.z = Math.cos(cycle) * 0.025;
           f.legL.rotation.x = swing;
           f.legR.rotation.x = -swing;
           f.armL.rotation.x = -swing * 0.7;
           f.armR.rotation.x = swing * 0.7;
+          // A transfer remains visible during its authoritative travel path.
+          if (actionView?.actionKind === 'transfer' || actionView?.mortuaryPhase === 'lift') {
+            f.heldLoad.visible = true;
+            f.upperBody.rotation.x = 0.19;
+            f.armL.rotation.x = -1.08;
+            f.armR.rotation.x = -1.08;
+            f.armL.rotation.z = 0.13;
+            f.armR.rotation.z = -0.13;
+            f.heldLoad.position.y = 0.45 + Math.abs(Math.sin(cycle * 2)) * 0.012;
+          }
         } else if (action === 'gather') {
           const reach = 0.92 + Math.sin(cycle * 0.8) * 0.12;
-          f.upperBody.position.y = 0.25;
+          f.upperBody.position.y = FIGURE_HIP_HEIGHT - 0.045;
           f.upperBody.rotation.x = 0.32;
           f.legL.rotation.x = 0.22;
           f.legR.rotation.x = -0.18;
@@ -360,7 +450,7 @@ export function createFigureLayer({
           f.armR.rotation.x = -reach;
         } else if (action === 'harvest') {
           const sweep = Math.sin(cycle * 0.72);
-          f.upperBody.position.y = 0.26;
+          f.upperBody.position.y = FIGURE_HIP_HEIGHT - 0.035;
           f.upperBody.rotation.x = 0.28;
           f.upperBody.rotation.y = sweep * 0.16;
           f.legL.rotation.x = 0.24;
@@ -378,9 +468,18 @@ export function createFigureLayer({
           f.spear.visible = toolKey === 'spear';
           f.handTool.visible = toolKey === 'stone_tool' || toolKey === 'bone_tool';
         } else if (action === 'carry') {
-          f.armL.rotation.x = -0.98;
-          f.armR.rotation.x = -0.98;
-          f.heldLoad.position.y = 0.44 + Math.sin(cycle) * 0.015;
+          const effort = Math.sin(cycle * 0.52);
+          f.upperBody.position.y = FIGURE_HIP_HEIGHT - 0.018 + effort * 0.004;
+          f.upperBody.rotation.x = 0.22 + effort * 0.016;
+          f.upperBody.rotation.z = effort * 0.018;
+          f.legL.rotation.x = 0.12;
+          f.legR.rotation.x = -0.14;
+          f.armL.rotation.x = -1.08;
+          f.armR.rotation.x = -1.08;
+          f.armL.rotation.z = 0.13;
+          f.armR.rotation.z = -0.13;
+          f.heldLoad.position.y = 0.46 + effort * 0.008;
+          f.heldLoad.rotation.x = -0.08;
           if (agent.visualAction?.sourceEventId && agent.visualAction.targetPersonId) {
             const target = agentsById.get(agent.visualAction.targetPersonId);
             if (target) {
@@ -399,8 +498,11 @@ export function createFigureLayer({
           f.armL.rotation.x = -1.18;
           f.heldFood.visible = true;
         } else if (action === 'work') {
-          const strike = 0.45 + (Math.sin(cycle * 0.8) + 1) * 0.65;
-          f.upperBody.rotation.x = 0.16;
+          const labor = Math.sin(cycle * 0.8);
+          const strike = 0.48 + (labor + 1) * 0.72;
+          f.upperBody.position.y = FIGURE_HIP_HEIGHT - 0.022 - (1 - labor) * 0.009;
+          f.upperBody.rotation.x = 0.18 + (1 - labor) * 0.11;
+          f.upperBody.rotation.y = labor * 0.12;
           f.legL.rotation.x = 0.2;
           f.legR.rotation.x = -0.16;
           f.armL.rotation.x = -0.7;
@@ -408,15 +510,16 @@ export function createFigureLayer({
           f.handTool.visible = toolKey === 'stone_tool' || toolKey === 'bone_tool';
         } else if (action === 'craft') {
           const work = 0.92 + Math.sin(cycle * 0.7) * 0.22;
-          f.upperBody.position.y = 0.24;
-          f.upperBody.rotation.x = 0.38;
+          f.upperBody.position.y = FIGURE_HIP_HEIGHT - 0.055;
+          f.upperBody.rotation.x = 0.34 + Math.sin(cycle * 0.7) * 0.045;
+          f.upperBody.rotation.y = Math.sin(cycle * 0.7) * 0.08;
           f.legL.rotation.x = 0.34;
           f.legR.rotation.x = -0.28;
           f.armL.rotation.x = -work;
           f.armR.rotation.x = -work * 1.08;
           f.handTool.visible = toolKey === 'stone_tool' || toolKey === 'bone_tool';
         } else if (action === 'tend-fire') {
-          f.upperBody.position.y = 0.25;
+          f.upperBody.position.y = FIGURE_HIP_HEIGHT - 0.045;
           f.upperBody.rotation.x = 0.32;
           f.armL.rotation.x = -1.02 + Math.sin(cycle * 0.55) * 0.08;
           f.armR.rotation.x = -1.12 - Math.sin(cycle * 0.55) * 0.08;
@@ -441,6 +544,8 @@ export function createFigureLayer({
           f.armL.rotation.z = 0.42;
           f.armR.rotation.x = -0.72 + gesture * 0.28;
           f.armR.rotation.z = -0.36;
+          f.upperBody.rotation.y = gesture * 0.06;
+          f.head.rotation.y = -gesture * 0.08;
         } else if (action === 'care') {
           f.upperBody.rotation.x = 0.28;
           f.armL.rotation.x = -1.08 + Math.sin(cycle * 0.45) * 0.08;
@@ -451,7 +556,7 @@ export function createFigureLayer({
           f.armL.rotation.z = 0.3;
           f.armR.rotation.x = -0.52;
           f.armR.rotation.z = -0.3;
-          f.upperBody.position.y = 0.3 + Math.sin(cycle * 0.32) * 0.008;
+          f.upperBody.position.y = FIGURE_HIP_HEIGHT + Math.sin(cycle * 0.32) * 0.008;
         } else if (agent.conditions.some((condition) => condition.kind === 'cold')) {
           f.upperBody.rotation.x = 0.18;
           f.armL.rotation.x = -0.88;
@@ -459,7 +564,7 @@ export function createFigureLayer({
           f.armR.rotation.x = -0.88;
           f.armR.rotation.z = 0.42;
         } else if (agent.conditions.some((condition) => condition.kind === 'heat' || condition.kind === 'illness')) {
-          f.upperBody.position.y = 0.26;
+          f.upperBody.position.y = FIGURE_HIP_HEIGHT - 0.035;
           f.upperBody.rotation.x = 0.22;
           f.armL.rotation.x = -0.25;
           f.armR.rotation.x = -0.18;
@@ -468,8 +573,13 @@ export function createFigureLayer({
           // cell so presentation never invents authoritative travel.
           const breath = Math.sin(cycle * 0.22);
           const glance = Math.sin(cycle * 0.09 + phase);
-          f.upperBody.position.y = 0.3 + breath * 0.008;
+          f.upperBody.position.y = FIGURE_HIP_HEIGHT + breath * 0.008;
           f.upperBody.rotation.y = glance * 0.055;
+          f.upperBody.rotation.x = 0.045 + breath * 0.012;
+          f.upperBody.rotation.z = Math.sin(cycle * 0.13 + phase) * 0.02;
+          f.head.rotation.y = glance * 0.12;
+          f.armL.rotation.z = 0.06;
+          f.armR.rotation.z = -0.07;
           f.armL.rotation.x = -0.08 + breath * 0.025;
           f.armR.rotation.x = -0.1 - breath * 0.025;
         }
@@ -480,7 +590,7 @@ export function createFigureLayer({
           f.armL.rotation.z = 0.16;
           f.armR.rotation.z = -0.16;
         } else if (incomingInteraction?.kind === 'care') {
-          f.upperBody.position.y = 0.27;
+          f.upperBody.position.y = FIGURE_HIP_HEIGHT - 0.025;
           f.upperBody.rotation.x = 0.18;
           f.armL.rotation.x = -0.38;
           f.armR.rotation.x = -0.34;
@@ -494,6 +604,21 @@ export function createFigureLayer({
           f.armR.rotation.x = -0.48;
           f.armR.rotation.z = -0.24;
         }
+      }
+      // Neck motion keeps the gaze readable while shoulders take the load.
+      if (!dead && !sleeping) {
+        if (figureAgeOf(agent) === 'elder') f.upperBody.rotation.x += 0.11;
+        f.head.rotation.x = -f.upperBody.rotation.x * 0.38 + Math.sin(cycle * 0.22) * 0.012;
+      }
+      // Shoes remain horizontal and the support sole touches the actual surface.
+      // Movement belongs to the limbs, never to a floating figure root.
+      for (const [leg, foot, side] of [[f.legL, f.footL, 1], [f.legR, f.footR, -1]] as const) {
+        const angle = leg.rotation.x;
+        const lift = action === 'walk' && !dead && !sleeping
+          ? Math.max(0, Math.cos(cycle) * side) * 0.055 : 0;
+        foot.rotation.x = -angle;
+        leg.position.y = (FIGURE_HIP_HEIGHT - 0.045) * Math.cos(angle)
+          + 0.04 * Math.sin(angle) + 0.045 + lift;
       }
       const selected = frame.selectedAgentId === agent.id
         || (frame.selectedObject?.kind === 'agent' && frame.selectedObject.id === agent.id);
@@ -643,6 +768,10 @@ export function createFigureLayer({
   const dispose = () => {
     for (const figure of figures.values()) removeFigure(figure);
     figures.clear();
+    constructionCells.clear();
+    interiorFloors.clear();
+    terrainWorld = null;
+    terrainStructures = null;
   };
 
   return {

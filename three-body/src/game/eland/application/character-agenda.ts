@@ -402,17 +402,15 @@ export function compileCharacterAgendaProposal(
   const selectedActionContinuesExistingAgenda = existingAgendaItem
     ? selectedOption?.characterAgendaItemId === existingAgendaItem.id
       || Boolean(selectedProjectId && existingAgendaItem.projectIds.includes(selectedProjectId))
-      || Boolean(relatedAgendaItem && selectedOption && optionDeservesDurableAgenda(selectedOption))
+      || Boolean(relatedAgendaItem && selectedOption && !selectedOption.characterAgendaItemId)
     : !selectedOption?.characterAgendaItemId;
-  const selectedActionCanGroundDurableAgenda = Boolean(
-    existingAgendaItem || (selectedOption && optionDeservesDurableAgenda(selectedOption)),
-  );
   const selectedActionIsApproach = !forbiddenAuthorityClaim
     && !raw.approach?.probe
     && raw.approach?.disposition === 'executable-now'
     && Boolean(selectedOption)
-    && selectedActionContinuesExistingAgenda
-    && selectedActionCanGroundDurableAgenda;
+    // The person chose a durable aim. A short move, observation or material
+    // transfer can be its next means without itself being a long undertaking.
+    && selectedActionContinuesExistingAgenda;
   const disposition = forbiddenAuthorityClaim
     ? 'contradicted-approach'
     : (allowExistingAction || selectedActionIsApproach) && !raw.approach?.probe
@@ -865,14 +863,17 @@ function intentIsTerminal(intent: Intent): boolean {
 
 function agendaAimWasObjectivelyFulfilled(
   item: CharacterAgendaItem | undefined,
-  approach: CharacterAgendaApproach | undefined,
   intent: Intent,
 ): boolean {
-  if (intent.goalOutcome?.kind !== 'achieved') return false;
-  // Legacy local agendas used the executable option itself as their aim. A
-  // model agenda may close only when it was bound to an already legal durable
-  // option; a free-form probe merely validates or refutes one fallible method.
-  return item?.origin === 'local-deliberation' || !approach?.probe;
+  if (intent.plan) {
+    // Completing the selected move/transfer proves only that local step.
+    // An unknown larger goal, including empty conditions, remains open.
+    return Boolean(intent.plan.completion?.goal.conditions.length)
+      && intent.planAssessment?.goal === 'satisfied';
+  }
+  // A locally derived agenda has the exact executable goal as its aim. An
+  // unverified model-authored aim cannot inherit that equivalence from prose.
+  return item?.origin === 'local-deliberation' && intent.goalOutcome?.kind === 'achieved';
 }
 
 function terminalIntentAgendaOutcome(intent: Intent): 'supported' | 'blocked' | 'parked' {
@@ -1004,7 +1005,7 @@ export function reconcileCharacterAgendasForMonth(
     );
     person.characterAgenda = reconciled.state;
     if (!reconciled.accepted) continue;
-    if (agendaAimWasObjectivelyFulfilled(reconciled.item, reconciled.approach, intent)) {
+    if (agendaAimWasObjectivelyFulfilled(reconciled.item, intent)) {
       const fulfilled = person.characterAgenda.items.find((candidate) => candidate.id === item.id);
       if (fulfilled) fulfilled.status = 'fulfilled';
     }
@@ -1058,7 +1059,7 @@ export function reconcileCharacterAgendasForMonth(
         `可执行意图在没有新动作事实时以 ${intent.status} 结束`,
       );
       agenda = reconciled.state;
-      if (agendaAimWasObjectivelyFulfilled(reconciled.item, reconciled.approach, intent)) {
+      if (agendaAimWasObjectivelyFulfilled(reconciled.item, intent)) {
         const fulfilled = agenda.items.find((candidate) => candidate.id === item.id);
         if (fulfilled) fulfilled.status = 'fulfilled';
       }

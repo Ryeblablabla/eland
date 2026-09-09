@@ -1,0 +1,2330 @@
+[
+  {
+    "id": "e-2-environment-weather-0",
+    "kind": "environment",
+    "atMonth": 2,
+    "orderInMonth": 0,
+    "cellId": 0,
+    "change": "weather",
+    "result": "本月天气转为降雨",
+    "diff": {
+      "kind": "rain",
+      "intensity": 2
+    },
+    "planningTick": 0,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-2-environment-material-0",
+    "kind": "environment",
+    "atMonth": 2,
+    "orderInMonth": 1,
+    "cellId": 0,
+    "change": "material",
+    "result": "6 个格子的物质因自然过程发生变化",
+    "diff": {
+      "changes": [
+        {
+          "cellId": 1052,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 1067,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 2152,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 2157,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 2734,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 3896,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        }
+      ]
+    },
+    "planningTick": 0,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-2-environment-animal-1",
+    "kind": "environment",
+    "atMonth": 2,
+    "orderInMonth": 2,
+    "cellId": 379,
+    "change": "animal",
+    "result": "兔取食并改变了一处植物地表",
+    "diff": {
+      "animalId": "animal-rabbit-10",
+      "animalSpeciesId": "rabbit",
+      "process": "forage",
+      "fromMaterialId": 10,
+      "toMaterialId": 9
+    },
+    "planningTick": 0,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-2-environment-animal-2",
+    "kind": "environment",
+    "atMonth": 2,
+    "orderInMonth": 3,
+    "cellId": 2175,
+    "change": "animal",
+    "result": "兔取食并改变了一处植物地表",
+    "diff": {
+      "animalId": "animal-rabbit-16",
+      "animalSpeciesId": "rabbit",
+      "process": "forage",
+      "fromMaterialId": 10,
+      "toMaterialId": 9
+    },
+    "planningTick": 0,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-2-environment-animal-3",
+    "kind": "environment",
+    "atMonth": 2,
+    "orderInMonth": 4,
+    "cellId": 759,
+    "change": "animal",
+    "result": "鹿在生态过程中死亡",
+    "diff": {
+      "animalId": "animal-deer-5",
+      "animalSpeciesId": "deer",
+      "process": "predation",
+      "outcome": "death",
+      "killerAnimalId": "animal-wolf-2",
+      "products": [
+        {
+          "materialId": 29,
+          "quantity": 7
+        },
+        {
+          "materialId": 30,
+          "quantity": 1
+        },
+        {
+          "materialId": 31,
+          "quantity": 3
+        }
+      ]
+    },
+    "planningTick": 0,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-2-opportunity-potianfeng",
+    "kind": "decision-opportunity",
+    "atMonth": 2,
+    "orderInMonth": 5,
+    "planningTick": 0,
+    "orderInTick": 5,
+    "who": "potianfeng",
+    "cellId": 2286,
+    "probability": 0.645,
+    "sample": 0.5829895976930857,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "破天锋本月重新考虑下一步"
+  },
+  {
+    "id": "e-2-opportunity-rei-ayanami",
+    "kind": "decision-opportunity",
+    "atMonth": 2,
+    "orderInMonth": 6,
+    "planningTick": 0,
+    "orderInTick": 6,
+    "who": "rei-ayanami",
+    "cellId": 2286,
+    "probability": 0.645,
+    "sample": 0.27099447092041373,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "绫波丽本月重新考虑下一步"
+  },
+  {
+    "id": "e-2-opportunity-freyja",
+    "kind": "decision-opportunity",
+    "atMonth": 2,
+    "orderInMonth": 7,
+    "planningTick": 0,
+    "orderInTick": 7,
+    "who": "freyja",
+    "cellId": 2370,
+    "probability": 0.645,
+    "sample": 0.38619047519750893,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "芙蕾雅本月重新考虑下一步"
+  },
+  {
+    "id": "e-2-opportunity-cai-wenji",
+    "kind": "decision-opportunity",
+    "atMonth": 2,
+    "orderInMonth": 8,
+    "planningTick": 0,
+    "orderInTick": 8,
+    "who": "cai-wenji",
+    "cellId": 2370,
+    "probability": 0.645,
+    "sample": 0.3806252423673868,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "蔡文姬本月重新考虑下一步"
+  },
+  {
+    "id": "e-2-opportunity-sun-wu",
+    "kind": "decision-opportunity",
+    "atMonth": 2,
+    "orderInMonth": 9,
+    "planningTick": 0,
+    "orderInTick": 9,
+    "who": "sun-wu",
+    "cellId": 2370,
+    "probability": 0.645,
+    "sample": 0.3029157710261643,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "孙武本月重新考虑下一步"
+  },
+  {
+    "id": "e-2-opportunity-aphrodite",
+    "kind": "decision-opportunity",
+    "atMonth": 2,
+    "orderInMonth": 10,
+    "planningTick": 0,
+    "orderInTick": 10,
+    "who": "aphrodite",
+    "cellId": 2286,
+    "probability": 0.645,
+    "sample": 0.1992558566853404,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "阿佛洛狄忒本月重新考虑下一步"
+  },
+  {
+    "id": "e-2-opportunity-houyi",
+    "kind": "decision-opportunity",
+    "atMonth": 2,
+    "orderInMonth": 11,
+    "planningTick": 0,
+    "orderInTick": 11,
+    "who": "houyi",
+    "cellId": 2201,
+    "probability": 0.645,
+    "sample": 0.9115469725802541,
+    "triggered": false,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "后羿本月延续已有意图"
+  },
+  {
+    "id": "e-2-decision-potianfeng-1-12",
+    "kind": "decision",
+    "atMonth": 2,
+    "orderInMonth": 12,
+    "planningTick": 1,
+    "orderInTick": 0,
+    "cellId": 2286,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "teach:2:potianfeng:technique:combine:13:0:19:rei-ayanami",
+      "reason": "自己可靠掌握这项技术，而身边达到学习年龄的人还不会；一次明确教导即可传授"
+    },
+    "intentId": "intent-2-potianfeng-7",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：把“木材与空气可结合为木板”教给绫波丽"
+  },
+  {
+    "id": "e-2-decision-rei-ayanami-1-13",
+    "kind": "decision",
+    "atMonth": 2,
+    "orderInMonth": 13,
+    "planningTick": 1,
+    "orderInTick": 1,
+    "cellId": 2286,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "conversation:shared-work:2:rei-ayanami:potianfeng",
+      "followUpOptionId": "project:project-2-rei-ayanami-coordination-capacity:locked-drop-project-logistics:project-2-rei-ayanami-coordination-capacity:0:drop:starter-13-2370",
+      "reason": "双方都在同一项目留下了实际行动，可以谈共同劳动而不是抽象寒暄"
+    },
+    "intentId": "intent-2-rei-ayanami-8",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "绫波丽决定：与破天锋谈共同劳动：与破天锋回顾双方已经完成“把同一处材料连接成能进入并遮蔽天气的住所”的共同劳动，随后继续前往已锁定的木材来源"
+  },
+  {
+    "id": "e-2-decision-freyja-1-14",
+    "kind": "decision",
+    "atMonth": 2,
+    "orderInMonth": 14,
+    "planningTick": 1,
+    "orderInTick": 2,
+    "cellId": 2370,
+    "who": "freyja",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-companion:2:freyja:cai-wenji",
+      "reason": "彼此的信任与羁绊已达到结伴门槛，结伴可能降低长期风险"
+    },
+    "intentId": "intent-2-freyja-9",
+    "domain": "social",
+    "usedModel": false,
+    "result": "芙蕾雅决定：邀请蔡文姬结伴行动"
+  },
+  {
+    "id": "e-2-decision-cai-wenji-1-15",
+    "kind": "decision",
+    "atMonth": 2,
+    "orderInMonth": 15,
+    "planningTick": 1,
+    "orderInTick": 3,
+    "cellId": 2370,
+    "who": "cai-wenji",
+    "decision": {
+      "kind": "start",
+      "optionId": "conversation:shared-work:2:cai-wenji:sun-wu",
+      "followUpOptionId": "project:project-2-cai-wenji-coordination-capacity:locked-drop-project-logistics:project-2-cai-wenji-coordination-capacity:0:drop:starter-13-2370",
+      "reason": "双方都在同一项目留下了实际行动，可以谈共同劳动而不是抽象寒暄"
+    },
+    "usedModel": false,
+    "result": "蔡文姬没有找到该行动机会"
+  },
+  {
+    "id": "e-2-decision-sun-wu-1-16",
+    "kind": "decision",
+    "atMonth": 2,
+    "orderInMonth": 16,
+    "planningTick": 1,
+    "orderInTick": 4,
+    "cellId": 2370,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "conversation:shared-work:2:sun-wu:cai-wenji",
+      "followUpOptionId": "project:project-2-sun-wu-coordination-capacity:locked-drop-project-logistics:project-2-sun-wu-coordination-capacity:0:drop:starter-13-2370",
+      "reason": "双方都在同一项目留下了实际行动，可以谈共同劳动而不是抽象寒暄"
+    },
+    "usedModel": false,
+    "result": "孙武没有找到该行动机会"
+  },
+  {
+    "id": "e-2-decision-aphrodite-1-17",
+    "kind": "decision",
+    "atMonth": 2,
+    "orderInMonth": 17,
+    "planningTick": 1,
+    "orderInTick": 5,
+    "cellId": 2286,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "start",
+      "optionId": "conversation:shared-work:2:aphrodite:potianfeng",
+      "followUpOptionId": "project:project-2-aphrodite-coordination-capacity:locked-drop-project-logistics:project-2-aphrodite-coordination-capacity:0:drop:starter-13-2370",
+      "reason": "双方都在同一项目留下了实际行动，可以谈共同劳动而不是抽象寒暄"
+    },
+    "usedModel": false,
+    "result": "阿佛洛狄忒没有找到该行动机会"
+  },
+  {
+    "id": "e-2-action-freyja-18",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 2,
+    "orderInMonth": 18,
+    "cellId": 2370,
+    "who": "freyja",
+    "intentId": "intent-2-freyja-9",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-companion:2:freyja:cai-wenji",
+        "kind": "offer",
+        "summary": "希望今后一段时间结伴行动",
+        "proposal": {
+          "kind": "companion",
+          "proposerId": "freyja",
+          "partnerId": "cai-wenji",
+          "expiresAtMonth": 8,
+          "basis": {
+            "version": "relationship-causal-basis-v1",
+            "subjectKey": "relationship:companion:cai-wenji:freyja",
+            "basisKey": "relationship-causal-basis-v1|subject=relationship:companion:cai-wenji:freyja|observer=freyja|r=e-0-environment-founding-0|b=none",
+            "kind": "companion",
+            "proposerId": "freyja",
+            "partnerId": "cai-wenji",
+            "relationshipKeys": [
+              "e-0-environment-founding-0"
+            ],
+            "bodyKeys": [],
+            "sourceFactIds": [
+              "e-0-environment-founding-0"
+            ]
+          }
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2370,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370
+    ],
+    "status": "completed",
+    "result": "芙蕾雅向蔡文姬表达：希望今后一段时间结伴行动",
+    "diff": {
+      "audience": [
+        "cai-wenji"
+      ],
+      "content": {
+        "id": "offer-companion:2:freyja:cai-wenji",
+        "kind": "offer",
+        "summary": "希望今后一段时间结伴行动",
+        "proposal": {
+          "kind": "companion",
+          "proposerId": "freyja",
+          "partnerId": "cai-wenji",
+          "expiresAtMonth": 8,
+          "basis": {
+            "version": "relationship-causal-basis-v1",
+            "subjectKey": "relationship:companion:cai-wenji:freyja",
+            "basisKey": "relationship-causal-basis-v1|subject=relationship:companion:cai-wenji:freyja|observer=freyja|r=e-0-environment-founding-0|b=none",
+            "kind": "companion",
+            "proposerId": "freyja",
+            "partnerId": "cai-wenji",
+            "relationshipKeys": [
+              "e-0-environment-founding-0"
+            ],
+            "bodyKeys": [],
+            "sourceFactIds": [
+              "e-0-environment-founding-0"
+            ]
+          }
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-2-decision-houyi-1-19",
+    "kind": "decision",
+    "atMonth": 2,
+    "orderInMonth": 19,
+    "planningTick": 1,
+    "orderInTick": 7,
+    "cellId": 2201,
+    "who": "houyi",
+    "decision": {
+      "kind": "start",
+      "optionId": "meet:rei-ayanami",
+      "reason": "看见另一个人，接近后才能沟通、求助或共同做事"
+    },
+    "intentId": "intent-2-houyi-10",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后羿决定：去与绫波丽会合"
+  },
+  {
+    "id": "e-2-action-houyi-20",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 2,
+    "orderInMonth": 20,
+    "cellId": 2202,
+    "who": "houyi",
+    "intentId": "intent-2-houyi-10",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2286,
+      "toZ": 5
+    },
+    "fromCellId": 2201,
+    "toCellId": 2202,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2201,
+      2202
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2202,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 8
+  },
+  {
+    "id": "e-2-action-rei-ayanami-21",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 2,
+    "orderInMonth": 21,
+    "cellId": 2286,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "conversation:shared-work:2:rei-ayanami:potianfeng",
+        "kind": "claim",
+        "summary": "与破天锋回顾双方已经完成“把同一处材料连接成能进入并遮蔽天气的住所”的共同劳动",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=rei-ayanami|listener=potianfeng|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "opening",
+          "speakerId": "rei-ayanami",
+          "listenerId": "potianfeng",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ]
+        }
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2286,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286
+    ],
+    "status": "completed",
+    "result": "绫波丽向破天锋表达：与破天锋回顾双方已经完成“把同一处材料连接成能进入并遮蔽天气的住所”的共同劳动",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "conversation:shared-work:2:rei-ayanami:potianfeng",
+        "kind": "claim",
+        "summary": "与破天锋回顾双方已经完成“把同一处材料连接成能进入并遮蔽天气的住所”的共同劳动",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=rei-ayanami|listener=potianfeng|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "opening",
+          "speakerId": "rei-ayanami",
+          "listenerId": "potianfeng",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ]
+        }
+      },
+      "groundedConversationBasisKey": "grounded-conversation-v1|topic=shared-work|speaker=rei-ayanami|listener=potianfeng|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+      "groundedConversationTopic": "shared-work",
+      "groundedConversationTurn": "opening",
+      "groundedConversationSourceFactIds": [
+        "e-1-action-rei-ayanami-34",
+        "e-1-action-rei-ayanami-35",
+        "e-1-action-rei-ayanami-39",
+        "e-1-action-sun-wu-41"
+      ],
+      "relationTrustDelta": 1,
+      "relationBondDelta": 2
+    },
+    "planningTick": 1,
+    "orderInTick": 9
+  },
+  {
+    "id": "e-2-action-potianfeng-22",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 2,
+    "orderInMonth": 22,
+    "cellId": 2286,
+    "who": "potianfeng",
+    "intentId": "intent-2-potianfeng-7",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "teach:2:potianfeng:technique:combine:13:0:19:rei-ayanami",
+        "kind": "claim",
+        "summary": "木材与空气可结合为木板",
+        "factId": "technique:combine:13:0:19"
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2286,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286
+    ],
+    "status": "completed",
+    "result": "破天锋向绫波丽表达：木材与空气可结合为木板",
+    "diff": {
+      "audience": [
+        "rei-ayanami"
+      ],
+      "content": {
+        "id": "teach:2:potianfeng:technique:combine:13:0:19:rei-ayanami",
+        "kind": "claim",
+        "summary": "木材与空气可结合为木板",
+        "factId": "technique:combine:13:0:19"
+      },
+      "assertedFactId": "technique:combine:13:0:19",
+      "assertedFactSourceEventIds": [
+        "e-1-action-potianfeng-33",
+        "e-1-action-potianfeng-37"
+      ],
+      "teachingFactId": "technique:combine:13:0:19",
+      "teachingKnowledgeKind": "technique",
+      "teachingTeacherConfidence": 68,
+      "taughtAudienceIds": [
+        "rei-ayanami"
+      ],
+      "teachingReliableConfidence": 60
+    },
+    "planningTick": 1,
+    "orderInTick": 10
+  },
+  {
+    "id": "e-2-decision-potianfeng-2-23",
+    "kind": "decision",
+    "atMonth": 2,
+    "orderInMonth": 23,
+    "planningTick": 2,
+    "orderInTick": 0,
+    "cellId": 2286,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-2-potianfeng-11",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应绫波丽关于共同劳动的话：回应双方共同劳动的经历，并确认协作带来的陪伴感"
+  },
+  {
+    "id": "e-2-action-potianfeng-24",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 2,
+    "orderInMonth": 24,
+    "cellId": 2286,
+    "who": "potianfeng",
+    "intentId": "intent-2-potianfeng-11",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+        "kind": "claim",
+        "summary": "回应双方共同劳动的经历，并确认协作带来的陪伴感",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=rei-ayanami|listener=potianfeng|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ],
+          "referenceEventId": "e-2-action-rei-ayanami-21",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2286,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286
+    ],
+    "status": "completed",
+    "result": "破天锋向绫波丽表达：回应双方共同劳动的经历，并确认协作带来的陪伴感",
+    "diff": {
+      "audience": [
+        "rei-ayanami"
+      ],
+      "content": {
+        "id": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+        "kind": "claim",
+        "summary": "回应双方共同劳动的经历，并确认协作带来的陪伴感",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=rei-ayanami|listener=potianfeng|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ],
+          "referenceEventId": "e-2-action-rei-ayanami-21",
+          "stance": "supportive"
+        }
+      },
+      "groundedConversationBasisKey": "grounded-conversation-v1|topic=shared-work|speaker=rei-ayanami|listener=potianfeng|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+      "groundedConversationTopic": "shared-work",
+      "groundedConversationTurn": "response",
+      "groundedConversationSourceFactIds": [
+        "e-1-action-rei-ayanami-34",
+        "e-1-action-rei-ayanami-35",
+        "e-1-action-rei-ayanami-39",
+        "e-1-action-sun-wu-41"
+      ],
+      "groundedConversationReferenceEventId": "e-2-action-rei-ayanami-21",
+      "groundedConversationStance": "supportive",
+      "relationTrustDelta": 1,
+      "relationBondDelta": 2
+    },
+    "planningTick": 2,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-2-decision-cai-wenji-2-25",
+    "kind": "decision",
+    "atMonth": 2,
+    "orderInMonth": 25,
+    "planningTick": 2,
+    "orderInTick": 2,
+    "cellId": 2370,
+    "who": "cai-wenji",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-companion:offer-companion:2:freyja:cai-wenji",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-2-cai-wenji-12",
+    "domain": "social",
+    "usedModel": false,
+    "result": "蔡文姬决定：接受芙蕾雅的结伴提议"
+  },
+  {
+    "id": "e-2-action-cai-wenji-26",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 2,
+    "orderInMonth": 26,
+    "cellId": 2370,
+    "who": "cai-wenji",
+    "intentId": "intent-2-cai-wenji-12",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-companion:2:freyja:cai-wenji:cai-wenji",
+        "kind": "accept",
+        "referenceId": "offer-companion:2:freyja:cai-wenji"
+      },
+      "audience": [
+        "freyja"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2370,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370
+    ],
+    "status": "completed",
+    "result": "蔡文姬向芙蕾雅表达：accept",
+    "diff": {
+      "audience": [
+        "freyja"
+      ],
+      "content": {
+        "id": "accept:offer-companion:2:freyja:cai-wenji:cai-wenji",
+        "kind": "accept",
+        "referenceId": "offer-companion:2:freyja:cai-wenji"
+      }
+    },
+    "planningTick": 2,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-2-action-rei-ayanami-27",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 2,
+    "orderInMonth": 27,
+    "cellId": 2370,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2370,
+      "toZ": 5
+    },
+    "fromCellId": 2286,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286,
+      2370
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 28 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-2-action-houyi-28",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 2,
+    "orderInMonth": 28,
+    "cellId": 2286,
+    "who": "houyi",
+    "intentId": "intent-2-houyi-10",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2370,
+      "toZ": 5
+    },
+    "fromCellId": 2202,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2202,
+      2286
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-2-action-rei-ayanami-29",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 2,
+    "orderInMonth": 29,
+    "cellId": 2370,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 13,
+      "quantity": 2,
+      "from": {
+        "kind": "ground",
+        "cellId": 2370,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "dropId": "starter-13-2370"
+    },
+    "fromCellId": 2370,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370
+    ],
+    "status": "completed",
+    "result": "木材 × 2 改变了持有者",
+    "diff": {
+      "materialId": 13,
+      "quantity": 2,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 2370,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "witnessedBy": [
+        "rei-ayanami",
+        "freyja",
+        "cai-wenji",
+        "sun-wu"
+      ],
+      "sourceEventIds": [
+        "e-2-action-rei-ayanami-29"
+      ],
+      "sourceLineageKeys": [
+        "drop:starter-13-2370"
+      ]
+    },
+    "planningTick": 3,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-2-decision-potianfeng-3-30",
+    "kind": "decision",
+    "atMonth": 2,
+    "orderInMonth": 30,
+    "planningTick": 3,
+    "orderInTick": 1,
+    "cellId": 2286,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，靠近后给出明确回应"
+    },
+    "intentId": "intent-2-potianfeng-13",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：去找绫波丽，回应关于共同劳动的话"
+  },
+  {
+    "id": "e-2-action-potianfeng-31",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 2,
+    "orderInMonth": 31,
+    "cellId": 2370,
+    "who": "potianfeng",
+    "intentId": "intent-2-potianfeng-13",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2370,
+      "toZ": 5
+    },
+    "fromCellId": 2286,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286,
+      2370
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 28 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-2-action-houyi-32",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 2,
+    "orderInMonth": 32,
+    "cellId": 2370,
+    "who": "houyi",
+    "intentId": "intent-2-houyi-10",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2370,
+      "toZ": 5
+    },
+    "fromCellId": 2286,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286,
+      2370
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 28 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-2-action-rei-ayanami-33",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 2,
+    "orderInMonth": 33,
+    "cellId": 2371,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2458,
+      "toZ": 5
+    },
+    "fromCellId": 2370,
+    "toCellId": 2371,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370,
+      2371
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 4,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-2-action-potianfeng-34",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 2,
+    "orderInMonth": 34,
+    "cellId": 2371,
+    "who": "potianfeng",
+    "intentId": "intent-2-potianfeng-13",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2371,
+      "toZ": 5
+    },
+    "fromCellId": 2370,
+    "toCellId": 2371,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370,
+      2371
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 19, 28 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 4,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-2-action-rei-ayanami-35",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 2,
+    "orderInMonth": 35,
+    "cellId": 2372,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2458,
+      "toZ": 5
+    },
+    "fromCellId": 2371,
+    "toCellId": 2372,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2371,
+      2372
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 5,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-2-action-potianfeng-36",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 2,
+    "orderInMonth": 36,
+    "cellId": 2372,
+    "who": "potianfeng",
+    "intentId": "intent-2-potianfeng-13",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2372,
+      "toZ": 5
+    },
+    "fromCellId": 2371,
+    "toCellId": 2372,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2371,
+      2372
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 20, 28 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 5,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-2-action-potianfeng-37",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 2,
+    "orderInMonth": 37,
+    "cellId": 2372,
+    "who": "potianfeng",
+    "intentId": "intent-2-potianfeng-13",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+        "kind": "claim",
+        "summary": "回应双方共同劳动的经历，并确认协作带来的陪伴感",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=rei-ayanami|listener=potianfeng|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ],
+          "referenceEventId": "e-2-action-rei-ayanami-21",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2372,
+    "toCellId": 2372,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2372
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 6,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-2-action-rei-ayanami-38",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 2,
+    "orderInMonth": 38,
+    "cellId": 2373,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2458,
+      "toZ": 5
+    },
+    "fromCellId": 2372,
+    "toCellId": 2373,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2372,
+      2373
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 6,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-2-decision-potianfeng-7-39",
+    "kind": "decision",
+    "atMonth": 2,
+    "orderInMonth": 39,
+    "planningTick": 7,
+    "orderInTick": 0,
+    "cellId": 2372,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，靠近后给出明确回应"
+    },
+    "intentId": "intent-2-potianfeng-14",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：去找绫波丽，回应关于共同劳动的话"
+  },
+  {
+    "id": "e-2-action-potianfeng-40",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 2,
+    "orderInMonth": 40,
+    "cellId": 2373,
+    "who": "potianfeng",
+    "intentId": "intent-2-potianfeng-14",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2373,
+      "toZ": 5
+    },
+    "fromCellId": 2372,
+    "toCellId": 2373,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2372,
+      2373
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 21, 28 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 7,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-2-action-rei-ayanami-41",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 2,
+    "orderInMonth": 41,
+    "cellId": 2374,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2458,
+      "toZ": 5
+    },
+    "fromCellId": 2373,
+    "toCellId": 2374,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2373,
+      2374
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 7,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-2-action-potianfeng-42",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 2,
+    "orderInMonth": 42,
+    "cellId": 2374,
+    "who": "potianfeng",
+    "intentId": "intent-2-potianfeng-14",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2374,
+      "toZ": 5
+    },
+    "fromCellId": 2373,
+    "toCellId": 2374,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2373,
+      2374
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 22, 28 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 8,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-2-action-rei-ayanami-43",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 2,
+    "orderInMonth": 43,
+    "cellId": 2458,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2458,
+      "toZ": 5
+    },
+    "fromCellId": 2374,
+    "toCellId": 2458,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2374,
+      2458
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 22, 29 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 8,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-2-action-potianfeng-44",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 2,
+    "orderInMonth": 44,
+    "cellId": 2458,
+    "who": "potianfeng",
+    "intentId": "intent-2-potianfeng-14",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2458,
+      "toZ": 5
+    },
+    "fromCellId": 2374,
+    "toCellId": 2458,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2374,
+      2458
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 22, 29 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 9,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-2-action-rei-ayanami-45",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 2,
+    "orderInMonth": 45,
+    "cellId": 2458,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "separate",
+      "targets": [
+        {
+          "kind": "voxel",
+          "position": {
+            "x": 22,
+            "y": 30,
+            "z": 4
+          }
+        }
+      ]
+    },
+    "fromCellId": 2458,
+    "toCellId": 2458,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2458
+    ],
+    "status": "completed",
+    "result": "从灌木分离出纤维 × 2",
+    "diff": {
+      "sourceMaterialId": 9,
+      "replacementMaterialId": 2,
+      "outputs": [
+        {
+          "materialId": 20,
+          "quantity": 2
+        }
+      ],
+      "productionMultiplier": 1,
+      "declarationEventId": "e-2-action-rei-ayanami-21",
+      "declarationWitnessedBy": [
+        "potianfeng"
+      ]
+    },
+    "planningTick": 9,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-2-action-rei-ayanami-46",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 2,
+    "orderInMonth": 46,
+    "cellId": 2458,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 20,
+      "quantity": 2,
+      "from": {
+        "kind": "ground",
+        "cellId": 2458,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "dropId": "drop-2-rei-ayanami-separate-330"
+    },
+    "fromCellId": 2458,
+    "toCellId": 2458,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2458
+    ],
+    "status": "completed",
+    "result": "纤维 × 2 改变了持有者",
+    "diff": {
+      "materialId": 20,
+      "quantity": 2,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 2458,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "witnessedBy": [
+        "potianfeng",
+        "rei-ayanami"
+      ],
+      "sourceEventIds": [
+        "e-2-action-rei-ayanami-45",
+        "e-2-action-rei-ayanami-46"
+      ],
+      "sourceLineageKeys": [
+        "drop:drop-2-rei-ayanami-separate-330"
+      ]
+    },
+    "planningTick": 10,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-2-action-potianfeng-47",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 2,
+    "orderInMonth": 47,
+    "cellId": 2458,
+    "who": "potianfeng",
+    "intentId": "intent-2-potianfeng-14",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+        "kind": "claim",
+        "summary": "回应双方共同劳动的经历，并确认协作带来的陪伴感",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=rei-ayanami|listener=potianfeng|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ],
+          "referenceEventId": "e-2-action-rei-ayanami-21",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2458,
+    "toCellId": 2458,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2458
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 10,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-2-decision-potianfeng-11-48",
+    "kind": "decision",
+    "atMonth": 2,
+    "orderInMonth": 48,
+    "planningTick": 11,
+    "orderInTick": 0,
+    "cellId": 2458,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-2-potianfeng-15",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应绫波丽关于共同劳动的话：回应双方共同劳动的经历，并确认协作带来的陪伴感"
+  },
+  {
+    "id": "e-2-action-potianfeng-49",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 2,
+    "orderInMonth": 49,
+    "cellId": 2458,
+    "who": "potianfeng",
+    "intentId": "intent-2-potianfeng-15",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+        "kind": "claim",
+        "summary": "回应双方共同劳动的经历，并确认协作带来的陪伴感",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=rei-ayanami|listener=potianfeng|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ],
+          "referenceEventId": "e-2-action-rei-ayanami-21",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2458,
+    "toCellId": 2458,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2458
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 11,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-2-action-rei-ayanami-50",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 2,
+    "orderInMonth": 50,
+    "cellId": 2458,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "combine",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "rei-ayanami",
+          "stackId": "stack-rei-ayanami-20-2"
+        },
+        {
+          "kind": "inventory-stack",
+          "personId": "rei-ayanami",
+          "stackId": "stack-rei-ayanami-20-2"
+        }
+      ]
+    },
+    "fromCellId": 2458,
+    "toCellId": 2458,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2458
+    ],
+    "status": "completed",
+    "result": "纤维与纤维结合为绳",
+    "diff": {
+      "techniqueId": "technique:combine-inventory:20x2:23",
+      "inputMaterialIds": [
+        20,
+        20
+      ],
+      "outputMaterialId": 23,
+      "outputQuantity": 1,
+      "baseOutputQuantity": 1,
+      "outputStackId": "stack-rei-ayanami-23-2",
+      "sourceEventId": "e-2-action-rei-ayanami-50"
+    },
+    "planningTick": 11,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-2-action-rei-ayanami-51",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 2,
+    "orderInMonth": 51,
+    "cellId": 2458,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "attend",
+      "target": {
+        "kind": "inventory-stack",
+        "personId": "rei-ayanami",
+        "stackId": "stack-rei-ayanami-23-2"
+      }
+    },
+    "fromCellId": 2458,
+    "toCellId": 2458,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2458
+    ],
+    "status": "completed",
+    "result": "核验了纤维 × 2可结合为绳",
+    "diff": {
+      "factId": "technique:combine-inventory:20x2:23",
+      "verifiedTechnique": true
+    },
+    "planningTick": 12,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-2-decision-potianfeng-12-52",
+    "kind": "decision",
+    "atMonth": 2,
+    "orderInMonth": 52,
+    "planningTick": 12,
+    "orderInTick": 1,
+    "cellId": 2458,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-2-potianfeng-16",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应绫波丽关于共同劳动的话：回应双方共同劳动的经历，并确认协作带来的陪伴感"
+  },
+  {
+    "id": "e-2-action-potianfeng-53",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 2,
+    "orderInMonth": 53,
+    "cellId": 2458,
+    "who": "potianfeng",
+    "intentId": "intent-2-potianfeng-16",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+        "kind": "claim",
+        "summary": "回应双方共同劳动的经历，并确认协作带来的陪伴感",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=rei-ayanami|listener=potianfeng|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ],
+          "referenceEventId": "e-2-action-rei-ayanami-21",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2458,
+    "toCellId": 2458,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2458
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 12,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-2-decision-potianfeng-13-54",
+    "kind": "decision",
+    "atMonth": 2,
+    "orderInMonth": 54,
+    "planningTick": 13,
+    "orderInTick": 0,
+    "cellId": 2458,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-2-potianfeng-17",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应绫波丽关于共同劳动的话：回应双方共同劳动的经历，并确认协作带来的陪伴感"
+  },
+  {
+    "id": "e-2-action-potianfeng-55",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 2,
+    "orderInMonth": 55,
+    "cellId": 2458,
+    "who": "potianfeng",
+    "intentId": "intent-2-potianfeng-17",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+        "kind": "claim",
+        "summary": "回应双方共同劳动的经历，并确认协作带来的陪伴感",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=rei-ayanami|listener=potianfeng|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ],
+          "referenceEventId": "e-2-action-rei-ayanami-21",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2458,
+    "toCellId": 2458,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2458
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 13,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-2-action-rei-ayanami-56",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 2,
+    "orderInMonth": 56,
+    "cellId": 2458,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "combine",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "rei-ayanami",
+          "stackId": "stack-rei-ayanami-13-2"
+        },
+        {
+          "kind": "inventory-stack",
+          "personId": "rei-ayanami",
+          "stackId": "stack-rei-ayanami-23-2"
+        }
+      ]
+    },
+    "fromCellId": 2458,
+    "toCellId": 2458,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2458
+    ],
+    "status": "completed",
+    "result": "木材与绳结合为木制生产工具",
+    "diff": {
+      "techniqueId": "technique:combine-inventory:13x1+23x1:41",
+      "inputMaterialIds": [
+        13,
+        23
+      ],
+      "outputMaterialId": 41,
+      "outputQuantity": 1,
+      "baseOutputQuantity": 1,
+      "outputStackId": "stack-rei-ayanami-41-2",
+      "sourceEventId": "e-2-action-rei-ayanami-56",
+      "projectHypothesisCampaignId": "project-hypothesis:project-2-rei-ayanami-coordination-capacity:rei-ayanami",
+      "projectHypothesisProjectId": "project-2-rei-ayanami-coordination-capacity",
+      "projectHypothesisActorId": "rei-ayanami",
+      "projectHypothesisCandidateKey": "13+23",
+      "projectHypothesisOperation": "combine-inventory",
+      "projectHypothesisQuestionKind": "connect-manipulator-shapes",
+      "projectHypothesisMaterialIds": [
+        13,
+        23
+      ],
+      "projectHypothesisToolSourceKey": "inventory:rei-ayanami:stack-rei-ayanami-13-2",
+      "projectHypothesisInputSourceKey": "inventory:rei-ayanami:stack-rei-ayanami-23-2",
+      "projectHypothesisToolRoleMaterialId": 13,
+      "projectHypothesisInputRoleMaterialId": 23,
+      "projectHypothesisRoleScore": 22,
+      "projectHypothesisToolRoleScore": 10,
+      "projectHypothesisInputRoleScore": 9,
+      "projectHypothesisRoleReasonKeys": [
+        "role-tool-hardness",
+        "role-tool-solid",
+        "role-tool-portable",
+        "role-input-portable-shape",
+        "role-input-middle-hardness",
+        "role-input-bindable-shape",
+        "role-input-light-shape",
+        "role-shape-hard-soft-complement",
+        "role-shape-different-forms"
+      ],
+      "projectHypothesisAttemptOrdinal": 1,
+      "projectHypothesisCandidateRank": 1,
+      "projectHypothesisBudget": 7,
+      "projectHypothesisNoResponseBudget": 4,
+      "projectHypothesisResponseBudget": 3,
+      "projectHypothesisOutcome": "response",
+      "projectHypothesisTechniqueId": "technique:combine-inventory:13x1+23x1:41",
+      "projectHypothesisResponseRef": {
+        "kind": "inventory-stack",
+        "stackId": "stack-rei-ayanami-41-2",
+        "materialId": 41
+      },
+      "projectHypothesisObservableScore": 22,
+      "projectHypothesisSeededRank": 21.89,
+      "projectHypothesisReasonKeys": [
+        "grounded-operation-question",
+        "role-tool-hardness",
+        "role-tool-solid",
+        "role-tool-portable",
+        "role-input-portable-shape",
+        "role-input-middle-hardness",
+        "role-input-bindable-shape",
+        "role-input-light-shape",
+        "role-shape-hard-soft-complement",
+        "role-shape-different-forms"
+      ],
+      "projectHypothesisSourceFactIds": [
+        "e-1-action-aphrodite-30",
+        "e-1-action-aphrodite-38",
+        "e-1-action-aphrodite-42",
+        "e-1-action-cai-wenji-36",
+        "e-1-action-cai-wenji-40",
+        "e-1-action-potianfeng-23",
+        "e-1-action-potianfeng-25",
+        "e-1-action-potianfeng-28",
+        "e-1-action-potianfeng-33",
+        "e-1-action-potianfeng-37",
+        "e-1-action-rei-ayanami-26",
+        "e-1-action-rei-ayanami-29",
+        "e-1-action-rei-ayanami-35",
+        "e-1-action-rei-ayanami-39",
+        "e-1-action-sun-wu-41",
+        "e-2-action-rei-ayanami-29",
+        "e-2-action-rei-ayanami-50"
+      ],
+      "projectHypothesisSourceKeys": [
+        "inventory:rei-ayanami:stack-rei-ayanami-13-2",
+        "inventory:rei-ayanami:stack-rei-ayanami-23-2",
+        "project-question:project-2-rei-ayanami-coordination-capacity:connect-manipulator-shapes"
+      ],
+      "projectHypothesisHadReliableKnowledge": false
+    },
+    "planningTick": 13,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-2-decision-potianfeng-14-57",
+    "kind": "decision",
+    "atMonth": 2,
+    "orderInMonth": 57,
+    "planningTick": 14,
+    "orderInTick": 0,
+    "cellId": 2458,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-2-potianfeng-18",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应绫波丽关于共同劳动的话：回应双方共同劳动的经历，并确认协作带来的陪伴感"
+  },
+  {
+    "id": "e-2-action-potianfeng-58",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 2,
+    "orderInMonth": 58,
+    "cellId": 2458,
+    "who": "potianfeng",
+    "intentId": "intent-2-potianfeng-18",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+        "kind": "claim",
+        "summary": "回应双方共同劳动的经历，并确认协作带来的陪伴感",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=rei-ayanami|listener=potianfeng|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ],
+          "referenceEventId": "e-2-action-rei-ayanami-21",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2458,
+    "toCellId": 2458,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2458
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 14,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-2-action-rei-ayanami-59",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 2,
+    "orderInMonth": 59,
+    "cellId": 2458,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "attend",
+      "target": {
+        "kind": "inventory-stack",
+        "personId": "rei-ayanami",
+        "stackId": "stack-rei-ayanami-41-2"
+      },
+      "verification": {
+        "techniqueId": "technique:combine-inventory:13x1+23x1:41",
+        "sourceEventId": "e-2-action-rei-ayanami-56",
+        "expectedMaterialId": 41
+      }
+    },
+    "fromCellId": 2458,
+    "toCellId": 2458,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2458
+    ],
+    "status": "completed",
+    "result": "核验了木材与绳可结合为木制生产工具",
+    "diff": {
+      "factId": "technique:combine-inventory:13x1+23x1:41",
+      "verifiedTechnique": true,
+      "verifiedSourceEventId": "e-2-action-rei-ayanami-56",
+      "verifiedMaterialId": 41,
+      "verifiedStackId": "stack-rei-ayanami-41-2",
+      "projectHypothesisVerificationCampaignId": "project-hypothesis:project-2-rei-ayanami-coordination-capacity:rei-ayanami",
+      "projectHypothesisVerificationProjectId": "project-2-rei-ayanami-coordination-capacity",
+      "projectHypothesisVerifiedAttemptEventId": "e-2-action-rei-ayanami-56",
+      "projectHypothesisVerifiedCandidateKey": "13+23",
+      "projectHypothesisVerifiedOperation": "combine-inventory",
+      "projectHypothesisVerifiedOutputMaterialId": 41
+    },
+    "planningTick": 14,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-2-decision-potianfeng-15-60",
+    "kind": "decision",
+    "atMonth": 2,
+    "orderInMonth": 60,
+    "planningTick": 15,
+    "orderInTick": 0,
+    "cellId": 2458,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-2-potianfeng-19",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应绫波丽关于共同劳动的话：回应双方共同劳动的经历，并确认协作带来的陪伴感"
+  },
+  {
+    "id": "e-2-action-potianfeng-61",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 2,
+    "orderInMonth": 61,
+    "cellId": 2458,
+    "who": "potianfeng",
+    "intentId": "intent-2-potianfeng-19",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-2-action-rei-ayanami-21:potianfeng",
+        "kind": "claim",
+        "summary": "回应双方共同劳动的经历，并确认协作带来的陪伴感",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=rei-ayanami|listener=potianfeng|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ],
+          "referenceEventId": "e-2-action-rei-ayanami-21",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2458,
+    "toCellId": 2458,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2458
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 15,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-2-action-rei-ayanami-62",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 2,
+    "orderInMonth": 62,
+    "cellId": 2374,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2370,
+      "toZ": 5
+    },
+    "fromCellId": 2458,
+    "toCellId": 2374,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2458,
+      2374
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2374,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 15,
+    "orderInTick": 2
+  }
+]

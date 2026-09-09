@@ -22,7 +22,7 @@ export {
   isFulfillmentOption,
   isRequiredSocialOption,
 } from './application/rule-planner';
-export { characterAgendaModelReviewDue } from './application/simulation/model-review';
+export { characterAgendaModelReviewDue, personCanDecide } from './application/simulation/model-review';
 /** Model adapters receive compiled requests and request-scoped capabilities. */
 export {
   buildDecisionRequestContext,
@@ -35,6 +35,9 @@ export {
 export {
   buildMindIntentionRequestContext,
   buildMentalActRequestContext,
+  buildModelPlanRequestContext,
+  buildWorldPlanRequestContext,
+  buildWorldAttemptRequestContext,
   type MindIntentionDraft,
   type MindIntentionOrientation,
   type MindIntentionRequestContext,
@@ -71,5 +74,13 @@ export {
   type LanguageMemoryInput,
   type PlayerInteractionMemoryInput,
 } from './domain/agent-memory';
-export { compileModelPlanCompletion, sanitizeBoundPlanCompletion } from './application/model-decision/plan-completion';
+export { compileModelPlanCompletion, sanitizeBoundPlanCompletion, describeModelPlanCompletion } from './application/model-decision/plan-completion';
 export { compileMindSpeechIntent, describeMindSpeechIntent, speechIntentAllowsOption, SPEECH_PROPOSAL_KINDS } from './application/model-decision/speech-intent';
+export { compileModelNativeOperation, projectNativeOperations, nativeObservationInstrumentBindings, scopedNativeMethods,
+  type NativeObservationInstrumentBinding } from './application/model-decision/native-operation-context';
+export { deriveWorldTargets, type WorldTargetDerivation, type WorldTargetDerivationContext } from './application/model-decision/world-target-derivation';
+export { describeNativeOperations, compileNativeOperation } from './application/native-operation';
+export type { NativeOperationRequest, NativeOperationDescriptor } from './domain/native-operation';
+export { nativeMethodKey } from './domain/native-operation';
+export { NATIVE_ACT_PARAMETER_SHAPES, matchesNativeActTargetShape, nativeActParameterProblem,
+  nativeActTargetMatchesRole, type NativeActParameterShape, type NativeActTargetRole } from './domain/native-act-parameters';

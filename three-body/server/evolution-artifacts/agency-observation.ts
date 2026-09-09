@@ -47,7 +47,9 @@ export function observeAgency(state: SimulationState) {
   return {
     throughMonth: state.clock.elapsedMonths,
     cognition: {
-      mindDecisions: state.world.past.filter((event) => event.kind === 'decision' && event.usedModel && !event.planContinuation).length,
+      mindDecisions: state.world.past.filter((event) => event.kind === 'decision' && event.usedModel && !event.planContinuation && event.decision.mentalAct).length,
+      retainedIntentions: state.world.past.filter((event) => event.kind === 'decision' && event.usedModel
+        && event.decision.kind === 'idle' && event.decision.attention === 'keep-current').length,
       planContinuations: state.world.past.filter((event) => event.kind === 'decision' && event.usedModel && event.planContinuation).length,
       verifiedGoalCompletions: actions.filter((event) => (event.diff.planAssessment as { goal?: string } | undefined)?.goal === 'satisfied')
         .map((event) => event.id),

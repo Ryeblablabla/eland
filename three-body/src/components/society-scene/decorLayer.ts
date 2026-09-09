@@ -3,6 +3,9 @@ import type { EraKey, SocietyState } from '@/game/societyContract';
 import { collectDecor, type DecorBucket, type DecorInstance } from '@/game/voxelKits';
 import { weatherSwayStrength, weatherWetness } from '@/game/voxel-assets/decor-primitives';
 import { sameDecorVisuals } from './visualInvalidation';
+import { sampleAnimalMotion } from './animalMotion';
+import { installDecorMaterialFinish } from './decorMaterialFinish';
+import { sampleDecorSmoke, sampleDecorWind, type DecorAmbientMotion, type DecorWindAnchor } from './decorAmbientMotion';
 
 const SETTLEMENT_ERA_TRANSITION_MS = 1_000;
 
@@ -34,6 +37,7 @@ interface DecorLayerOptions {
   cellHeight: number;
   monthPlaybackMs: number;
   readFrame: () => DecorLayerFrame;
+  readNow?: () => number;
 }
 
 export interface DecorLayer {
@@ -58,6 +62,7 @@ export function createDecorLayer({
   cellHeight,
   monthPlaybackMs,
   readFrame,
+  readNow = () => performance.now(),
 }: DecorLayerOptions): DecorLayer {
   // 素材来自 voxelKits.ts（与 knowledge-base 素材页同源），按材质桶 InstancedMesh 合批。
   // 颜色仍走实例色；材质桶只承载真实表面响应。Record<string> 让素材库可渐进新增语义桶。
@@ -86,10 +91,12 @@ export function createDecorLayer({
       roughness: 0.74, metalness: 0.02, clearcoat: 0.1, clearcoatRoughness: 0.7, envMapIntensity: 0.82,
     }),
   };
+  for (const [bucket, material] of Object.entries(decorMaterials)) installDecorMaterialFinish(material, bucket);
 
   const cloneDecorMaterials = (opacity = 1, fading = false): DecorMaterialSet => Object.fromEntries(
     Object.entries(decorMaterials).map(([key, source]) => {
       const material = source.clone();
+      installDecorMaterialFinish(material, key);
       material.opacity = opacity;
       material.transparent = fading;
       material.depthWrite = !fading;
@@ -160,6 +167,8 @@ export function createDecorLayer({
     mesh: THREE.InstancedMesh;
     instances: Array<{ index: number; instance: DecorInstance }>;
   }> = [];
+  const windSamples = new Map<DecorWindAnchor, { motion: DecorAmbientMotion; still: boolean; wasStill: boolean }>();
+  const smokeMotion: DecorAmbientMotion = { x: 0, y: 0, z: 0, scale: 1 };
   scene.add(decorGroup);
 
   const matrix = new THREE.Matrix4();
@@ -325,12 +334,18 @@ export function createDecorLayer({
     }
     renderedDecorSociety = society;
     renderedDecorEra = era;
-    noteCompletedStructures(society, performance.now());
+    noteCompletedStructures(society, readNow());
     const nextDevelopmentStage = society.observations.civilizationIndex?.stage ?? '原始部落';
     if (renderedDevelopmentStage !== undefined && renderedDevelopmentStage !== nextDevelopmentStage)
-      beginSettlementEraTransition(performance.now());
+      beginSettlementEraTransition(readNow());
     renderedDevelopmentStage = nextDevelopmentStage;
     const instances = collectDecor(society, era);
+    windSamples.clear();
+    for (const instance of instances) {
+      if (instance.animation === 'wind' && instance.windOrigin && !windSamples.has(instance.windOrigin)) {
+        windSamples.set(instance.windOrigin, { motion: { x: 0, y: 0, z: 0, scale: 1 }, still: false, wasStill: false });
+      }
+    }
     animatedDecorBatches = [];
     const byBatch = new Map<string, {
       bucket: DecorBucket;
@@ -554,24 +569,32 @@ export function createDecorLayer({
     const world = frame.society.world;
     const animals = new Map(frame.society.animals.map((animal) => [animal.id, animal]));
     const motion = Math.min(1, (now - frame.animationStartedAt) / monthPlaybackMs);
+    // Compute one pose per animal, shared by all of its instanced body parts.
+    const animalMotion = new Map(frame.society.animals.map((animal) =>
+      [animal.id, sampleAnimalMotion(animal, world.width, motion)]));
+    const windStrength = weatherSwayStrength(frame.society.weather);
+    for (const [anchor, sample] of windSamples) {
+      const distance = Math.hypot(camera.position.x - anchor.x, camera.position.y - anchor.y, camera.position.z - anchor.z);
+      sample.wasStill = sample.still;
+      sampleDecorWind(sample.motion, anchor, now, windStrength, distance);
+      sample.still = sample.motion.x === 0 && sample.motion.z === 0;
+    }
 
     for (const { mesh, instances } of animatedDecorBatches) {
       let touched = false;
       instances.forEach(({ index, instance }) => {
         if (instance.animation === 'wind') {
-          // 幅度与频率都来自权威天气映射：风暴 > 雨 > 旱 > 雪 > 晴，不再只看强度数值。
-          const swayStrength = weatherSwayStrength(frame.society.weather);
-          const seed = instance.x * 1.83 + instance.z * 2.37 + instance.y * 0.71;
-          const sway = Math.sin(now * 0.0028 * (0.7 + swayStrength * 1.6) + seed) * (0.006 + swayStrength * 0.05);
-          const heightFactor = THREE.MathUtils.clamp(instance.y * 0.035, 0.2, 1);
-          rotation.setFromEuler(new THREE.Euler(sway * heightFactor, 0, sway * 0.7 * heightFactor));
+          const anchor = instance.windOrigin;
+          const sample = anchor ? windSamples.get(anchor) : undefined;
+          if (!sample || (sample.still && sample.wasStill)) return;
+          const heightFactor = THREE.MathUtils.clamp(instance.y - anchor!.y, 0, 2.2);
           matrix.compose(
             position.set(
-              instance.x + sway * heightFactor * 0.5,
+              instance.x + sample.motion.x * heightFactor,
               instance.y,
-              instance.z + sway * heightFactor * 0.25,
+              instance.z + sample.motion.z * heightFactor,
             ),
-            rotation,
+            rotation.setFromAxisAngle(decorAxisY, instance.ry ?? 0),
             scale.set(instance.sx, instance.sy, instance.sz),
           );
           mesh.setMatrixAt(index, matrix);
@@ -633,14 +656,12 @@ export function createDecorLayer({
           return;
         }
         if (instance.animation === 'facility-smoke') {
-          const seed = instance.x * 5.31 + instance.z * 7.17 + instance.y * 3.83;
-          const wave = Math.sin(now * 0.0026 + seed);
-          const drift = Math.sin(now * 0.0017 - seed * 1.3);
-          const pulse = 0.9 + wave * 0.08;
+          const distance = Math.hypot(camera.position.x - instance.x, camera.position.y - instance.y, camera.position.z - instance.z);
+          sampleDecorSmoke(smokeMotion, instance, now, windStrength, distance);
           matrix.compose(
-            position.set(instance.x + drift * 0.035, instance.y + wave * 0.025, instance.z + wave * 0.02),
+            position.set(instance.x + smokeMotion.x, instance.y + smokeMotion.y, instance.z + smokeMotion.z),
             rotation.identity(),
-            scale.set(instance.sx * pulse, instance.sy * (1.04 + wave * 0.08), instance.sz * pulse),
+            scale.set(instance.sx * smokeMotion.scale, instance.sy * smokeMotion.scale, instance.sz * smokeMotion.scale),
           );
           mesh.setMatrixAt(index, matrix);
           touched = true;
@@ -707,16 +728,12 @@ export function createDecorLayer({
         const animal = animals.get(instance.entityId);
         if (!animal) return;
 
-        const currentX = animal.cellId % world.width;
-        const currentZ = Math.floor(animal.cellId / world.width);
-        const previousX = animal.previousCellId % world.width;
-        const previousZ = Math.floor(animal.previousCellId / world.width);
-        const dx = currentX - previousX;
-        const dz = currentZ - previousZ;
-        const moved = dx !== 0 || dz !== 0 || animal.z !== animal.previousZ;
-        const originX = THREE.MathUtils.lerp(previousX, currentX, motion) - world.width / 2 + 0.5;
-        const originY = THREE.MathUtils.lerp(animal.previousZ, animal.z, motion) * cellHeight;
-        const originZ = THREE.MathUtils.lerp(previousZ, currentZ, motion) - world.height / 2 + 0.5;
+        const pose = animalMotion.get(animal.id)!;
+        const { dx, dz } = pose;
+        const moved = pose.moving;
+        const originX = pose.x - world.width / 2 + 0.5;
+        const originY = pose.y * cellHeight;
+        const originZ = pose.z - world.height / 2 + 0.5;
 
         let seed = animalPhaseCache.get(animal.id);
         if (seed === undefined) {
@@ -821,6 +838,9 @@ export function createDecorLayer({
 
   const dispose = () => {
     animatedDecorBatches = [];
+    windSamples.clear();
+    for (const material of Object.values(decorMaterials)) material.dispose();
+    for (const material of Object.values(settlementDecorMaterials)) material.dispose();
     if (settlementEraTransition) {
       disposeOutgoingSettlementDecor(
         settlementEraTransition.outgoingGroup,

@@ -883,6 +883,7 @@ function agreementLabel(state: SimulationState, event: AgreementEvent): string {
   const agreement = state.agreements.find((candidate) => candidate.id === event.agreementId);
   const proposal = agreement?.proposal;
   if (!proposal) return '约定';
+  if (proposal.kind === 'joint-action') return `临时共同事项：${proposal.summary}`;
   if (proposal.kind === 'reproduce') return '共同生育的约定';
   if (proposal.kind === 'companion') return '结伴生活的约定';
   if (proposal.kind === 'collective') return '组建共同体的约定';

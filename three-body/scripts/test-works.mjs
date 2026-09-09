@@ -96,7 +96,7 @@ assert.deepEqual(updated.position, anchor);
 assert.equal(updated.components.find((c) => c.materialId === Material.Wood)?.quantity, 8, '组件应合并');
 console.log('[works] 加件通过');
 
-// 协作加件：第二个人在同一造物上加件 → 双向关系证据
+// Actual modification is shared evidence for present observers, not reciprocal feelings.
 const partner = state.people[1];
 partner.position.cellId = person.position.cellId;
 partner.position.z = person.position.z;
@@ -116,14 +116,33 @@ const collabAction = {
   },
 };
 const relationMod = await import(pathToFileURL(bundle('src/game/eland/domain/relation.ts', 'relation.mjs')).href + `?t=${Date.now()}`);
+const reception = await import(pathToFileURL(bundle('src/game/eland/application/simulation/cognitive-reception.ts', 'reception.mjs')).href);
+const absentBuilder = state.people[2];
+const absentPosition = { ...absentBuilder.position };
+absentBuilder.position = { ...absentBuilder.position, cellId: 0, z: 1 };
+state.world.works[0].builderIds.push(absentBuilder.id);
+const relationsBeforeModification = structuredClone(state.people.map((person) => person.relations));
 const fact3 = executePrimitiveAction(state, partner, collabAction, 1, 2, { cause: 'intent', actionTick: 2 });
 assert.equal(fact3.status, 'completed', `协作加件应成功：${fact3.result}`);
 state.world.past.push(fact3);
 const relAB = relationMod.relationTo(person, partner.id);
 const relBA = relationMod.relationTo(partner, person.id);
-assert.ok(relAB && relBA, '协作应在两人之间留下双向关系');
+assert.ok(relAB && relBA, 'existing directed relation records remain available');
+assert.deepEqual(state.people.map((person) => person.relations), relationsBeforeModification,
+  'modifying another person\'s Work does not assign either person trust, bond or fear');
+assert(person.memories.some((memory) => memory.sourceEventIds.includes(fact3.id) && memory.personIds.includes(partner.id)));
+assert(partner.memories.some((memory) => memory.sourceEventIds.includes(fact3.id) && memory.personIds.includes(person.id)));
+assert(!absentBuilder.memories.some((memory) => memory.sourceEventIds.includes(fact3.id)), 'an absent old builder does not learn the modification remotely');
+const observedChanges = new Map();
+const modificationInputs = reception.unreviewedSocialActionSources(state, [fact3], observedChanges);
+assert.deepEqual(modificationInputs.get(person.id), [fact3.id]);
+assert.equal(modificationInputs.has(absentBuilder.id), false);
+reception.acknowledgeSocialActionSources(observedChanges, person.id, modificationInputs.get(person.id));
+assert.equal(reception.unreviewedSocialActionSources(state, [fact3], observedChanges).size, 0,
+  'the same witnessed modification offers one independent review');
+absentBuilder.position = absentPosition;
 assert.ok(state.world.works[0].builderIds.includes(partner.id), '第二建造者应入列');
-console.log('[works] 协作关系证据通过');
+console.log('[works] 现场修改记忆与独立回顾通过，无自动关系加分');
 
 // 功能承认：造物的名称和建造事件本身不能进入文明观察。
 state.clock.elapsedMonths = 1;
@@ -228,6 +247,69 @@ assert.equal(afterUse.components.territory.evidence.usedWorks, 1);
 assert.equal(afterUse.components.social.evidence.diffusedWorks, 1);
 console.log('[works] 排除叙述式假使用，实际生理遮蔽回执通过');
 
+// Native voxel structures need their own execution-time provenance. A pickup
+// at the eventual site is not use, and later damage cannot erase real use.
+const physicalIndex = await import(pathToFileURL(bundle('src/game/eland/domain/physical-structure-index.ts', 'physical-index.mjs')).href);
+const { appendCommittedEvents } = await import(pathToFileURL(bundle('src/game/eland/domain/history.ts', 'history.mjs')).href);
+const structureState = createInitialState(17, { endpoint: { kind: 'months', value: 4 } });
+structureState.clock.elapsedMonths = 1;
+const shelteredPerson = structureState.people[0];
+for (let x = 10; x <= 15; x++) for (let y = 10; y <= 15; y++) {
+  for (let z = 0; z < structureState.world.grid.levels; z++) setVoxel(structureState.world.grid, x, y, z,
+    z === 0 ? Material.Stone : Material.Air);
+}
+shelteredPerson.position = { ...shelteredPerson.position, cellId: 12 + 12 * structureState.world.grid.width, z: 1 };
+shelteredPerson.inventory.push({ id: 'physical-roof-wood', materialId: Material.Wood, quantity: 4, sourceEventIds: [] });
+const beforeRoofTransfer = executePrimitiveAction(structureState, shelteredPerson, {
+  kind: 'transfer', from: { kind: 'person', personId: shelteredPerson.id },
+  to: { kind: 'ground', cellId: shelteredPerson.position.cellId, z: 1 },
+  stackId: shelteredPerson.inventory[0].id, materialId: shelteredPerson.inventory[0].materialId, quantity: 1,
+}, 1, 100, { cause: 'intent', actionTick: 1 });
+assert.equal(beforeRoofTransfer.diff.quantity, 1);
+appendCommittedEvents(structureState, [beforeRoofTransfer]);
+const builtPositions = [{ x: 13, y: 12, z: 1 }, { x: 13, y: 12, z: 2 },
+  { x: 13, y: 12, z: 3 }, { x: 12, y: 12, z: 3 }];
+for (const [index, position] of builtPositions.entries()) {
+  const built = executePrimitiveAction(structureState, shelteredPerson, { kind: 'act', operation: 'combine', targets: [
+    { kind: 'inventory-stack', personId: shelteredPerson.id, stackId: 'physical-roof-wood' },
+    { kind: 'voxel', position },
+  ] }, 1, 101 + index, { cause: 'intent', actionTick: 2 + index });
+  assert.equal(built.status, 'completed', built.result);
+  appendCommittedEvents(structureState, [built]);
+}
+const physicalRoof = physicalIndex.physicalStructuresOf(structureState).find((candidate) => candidate.interiorPositions
+  .some((position) => position.cellId === shelteredPerson.position.cellId && position.z === 1));
+assert(physicalRoof?.complete, JSON.stringify({ message: 'four actual installations form a supported roof',
+  structures: physicalIndex.physicalStructuresOf(structureState),
+  construction: structureState.world.past.filter((event) => event.kind === 'action').map((event) => ({ result: event.result, diff: event.diff })) }));
+assert.deepEqual(structure.observePhysicalStructureUseReceipts(physicalRoof, structureState.world.past), [],
+  'construction and material transfer at the later shelter site are not facility use');
+structureState.civilization.climate = { kind: 'temperate', severity: 1 };
+structureState.civilization.weather = { kind: 'clear', intensity: 1 };
+assert.equal(monthly.advanceBodies(structureState, 2).some((event) => event.who === shelteredPerson.id && event.diff.shelterUse), false,
+  'standing under a roof in mild weather does not fabricate thermal relief');
+structureState.civilization.climate = { kind: 'cold', severity: 4 };
+const physicalExposure = monthly.advanceBodies(structureState, 3);
+const physicalUse = physicalExposure.find((event) => event.who === shelteredPerson.id && event.diff.shelterUse);
+assert(physicalUse);
+assert(physicalUse.diff.shelterUse.structures.some((basis) => basis.structureId === physicalRoof.id
+  && basis.constructionSourceEventIds.every((id) => physicalRoof.sourceEventIds.includes(id))));
+const capturedUses = structure.observePhysicalStructureUseReceipts(physicalRoof, physicalExposure);
+assert.equal(capturedUses.length, 1);
+assert.equal(capturedUses[0].functionKey, 'thermal-protection');
+for (const position of builtPositions) setVoxel(structureState.world.grid, position.x, position.y, position.z, Material.Air);
+assert.equal(structure.survivalShelterAt(structureState, shelteredPerson.position), null);
+const damagedRoof = { ...physicalRoof, complete: false, capacity: 0, occupiedCells: [], interiorCells: [], interiorPositions: [] };
+assert.deepEqual(structure.observePhysicalStructureUseReceipts(damagedRoof, physicalExposure), capturedUses,
+  'past use is read from its actual source receipt after the structure is gone');
+const legacyUse = { ...physicalUse, diff: { ...physicalUse.diff,
+  shelterUse: { ...physicalUse.diff.shelterUse, structures: undefined } } };
+assert.deepEqual(structure.observePhysicalStructureUseReceipts(physicalRoof, [legacyUse]), [],
+  'an old position-only receipt cannot be attached to a structure reconstructed later');
+assert.deepEqual(structure.observePhysicalStructureUseReceipts({ ...physicalRoof, sourceEventIds: ['later-rebuild'] }, physicalExposure), [],
+  'reusing a spatial structure id does not make an unrelated rebuild inherit earlier use');
+console.log('[structures] 排除同址取材假使用，真实减负快照在损坏后仍可回放');
+
 // 衰减与塌落
 state.world.works[0] = { ...state.world.works[0], condition: 25.5 };
 const outcome = works.advanceWorksMonth(state.world, {
@@ -258,7 +340,10 @@ const voxelAssembly = executePrimitiveAction(state, person, {
   },
 }, 4, 0, { cause: 'intent', actionTick: 0 });
 assert.equal(voxelAssembly.status, 'completed', voxelAssembly.result);
-assert.deepEqual(state.world.works[0].components, [{ materialId: Material.Wood, quantity: 1 }]);
+assert.deepEqual(state.world.works[0].components.map(({ materialId, quantity }) => ({ materialId, quantity })),
+  [{ materialId: Material.Wood, quantity: 1 }]);
+assert(state.world.works[0].components[0].sourceLineageKeys.includes(
+  `voxel:${source.position.x}:${source.position.y}:${source.position.z}`), 'assembled matter retains its actual voxel source');
 const expanded = works.modifyWork(state.world.works[0], {
   components: [{ materialId: Material.Wood, quantity: 30 }],
   builderId: person.id, atMonth: 4, sourceEventId: 'later-real-construction',

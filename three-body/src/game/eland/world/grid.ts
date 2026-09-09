@@ -10,7 +10,7 @@ export const WORLD_LEVELS = 12;
 export const WORLD_CELL_COUNT = WORLD_WIDTH * WORLD_DEPTH;
 export const WORLD_VOXEL_COUNT = WORLD_CELL_COUNT * WORLD_LEVELS;
 
-export type WorldGeneratorVersion = 'material-world-v1' | 'material-world-v2-flat' | 'material-world-v3-biomes' | 'material-world-v4-regional-geology';
+export type WorldGeneratorVersion = 'material-world-v1' | 'material-world-v2-flat' | 'material-world-v3-biomes' | 'material-world-v4-regional-geology' | 'material-world-v5-river-terraces';
 
 export interface VoxelWorld {
   version: 2;
@@ -228,16 +228,16 @@ export function neighbors4(id: number): number[] {
 
 export function isPassable(world: VoxelWorld, id: number): boolean {
   if (!isCellId(id)) return false;
-  const surface = surfaceMaterial(world, id);
-  if (surface === Material.Air || surface === Material.Water || surface === Material.Fire) return false;
-  if (surface === Material.Wood || surface === Material.Leaves) return false;
-  return materialHas(surface, 'ground') || materialHas(surface, 'plant') || surface === Material.Ice || surface === Material.Plank;
+  return supportsStanding(surfaceMaterial(world, id));
 }
 
 function supportsStanding(materialId: MaterialId): boolean {
-  if (materialId === Material.Air || materialId === Material.Water || materialId === Material.Fire) return false;
-  if (materialId === Material.Wood || materialId === Material.Leaves) return false;
-  return materialHas(materialId, 'ground') || materialHas(materialId, 'plant') || materialId === Material.Ice || materialId === Material.Plank;
+  // A full rigid voxel has the same contact surface whether it was mined,
+  // grown, or placed. Raw wood must not lose support merely for lacking the
+  // processed-plank name. Leaf canopy retains its non-bearing occupancy.
+  return materialDefinition(materialId).phase === 'solid'
+    && (materialHas(materialId, 'solid') || materialHas(materialId, 'ground')
+      || materialHas(materialId, 'plant') && materialId !== Material.Leaves);
 }
 
 export function isStandingPosition(world: VoxelWorld, position: StandingPosition): boolean {

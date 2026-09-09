@@ -1,0 +1,3015 @@
+[
+  {
+    "id": "e-3-environment-weather-0",
+    "kind": "environment",
+    "atMonth": 3,
+    "orderInMonth": 0,
+    "cellId": 0,
+    "change": "weather",
+    "result": "本月天气转为浓雾",
+    "diff": {
+      "kind": "fog",
+      "intensity": 3
+    },
+    "planningTick": 0,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-3-environment-material-0",
+    "kind": "environment",
+    "atMonth": 3,
+    "orderInMonth": 1,
+    "cellId": 0,
+    "change": "material",
+    "result": "7 个格子的物质因自然过程发生变化",
+    "diff": {
+      "changes": [
+        {
+          "cellId": 586,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 841,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 1907,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 2171,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 2866,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 3619,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 3690,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        }
+      ]
+    },
+    "planningTick": 0,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-3-environment-animal-1",
+    "kind": "environment",
+    "atMonth": 3,
+    "orderInMonth": 2,
+    "cellId": 2016,
+    "change": "animal",
+    "result": "鹿取食并改变了一处植物地表",
+    "diff": {
+      "animalId": "animal-deer-2",
+      "animalSpeciesId": "deer",
+      "process": "forage",
+      "fromMaterialId": 10,
+      "toMaterialId": 9
+    },
+    "planningTick": 0,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-3-environment-animal-2",
+    "kind": "environment",
+    "atMonth": 3,
+    "orderInMonth": 3,
+    "cellId": 379,
+    "change": "animal",
+    "result": "兔在生态过程中死亡",
+    "diff": {
+      "animalId": "animal-rabbit-10",
+      "animalSpeciesId": "rabbit",
+      "process": "predation",
+      "outcome": "death",
+      "killerAnimalId": "animal-wolf-0",
+      "products": [
+        {
+          "materialId": 29,
+          "quantity": 1
+        },
+        {
+          "materialId": 30,
+          "quantity": 1
+        }
+      ]
+    },
+    "planningTick": 0,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-3-environment-animal-3",
+    "kind": "environment",
+    "atMonth": 3,
+    "orderInMonth": 4,
+    "cellId": 1933,
+    "change": "animal",
+    "result": "野猪在生态过程中死亡",
+    "diff": {
+      "animalId": "animal-boar-5",
+      "animalSpeciesId": "boar",
+      "process": "predation",
+      "outcome": "death",
+      "killerAnimalId": "animal-wolf-3",
+      "products": [
+        {
+          "materialId": 29,
+          "quantity": 5
+        },
+        {
+          "materialId": 30,
+          "quantity": 1
+        },
+        {
+          "materialId": 31,
+          "quantity": 3
+        }
+      ]
+    },
+    "planningTick": 0,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-3-opportunity-potianfeng",
+    "kind": "decision-opportunity",
+    "atMonth": 3,
+    "orderInMonth": 5,
+    "planningTick": 0,
+    "orderInTick": 5,
+    "who": "potianfeng",
+    "cellId": 2458,
+    "probability": 0.645,
+    "sample": 0.7091361253987998,
+    "triggered": false,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "破天锋本月延续已有意图"
+  },
+  {
+    "id": "e-3-opportunity-rei-ayanami",
+    "kind": "decision-opportunity",
+    "atMonth": 3,
+    "orderInMonth": 6,
+    "planningTick": 0,
+    "orderInTick": 6,
+    "who": "rei-ayanami",
+    "cellId": 2374,
+    "probability": 0.045,
+    "sample": 0.4607050565537065,
+    "triggered": false,
+    "reasons": [
+      "每月非零重新考虑概率"
+    ],
+    "result": "绫波丽本月延续已有意图"
+  },
+  {
+    "id": "e-3-opportunity-freyja",
+    "kind": "decision-opportunity",
+    "atMonth": 3,
+    "orderInMonth": 7,
+    "planningTick": 0,
+    "orderInTick": 7,
+    "who": "freyja",
+    "cellId": 2370,
+    "probability": 0.645,
+    "sample": 0.7147747948765755,
+    "triggered": false,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "芙蕾雅本月延续已有意图"
+  },
+  {
+    "id": "e-3-opportunity-cai-wenji",
+    "kind": "decision-opportunity",
+    "atMonth": 3,
+    "orderInMonth": 8,
+    "planningTick": 0,
+    "orderInTick": 8,
+    "who": "cai-wenji",
+    "cellId": 2370,
+    "probability": 0.645,
+    "sample": 0.9812575166579336,
+    "triggered": false,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "蔡文姬本月延续已有意图"
+  },
+  {
+    "id": "e-3-opportunity-sun-wu",
+    "kind": "decision-opportunity",
+    "atMonth": 3,
+    "orderInMonth": 9,
+    "planningTick": 0,
+    "orderInTick": 9,
+    "who": "sun-wu",
+    "cellId": 2370,
+    "probability": 0.645,
+    "sample": 0.9013800479006022,
+    "triggered": false,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "孙武本月延续已有意图"
+  },
+  {
+    "id": "e-3-opportunity-aphrodite",
+    "kind": "decision-opportunity",
+    "atMonth": 3,
+    "orderInMonth": 10,
+    "planningTick": 0,
+    "orderInTick": 10,
+    "who": "aphrodite",
+    "cellId": 2286,
+    "probability": 0.645,
+    "sample": 0.9842344056814909,
+    "triggered": false,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "阿佛洛狄忒本月延续已有意图"
+  },
+  {
+    "id": "e-3-opportunity-houyi",
+    "kind": "decision-opportunity",
+    "atMonth": 3,
+    "orderInMonth": 11,
+    "planningTick": 0,
+    "orderInTick": 11,
+    "who": "houyi",
+    "cellId": 2370,
+    "probability": 0.645,
+    "sample": 0.8121115632820874,
+    "triggered": false,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "后羿本月延续已有意图"
+  },
+  {
+    "id": "e-3-decision-cai-wenji-1-12",
+    "kind": "decision",
+    "atMonth": 3,
+    "orderInMonth": 12,
+    "planningTick": 1,
+    "orderInTick": 0,
+    "cellId": 2370,
+    "who": "cai-wenji",
+    "decision": {
+      "kind": "start",
+      "optionId": "conversation:shared-work:3:cai-wenji:sun-wu",
+      "followUpOptionId": "project:project-3-cai-wenji-production-efficiency:locked-source-project-logistics:project-3-cai-wenji-production-efficiency:0:source:21:31:4",
+      "reason": "双方都在同一项目留下了实际行动，可以谈共同劳动而不是抽象寒暄"
+    },
+    "intentId": "intent-3-cai-wenji-20",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "蔡文姬决定：与孙武谈共同劳动：与孙武回顾双方已经完成“把同一处材料连接成能进入并遮蔽天气的住所”的共同劳动，随后继续前往已看见的种子来源"
+  },
+  {
+    "id": "e-3-action-cai-wenji-13",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 3,
+    "orderInMonth": 13,
+    "cellId": 2370,
+    "who": "cai-wenji",
+    "intentId": "intent-3-cai-wenji-20",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "conversation:shared-work:3:cai-wenji:sun-wu",
+        "kind": "claim",
+        "summary": "与孙武回顾双方已经完成“把同一处材料连接成能进入并遮蔽天气的住所”的共同劳动",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=cai-wenji|listener=sun-wu|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "opening",
+          "speakerId": "cai-wenji",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ]
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2370,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370
+    ],
+    "status": "completed",
+    "result": "蔡文姬向孙武表达：与孙武回顾双方已经完成“把同一处材料连接成能进入并遮蔽天气的住所”的共同劳动",
+    "diff": {
+      "audience": [
+        "sun-wu"
+      ],
+      "content": {
+        "id": "conversation:shared-work:3:cai-wenji:sun-wu",
+        "kind": "claim",
+        "summary": "与孙武回顾双方已经完成“把同一处材料连接成能进入并遮蔽天气的住所”的共同劳动",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=cai-wenji|listener=sun-wu|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "opening",
+          "speakerId": "cai-wenji",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ]
+        }
+      },
+      "groundedConversationBasisKey": "grounded-conversation-v1|topic=shared-work|speaker=cai-wenji|listener=sun-wu|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+      "groundedConversationTopic": "shared-work",
+      "groundedConversationTurn": "opening",
+      "groundedConversationSourceFactIds": [
+        "e-1-action-rei-ayanami-34",
+        "e-1-action-rei-ayanami-35",
+        "e-1-action-rei-ayanami-39",
+        "e-1-action-sun-wu-41"
+      ],
+      "relationTrustDelta": 1,
+      "relationBondDelta": 2
+    },
+    "planningTick": 1,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-3-decision-freyja-1-14",
+    "kind": "decision",
+    "atMonth": 3,
+    "orderInMonth": 14,
+    "planningTick": 1,
+    "orderInTick": 2,
+    "cellId": 2370,
+    "who": "freyja",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-companion:3:freyja:sun-wu",
+      "reason": "彼此的信任与羁绊已达到结伴门槛，结伴可能降低长期风险"
+    },
+    "intentId": "intent-3-freyja-21",
+    "domain": "social",
+    "usedModel": false,
+    "result": "芙蕾雅决定：邀请孙武结伴行动"
+  },
+  {
+    "id": "e-3-action-freyja-15",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 3,
+    "orderInMonth": 15,
+    "cellId": 2370,
+    "who": "freyja",
+    "intentId": "intent-3-freyja-21",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-companion:3:freyja:sun-wu",
+        "kind": "offer",
+        "summary": "希望今后一段时间结伴行动",
+        "proposal": {
+          "kind": "companion",
+          "proposerId": "freyja",
+          "partnerId": "sun-wu",
+          "expiresAtMonth": 9,
+          "basis": {
+            "version": "relationship-causal-basis-v1",
+            "subjectKey": "relationship:companion:freyja:sun-wu",
+            "basisKey": "relationship-causal-basis-v1|subject=relationship:companion:freyja:sun-wu|observer=freyja|r=e-0-environment-founding-0|b=none",
+            "kind": "companion",
+            "proposerId": "freyja",
+            "partnerId": "sun-wu",
+            "relationshipKeys": [
+              "e-0-environment-founding-0"
+            ],
+            "bodyKeys": [],
+            "sourceFactIds": [
+              "e-0-environment-founding-0"
+            ]
+          }
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2370,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370
+    ],
+    "status": "completed",
+    "result": "芙蕾雅向孙武表达：希望今后一段时间结伴行动",
+    "diff": {
+      "audience": [
+        "sun-wu"
+      ],
+      "content": {
+        "id": "offer-companion:3:freyja:sun-wu",
+        "kind": "offer",
+        "summary": "希望今后一段时间结伴行动",
+        "proposal": {
+          "kind": "companion",
+          "proposerId": "freyja",
+          "partnerId": "sun-wu",
+          "expiresAtMonth": 9,
+          "basis": {
+            "version": "relationship-causal-basis-v1",
+            "subjectKey": "relationship:companion:freyja:sun-wu",
+            "basisKey": "relationship-causal-basis-v1|subject=relationship:companion:freyja:sun-wu|observer=freyja|r=e-0-environment-founding-0|b=none",
+            "kind": "companion",
+            "proposerId": "freyja",
+            "partnerId": "sun-wu",
+            "relationshipKeys": [
+              "e-0-environment-founding-0"
+            ],
+            "bodyKeys": [],
+            "sourceFactIds": [
+              "e-0-environment-founding-0"
+            ]
+          }
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-3-action-rei-ayanami-16",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 3,
+    "orderInMonth": 16,
+    "cellId": 2373,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2370,
+      "toZ": 5
+    },
+    "fromCellId": 2374,
+    "toCellId": 2373,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2374,
+      2373
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2373,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-3-decision-aphrodite-1-17",
+    "kind": "decision",
+    "atMonth": 3,
+    "orderInMonth": 17,
+    "planningTick": 1,
+    "orderInTick": 5,
+    "cellId": 2286,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "start",
+      "optionId": "meet:rei-ayanami",
+      "reason": "看见另一个人，接近后才能沟通、求助或共同做事"
+    },
+    "intentId": "intent-3-aphrodite-22",
+    "domain": "social",
+    "usedModel": false,
+    "result": "阿佛洛狄忒决定：去与绫波丽会合"
+  },
+  {
+    "id": "e-3-action-aphrodite-18",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 3,
+    "orderInMonth": 18,
+    "cellId": 2287,
+    "who": "aphrodite",
+    "intentId": "intent-3-aphrodite-22",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2373,
+      "toZ": 5
+    },
+    "fromCellId": 2286,
+    "toCellId": 2287,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286,
+      2287
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-3-decision-potianfeng-1-19",
+    "kind": "decision",
+    "atMonth": 3,
+    "orderInMonth": 19,
+    "planningTick": 1,
+    "orderInTick": 7,
+    "cellId": 2458,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-collective:3:potianfeng:rei-ayanami",
+      "reason": "共同项目已经完成并留下双方贡献证据，这项合作记忆仍值得转化为持续成员关系"
+    },
+    "intentId": "intent-3-potianfeng-23",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：去找绫波丽，提议延续已经成功的项目合作"
+  },
+  {
+    "id": "e-3-action-potianfeng-20",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 3,
+    "orderInMonth": 20,
+    "cellId": 2374,
+    "who": "potianfeng",
+    "intentId": "intent-3-potianfeng-23",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2373,
+      "toZ": 5
+    },
+    "fromCellId": 2458,
+    "toCellId": 2374,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2458,
+      2374
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 8
+  },
+  {
+    "id": "e-3-decision-sun-wu-1-21",
+    "kind": "decision",
+    "atMonth": 3,
+    "orderInMonth": 21,
+    "planningTick": 1,
+    "orderInTick": 9,
+    "cellId": 2370,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-companion:offer-companion:3:freyja:sun-wu",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-3-sun-wu-24",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：接受芙蕾雅的结伴提议"
+  },
+  {
+    "id": "e-3-action-sun-wu-22",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 3,
+    "orderInMonth": 22,
+    "cellId": 2370,
+    "who": "sun-wu",
+    "intentId": "intent-3-sun-wu-24",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-companion:3:freyja:sun-wu:sun-wu",
+        "kind": "accept",
+        "referenceId": "offer-companion:3:freyja:sun-wu"
+      },
+      "audience": [
+        "freyja"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2370,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370
+    ],
+    "status": "completed",
+    "result": "孙武向芙蕾雅表达：accept",
+    "diff": {
+      "audience": [
+        "freyja"
+      ],
+      "content": {
+        "id": "accept:offer-companion:3:freyja:sun-wu:sun-wu",
+        "kind": "accept",
+        "referenceId": "offer-companion:3:freyja:sun-wu"
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 10
+  },
+  {
+    "id": "e-3-decision-houyi-1-23",
+    "kind": "decision",
+    "atMonth": 3,
+    "orderInMonth": 23,
+    "planningTick": 1,
+    "orderInTick": 11,
+    "cellId": 2370,
+    "who": "houyi",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-companion:3:houyi:sun-wu",
+      "reason": "彼此的信任与羁绊已达到结伴门槛，结伴可能降低长期风险"
+    },
+    "intentId": "intent-3-houyi-25",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后羿决定：邀请孙武结伴行动"
+  },
+  {
+    "id": "e-3-action-houyi-24",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 3,
+    "orderInMonth": 24,
+    "cellId": 2370,
+    "who": "houyi",
+    "intentId": "intent-3-houyi-25",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-companion:3:houyi:sun-wu",
+        "kind": "offer",
+        "summary": "希望今后一段时间结伴行动",
+        "proposal": {
+          "kind": "companion",
+          "proposerId": "houyi",
+          "partnerId": "sun-wu",
+          "expiresAtMonth": 9,
+          "basis": {
+            "version": "relationship-causal-basis-v1",
+            "subjectKey": "relationship:companion:houyi:sun-wu",
+            "basisKey": "relationship-causal-basis-v1|subject=relationship:companion:houyi:sun-wu|observer=houyi|r=e-0-environment-founding-0|b=none",
+            "kind": "companion",
+            "proposerId": "houyi",
+            "partnerId": "sun-wu",
+            "relationshipKeys": [
+              "e-0-environment-founding-0"
+            ],
+            "bodyKeys": [],
+            "sourceFactIds": [
+              "e-0-environment-founding-0"
+            ]
+          }
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2370,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370
+    ],
+    "status": "completed",
+    "result": "后羿向孙武表达：希望今后一段时间结伴行动",
+    "diff": {
+      "audience": [
+        "sun-wu"
+      ],
+      "content": {
+        "id": "offer-companion:3:houyi:sun-wu",
+        "kind": "offer",
+        "summary": "希望今后一段时间结伴行动",
+        "proposal": {
+          "kind": "companion",
+          "proposerId": "houyi",
+          "partnerId": "sun-wu",
+          "expiresAtMonth": 9,
+          "basis": {
+            "version": "relationship-causal-basis-v1",
+            "subjectKey": "relationship:companion:houyi:sun-wu",
+            "basisKey": "relationship-causal-basis-v1|subject=relationship:companion:houyi:sun-wu|observer=houyi|r=e-0-environment-founding-0|b=none",
+            "kind": "companion",
+            "proposerId": "houyi",
+            "partnerId": "sun-wu",
+            "relationshipKeys": [
+              "e-0-environment-founding-0"
+            ],
+            "bodyKeys": [],
+            "sourceFactIds": [
+              "e-0-environment-founding-0"
+            ]
+          }
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 12
+  },
+  {
+    "id": "e-3-decision-sun-wu-2-25",
+    "kind": "decision",
+    "atMonth": 3,
+    "orderInMonth": 25,
+    "planningTick": 2,
+    "orderInTick": 0,
+    "cellId": 2370,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-companion:offer-companion:3:houyi:sun-wu",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-3-sun-wu-26",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：接受后羿的结伴提议"
+  },
+  {
+    "id": "e-3-action-sun-wu-26",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 3,
+    "orderInMonth": 26,
+    "cellId": 2370,
+    "who": "sun-wu",
+    "intentId": "intent-3-sun-wu-26",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-companion:3:houyi:sun-wu:sun-wu",
+        "kind": "accept",
+        "referenceId": "offer-companion:3:houyi:sun-wu"
+      },
+      "audience": [
+        "houyi"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2370,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370
+    ],
+    "status": "completed",
+    "result": "孙武向后羿表达：accept",
+    "diff": {
+      "audience": [
+        "houyi"
+      ],
+      "content": {
+        "id": "accept:offer-companion:3:houyi:sun-wu:sun-wu",
+        "kind": "accept",
+        "referenceId": "offer-companion:3:houyi:sun-wu"
+      }
+    },
+    "planningTick": 2,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-3-action-rei-ayanami-27",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 3,
+    "orderInMonth": 27,
+    "cellId": 2372,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2370,
+      "toZ": 5
+    },
+    "fromCellId": 2373,
+    "toCellId": 2372,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2373,
+      2372
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2372,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 2,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-3-action-aphrodite-28",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 3,
+    "orderInMonth": 28,
+    "cellId": 2288,
+    "who": "aphrodite",
+    "intentId": "intent-3-aphrodite-22",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2372,
+      "toZ": 5
+    },
+    "fromCellId": 2287,
+    "toCellId": 2288,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2287,
+      2288
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-3-action-potianfeng-29",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 3,
+    "orderInMonth": 29,
+    "cellId": 2373,
+    "who": "potianfeng",
+    "intentId": "intent-3-potianfeng-23",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2372,
+      "toZ": 5
+    },
+    "fromCellId": 2374,
+    "toCellId": 2373,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2374,
+      2373
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-3-action-cai-wenji-30",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 3,
+    "orderInMonth": 30,
+    "cellId": 2371,
+    "who": "cai-wenji",
+    "intentId": "intent-3-cai-wenji-20",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2541,
+      "toZ": 5
+    },
+    "fromCellId": 2370,
+    "toCellId": 2371,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370,
+      2371
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2371,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 2,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-3-decision-sun-wu-3-31",
+    "kind": "decision",
+    "atMonth": 3,
+    "orderInMonth": 31,
+    "planningTick": 3,
+    "orderInTick": 0,
+    "cellId": 2370,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-3-action-cai-wenji-13:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，靠近后给出明确回应"
+    },
+    "intentId": "intent-3-sun-wu-27",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：去找蔡文姬，回应关于共同劳动的话"
+  },
+  {
+    "id": "e-3-action-sun-wu-32",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 3,
+    "orderInMonth": 32,
+    "cellId": 2371,
+    "who": "sun-wu",
+    "intentId": "intent-3-sun-wu-27",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2371,
+      "toZ": 5
+    },
+    "fromCellId": 2370,
+    "toCellId": 2371,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370,
+      2371
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 19, 28 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-3-action-potianfeng-33",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 3,
+    "orderInMonth": 33,
+    "cellId": 2372,
+    "who": "potianfeng",
+    "intentId": "intent-3-potianfeng-23",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2372,
+      "toZ": 5
+    },
+    "fromCellId": 2373,
+    "toCellId": 2372,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2373,
+      2372
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 20, 28 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-3-action-aphrodite-34",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 3,
+    "orderInMonth": 34,
+    "cellId": 2372,
+    "who": "aphrodite",
+    "intentId": "intent-3-aphrodite-22",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2372,
+      "toZ": 5
+    },
+    "fromCellId": 2288,
+    "toCellId": 2372,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2288,
+      2372
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 20, 28 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-3-action-rei-ayanami-35",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 3,
+    "orderInMonth": 35,
+    "cellId": 2371,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2370,
+      "toZ": 5
+    },
+    "fromCellId": 2372,
+    "toCellId": 2371,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2372,
+      2371
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-3-action-cai-wenji-36",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 3,
+    "orderInMonth": 36,
+    "cellId": 2372,
+    "who": "cai-wenji",
+    "intentId": "intent-3-cai-wenji-20",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2541,
+      "toZ": 5
+    },
+    "fromCellId": 2371,
+    "toCellId": 2372,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2371,
+      2372
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-3-action-sun-wu-37",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 3,
+    "orderInMonth": 37,
+    "cellId": 2372,
+    "who": "sun-wu",
+    "intentId": "intent-3-sun-wu-27",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2372,
+      "toZ": 5
+    },
+    "fromCellId": 2371,
+    "toCellId": 2372,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2371,
+      2372
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 20, 28 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2372,
+          "z": 4,
+          "from": 2,
+          "to": 15
+        }
+      ]
+    },
+    "planningTick": 4,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-3-action-potianfeng-38",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 3,
+    "orderInMonth": 38,
+    "cellId": 2371,
+    "who": "potianfeng",
+    "intentId": "intent-3-potianfeng-23",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2371,
+      "toZ": 5
+    },
+    "fromCellId": 2372,
+    "toCellId": 2371,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2372,
+      2371
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 19, 28 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 4,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-3-action-rei-ayanami-39",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 3,
+    "orderInMonth": 39,
+    "cellId": 2370,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2370,
+      "toZ": 5
+    },
+    "fromCellId": 2371,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2371,
+      2370
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 28 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2370,
+          "z": 4,
+          "from": 2,
+          "to": 15
+        }
+      ]
+    },
+    "planningTick": 4,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-3-action-cai-wenji-40",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 3,
+    "orderInMonth": 40,
+    "cellId": 2373,
+    "who": "cai-wenji",
+    "intentId": "intent-3-cai-wenji-20",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2541,
+      "toZ": 5
+    },
+    "fromCellId": 2372,
+    "toCellId": 2373,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2372,
+      2373
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 4,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-3-action-potianfeng-41",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 3,
+    "orderInMonth": 41,
+    "cellId": 2370,
+    "who": "potianfeng",
+    "intentId": "intent-3-potianfeng-23",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2370,
+      "toZ": 5
+    },
+    "fromCellId": 2371,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2371,
+      2370
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 28 的高度 5",
+    "diff": {
+      "spentWork": 0.9090909090909091,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 5,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-3-action-rei-ayanami-42",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 3,
+    "orderInMonth": 42,
+    "cellId": 2370,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 13,
+      "quantity": 1,
+      "from": {
+        "kind": "ground",
+        "cellId": 2370,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "dropId": "starter-13-2370"
+    },
+    "fromCellId": 2370,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370
+    ],
+    "status": "completed",
+    "result": "木材 × 1 改变了持有者",
+    "diff": {
+      "materialId": 13,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 2370,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "witnessedBy": [
+        "potianfeng",
+        "rei-ayanami",
+        "freyja",
+        "houyi"
+      ],
+      "sourceEventIds": [
+        "e-3-action-rei-ayanami-42"
+      ],
+      "sourceLineageKeys": [
+        "drop:starter-13-2370"
+      ]
+    },
+    "planningTick": 5,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-3-action-cai-wenji-43",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 3,
+    "orderInMonth": 43,
+    "cellId": 2457,
+    "who": "cai-wenji",
+    "intentId": "intent-3-cai-wenji-20",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2541,
+      "toZ": 5
+    },
+    "fromCellId": 2373,
+    "toCellId": 2457,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2373,
+      2457
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 5,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-3-action-sun-wu-44",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 3,
+    "orderInMonth": 44,
+    "cellId": 2373,
+    "who": "sun-wu",
+    "intentId": "intent-3-sun-wu-27",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2457,
+      "toZ": 5
+    },
+    "fromCellId": 2372,
+    "toCellId": 2373,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2372,
+      2373
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 5,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-3-action-rei-ayanami-45",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 3,
+    "orderInMonth": 45,
+    "cellId": 2286,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1950,
+      "toZ": 5
+    },
+    "fromCellId": 2370,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370,
+      2286
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2286,
+          "z": 4,
+          "from": 2,
+          "to": 15
+        }
+      ]
+    },
+    "planningTick": 6,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-3-action-cai-wenji-46",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 3,
+    "orderInMonth": 46,
+    "cellId": 2541,
+    "who": "cai-wenji",
+    "intentId": "intent-3-cai-wenji-20",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2541,
+      "toZ": 5
+    },
+    "fromCellId": 2457,
+    "toCellId": 2541,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2457,
+      2541
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 21, 30 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 6,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-3-action-sun-wu-47",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 3,
+    "orderInMonth": 47,
+    "cellId": 2457,
+    "who": "sun-wu",
+    "intentId": "intent-3-sun-wu-27",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2541,
+      "toZ": 5
+    },
+    "fromCellId": 2373,
+    "toCellId": 2457,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2373,
+      2457
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 6,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-3-action-potianfeng-48",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 3,
+    "orderInMonth": 48,
+    "cellId": 2286,
+    "who": "potianfeng",
+    "intentId": "intent-3-potianfeng-23",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2286,
+      "toZ": 5
+    },
+    "fromCellId": 2370,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370,
+      2286
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 27 的高度 5",
+    "diff": {
+      "spentWork": 0.9090909090909091,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 6,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-3-action-potianfeng-49",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 3,
+    "orderInMonth": 49,
+    "cellId": 2286,
+    "who": "potianfeng",
+    "intentId": "intent-3-potianfeng-23",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-collective:3:potianfeng:rei-ayanami",
+        "kind": "offer",
+        "summary": "我们已经一起完成过“把同一处材料连接成能进入并遮蔽天气的住所”，愿不愿意以后继续继续协作完成共同住所与环境改造？",
+        "proposal": {
+          "kind": "collective",
+          "proposerId": "potianfeng",
+          "partnerId": "rei-ayanami",
+          "purposeSummary": "继续协作完成共同住所与环境改造",
+          "expiresAtMonth": 9
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2286,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286
+    ],
+    "status": "completed",
+    "result": "破天锋向绫波丽表达：我们已经一起完成过“把同一处材料连接成能进入并遮蔽天气的住所”，愿不愿意以后继续继续协作完成共同住所与环境改造？",
+    "diff": {
+      "audience": [
+        "rei-ayanami"
+      ],
+      "content": {
+        "id": "offer-collective:3:potianfeng:rei-ayanami",
+        "kind": "offer",
+        "summary": "我们已经一起完成过“把同一处材料连接成能进入并遮蔽天气的住所”，愿不愿意以后继续继续协作完成共同住所与环境改造？",
+        "proposal": {
+          "kind": "collective",
+          "proposerId": "potianfeng",
+          "partnerId": "rei-ayanami",
+          "purposeSummary": "继续协作完成共同住所与环境改造",
+          "expiresAtMonth": 9
+        }
+      }
+    },
+    "planningTick": 7,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-3-action-cai-wenji-50",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 3,
+    "orderInMonth": 50,
+    "cellId": 2541,
+    "who": "cai-wenji",
+    "intentId": "intent-3-cai-wenji-20",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "separate",
+      "targets": [
+        {
+          "kind": "voxel",
+          "position": {
+            "x": 21,
+            "y": 31,
+            "z": 4
+          }
+        }
+      ]
+    },
+    "fromCellId": 2541,
+    "toCellId": 2541,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2541
+    ],
+    "status": "completed",
+    "result": "从结果灌木分离出食物 × 3、种子 × 1",
+    "diff": {
+      "sourceMaterialId": 10,
+      "replacementMaterialId": 9,
+      "outputs": [
+        {
+          "materialId": 21,
+          "quantity": 3
+        },
+        {
+          "materialId": 22,
+          "quantity": 1
+        }
+      ],
+      "productionMultiplier": 1
+    },
+    "planningTick": 7,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-3-action-sun-wu-51",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 3,
+    "orderInMonth": 51,
+    "cellId": 2541,
+    "who": "sun-wu",
+    "intentId": "intent-3-sun-wu-27",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2541,
+      "toZ": 5
+    },
+    "fromCellId": 2457,
+    "toCellId": 2541,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2457,
+      2541
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 21, 30 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 7,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-3-decision-rei-ayanami-7-52",
+    "kind": "decision",
+    "atMonth": 3,
+    "orderInMonth": 52,
+    "planningTick": 7,
+    "orderInTick": 3,
+    "cellId": 2286,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-2-rei-ayanami-8",
+      "optionId": "accept-collective:offer-collective:3:potianfeng:rei-ayanami",
+      "mode": "interrupt",
+      "interruptionKind": "required-response",
+      "reason": "先完成必须由本人作出的回应"
+    },
+    "intentId": "intent-3-rei-ayanami-interrupt-28",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽暂时处理：接受破天锋的共同体提议"
+  },
+  {
+    "id": "e-3-action-rei-ayanami-53",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 3,
+    "orderInMonth": 53,
+    "cellId": 2286,
+    "who": "rei-ayanami",
+    "intentId": "intent-3-rei-ayanami-interrupt-28",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami",
+        "kind": "accept",
+        "referenceId": "offer-collective:3:potianfeng:rei-ayanami"
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2286,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286
+    ],
+    "status": "completed",
+    "result": "绫波丽向破天锋表达：accept",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "accept:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami",
+        "kind": "accept",
+        "referenceId": "offer-collective:3:potianfeng:rei-ayanami"
+      }
+    },
+    "planningTick": 7,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-3-action-rei-ayanami-54",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 3,
+    "orderInMonth": 54,
+    "cellId": 2202,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1950,
+      "toZ": 5
+    },
+    "fromCellId": 2286,
+    "toCellId": 2202,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286,
+      2202
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 8,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-3-action-cai-wenji-55",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 3,
+    "orderInMonth": 55,
+    "cellId": 2541,
+    "who": "cai-wenji",
+    "intentId": "intent-3-cai-wenji-20",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 22,
+      "quantity": 1,
+      "from": {
+        "kind": "ground",
+        "cellId": 2541,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "cai-wenji"
+      },
+      "dropId": "drop-3-cai-wenji-separate-336"
+    },
+    "fromCellId": 2541,
+    "toCellId": 2541,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2541
+    ],
+    "status": "completed",
+    "result": "种子 × 1 改变了持有者",
+    "diff": {
+      "materialId": 22,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 2541,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "cai-wenji"
+      },
+      "witnessedBy": [
+        "cai-wenji",
+        "sun-wu"
+      ],
+      "sourceEventIds": [
+        "e-3-action-cai-wenji-50",
+        "e-3-action-cai-wenji-55"
+      ],
+      "sourceLineageKeys": [
+        "drop:drop-3-cai-wenji-separate-336"
+      ],
+      "declarationEventId": "e-3-action-cai-wenji-13",
+      "declarationWitnessedBy": [
+        "sun-wu"
+      ]
+    },
+    "planningTick": 8,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-3-action-sun-wu-56",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 3,
+    "orderInMonth": 56,
+    "cellId": 2541,
+    "who": "sun-wu",
+    "intentId": "intent-3-sun-wu-27",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-3-action-cai-wenji-13:sun-wu",
+        "kind": "claim",
+        "summary": "回应双方共同劳动的经历，并确认协作带来的陪伴感",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=cai-wenji|listener=sun-wu|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ],
+          "referenceEventId": "e-3-action-cai-wenji-13",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2541,
+    "toCellId": 2541,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2541
+    ],
+    "status": "completed",
+    "result": "孙武向蔡文姬表达：回应双方共同劳动的经历，并确认协作带来的陪伴感",
+    "diff": {
+      "audience": [
+        "cai-wenji"
+      ],
+      "content": {
+        "id": "respond-conversation:e-3-action-cai-wenji-13:sun-wu",
+        "kind": "claim",
+        "summary": "回应双方共同劳动的经历，并确认协作带来的陪伴感",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=cai-wenji|listener=sun-wu|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ],
+          "referenceEventId": "e-3-action-cai-wenji-13",
+          "stance": "supportive"
+        }
+      },
+      "groundedConversationBasisKey": "grounded-conversation-v1|topic=shared-work|speaker=cai-wenji|listener=sun-wu|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+      "groundedConversationTopic": "shared-work",
+      "groundedConversationTurn": "response",
+      "groundedConversationSourceFactIds": [
+        "e-1-action-rei-ayanami-34",
+        "e-1-action-rei-ayanami-35",
+        "e-1-action-rei-ayanami-39",
+        "e-1-action-sun-wu-41"
+      ],
+      "groundedConversationReferenceEventId": "e-3-action-cai-wenji-13",
+      "groundedConversationStance": "supportive",
+      "relationTrustDelta": 1,
+      "relationBondDelta": 2
+    },
+    "planningTick": 8,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-3-decision-sun-wu-9-57",
+    "kind": "decision",
+    "atMonth": 3,
+    "orderInMonth": 57,
+    "planningTick": 9,
+    "orderInTick": 0,
+    "cellId": 2541,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-3-action-cai-wenji-13:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-3-sun-wu-29",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应蔡文姬关于共同劳动的话：回应双方共同劳动的经历，并确认协作带来的陪伴感"
+  },
+  {
+    "id": "e-3-action-sun-wu-58",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 3,
+    "orderInMonth": 58,
+    "cellId": 2541,
+    "who": "sun-wu",
+    "intentId": "intent-3-sun-wu-29",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-3-action-cai-wenji-13:sun-wu",
+        "kind": "claim",
+        "summary": "回应双方共同劳动的经历，并确认协作带来的陪伴感",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=cai-wenji|listener=sun-wu|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ],
+          "referenceEventId": "e-3-action-cai-wenji-13",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2541,
+    "toCellId": 2541,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2541
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 9,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-3-action-rei-ayanami-59",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 3,
+    "orderInMonth": 59,
+    "cellId": 2118,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1950,
+      "toZ": 5
+    },
+    "fromCellId": 2202,
+    "toCellId": 2118,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2202,
+      2118
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 9,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-3-action-cai-wenji-60",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 3,
+    "orderInMonth": 60,
+    "cellId": 2457,
+    "who": "cai-wenji",
+    "intentId": "intent-3-cai-wenji-20",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2453,
+      "toZ": 5
+    },
+    "fromCellId": 2541,
+    "toCellId": 2457,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2541,
+      2457
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2457,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 9,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-3-action-cai-wenji-61",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 3,
+    "orderInMonth": 61,
+    "cellId": 2456,
+    "who": "cai-wenji",
+    "intentId": "intent-3-cai-wenji-20",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2453,
+      "toZ": 5
+    },
+    "fromCellId": 2457,
+    "toCellId": 2456,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2457,
+      2456
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 10,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-3-action-rei-ayanami-62",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 3,
+    "orderInMonth": 62,
+    "cellId": 2034,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1950,
+      "toZ": 5
+    },
+    "fromCellId": 2118,
+    "toCellId": 2034,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2118,
+      2034
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 10,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-3-decision-sun-wu-10-63",
+    "kind": "decision",
+    "atMonth": 3,
+    "orderInMonth": 63,
+    "planningTick": 10,
+    "orderInTick": 2,
+    "cellId": 2541,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-3-action-cai-wenji-13:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，靠近后给出明确回应"
+    },
+    "intentId": "intent-3-sun-wu-30",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：去找蔡文姬，回应关于共同劳动的话"
+  },
+  {
+    "id": "e-3-action-sun-wu-64",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 3,
+    "orderInMonth": 64,
+    "cellId": 2457,
+    "who": "sun-wu",
+    "intentId": "intent-3-sun-wu-30",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2456,
+      "toZ": 5
+    },
+    "fromCellId": 2541,
+    "toCellId": 2457,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2541,
+      2457
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 10,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-3-action-rei-ayanami-65",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 3,
+    "orderInMonth": 65,
+    "cellId": 1950,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1950,
+      "toZ": 5
+    },
+    "fromCellId": 2034,
+    "toCellId": 1950,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2034,
+      1950
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 23 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 11,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-3-action-sun-wu-66",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 3,
+    "orderInMonth": 66,
+    "cellId": 2456,
+    "who": "sun-wu",
+    "intentId": "intent-3-sun-wu-30",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2456,
+      "toZ": 5
+    },
+    "fromCellId": 2457,
+    "toCellId": 2456,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2457,
+      2456
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 20, 29 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 11,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-3-action-cai-wenji-67",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 3,
+    "orderInMonth": 67,
+    "cellId": 2455,
+    "who": "cai-wenji",
+    "intentId": "intent-3-cai-wenji-20",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2453,
+      "toZ": 5
+    },
+    "fromCellId": 2456,
+    "toCellId": 2455,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2456,
+      2455
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 11,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-3-action-sun-wu-68",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 3,
+    "orderInMonth": 68,
+    "cellId": 2455,
+    "who": "sun-wu",
+    "intentId": "intent-3-sun-wu-30",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2455,
+      "toZ": 5
+    },
+    "fromCellId": 2456,
+    "toCellId": 2455,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2456,
+      2455
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 19, 29 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 12,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-3-action-cai-wenji-69",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 3,
+    "orderInMonth": 69,
+    "cellId": 2454,
+    "who": "cai-wenji",
+    "intentId": "intent-3-cai-wenji-20",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2453,
+      "toZ": 5
+    },
+    "fromCellId": 2455,
+    "toCellId": 2454,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2455,
+      2454
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 12,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-3-action-rei-ayanami-70",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 3,
+    "orderInMonth": 70,
+    "cellId": 1866,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1782,
+      "toZ": 5
+    },
+    "fromCellId": 1950,
+    "toCellId": 1866,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1950,
+      1866
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 12,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-3-action-rei-ayanami-71",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 3,
+    "orderInMonth": 71,
+    "cellId": 1782,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1782,
+      "toZ": 5
+    },
+    "fromCellId": 1866,
+    "toCellId": 1782,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1866,
+      1782
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 21 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 13,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-3-action-cai-wenji-72",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 3,
+    "orderInMonth": 72,
+    "cellId": 2454,
+    "who": "cai-wenji",
+    "intentId": "intent-3-cai-wenji-20",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "combine",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "cai-wenji",
+          "stackId": "stack-cai-wenji-22-3"
+        },
+        {
+          "kind": "voxel",
+          "position": {
+            "x": 17,
+            "y": 29,
+            "z": 4
+          }
+        }
+      ]
+    },
+    "fromCellId": 2454,
+    "toCellId": 2454,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2454
+    ],
+    "status": "completed",
+    "result": "种子与湿土结合为作物幼苗",
+    "diff": {
+      "techniqueId": "technique:combine:22:3:11",
+      "inputMaterialId": 22,
+      "targetMaterialId": 3,
+      "outputMaterialId": 11,
+      "position": {
+        "x": 17,
+        "y": 29,
+        "z": 4
+      },
+      "sourceEventId": "e-3-action-cai-wenji-72"
+    },
+    "planningTick": 13,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-3-action-sun-wu-73",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 3,
+    "orderInMonth": 73,
+    "cellId": 2454,
+    "who": "sun-wu",
+    "intentId": "intent-3-sun-wu-30",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2454,
+      "toZ": 5
+    },
+    "fromCellId": 2455,
+    "toCellId": 2454,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2455,
+      2454
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 29 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 13,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-3-action-cai-wenji-74",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 3,
+    "orderInMonth": 74,
+    "cellId": 2370,
+    "who": "cai-wenji",
+    "intentId": "intent-3-cai-wenji-20",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2290,
+      "toZ": 5
+    },
+    "fromCellId": 2454,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2454,
+      2370
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 0.9090909090909091,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 14,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-3-action-rei-ayanami-75",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 3,
+    "orderInMonth": 75,
+    "cellId": 1782,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "separate",
+      "targets": [
+        {
+          "kind": "voxel",
+          "position": {
+            "x": 17,
+            "y": 21,
+            "z": 6
+          }
+        }
+      ],
+      "toolStackId": "stack-rei-ayanami-41-2"
+    },
+    "fromCellId": 1782,
+    "toCellId": 1782,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1782
+    ],
+    "status": "completed",
+    "result": "从树叶分离出木材 × 3、纤维 × 1",
+    "diff": {
+      "sourceMaterialId": 14,
+      "replacementMaterialId": 0,
+      "outputs": [
+        {
+          "materialId": 13,
+          "quantity": 3
+        },
+        {
+          "materialId": 20,
+          "quantity": 1
+        }
+      ],
+      "productionMultiplier": 1.25,
+      "toolMaterialId": 41,
+      "toolStackId": "stack-rei-ayanami-41-2"
+    },
+    "planningTick": 14,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-3-action-sun-wu-76",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 3,
+    "orderInMonth": 76,
+    "cellId": 2370,
+    "who": "sun-wu",
+    "intentId": "intent-3-sun-wu-30",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2370,
+      "toZ": 5
+    },
+    "fromCellId": 2454,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2454,
+      2370
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 28 的高度 5",
+    "diff": {
+      "spentWork": 0.9090909090909091,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 14,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-3-action-sun-wu-77",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 3,
+    "orderInMonth": 77,
+    "cellId": 2370,
+    "who": "sun-wu",
+    "intentId": "intent-3-sun-wu-30",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-3-action-cai-wenji-13:sun-wu",
+        "kind": "claim",
+        "summary": "回应双方共同劳动的经历，并确认协作带来的陪伴感",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=shared-work|speaker=cai-wenji|listener=sun-wu|sources=e-1-action-rei-ayanami-34,e-1-action-rei-ayanami-35,e-1-action-rei-ayanami-39,e-1-action-sun-wu-41",
+          "topic": "shared-work",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-1-action-rei-ayanami-34",
+            "e-1-action-rei-ayanami-35",
+            "e-1-action-rei-ayanami-39",
+            "e-1-action-sun-wu-41"
+          ],
+          "referenceEventId": "e-3-action-cai-wenji-13",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2370,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 15,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-3-action-cai-wenji-78",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 3,
+    "orderInMonth": 78,
+    "cellId": 2286,
+    "who": "cai-wenji",
+    "intentId": "intent-3-cai-wenji-20",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2290,
+      "toZ": 5
+    },
+    "fromCellId": 2370,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370,
+      2286
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 0.9090909090909091,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 15,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-3-action-rei-ayanami-79",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 3,
+    "orderInMonth": 79,
+    "cellId": 1782,
+    "who": "rei-ayanami",
+    "intentId": "intent-2-rei-ayanami-8",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 20,
+      "quantity": 1,
+      "from": {
+        "kind": "ground",
+        "cellId": 1782,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "dropId": "drop-3-rei-ayanami-separate-337"
+    },
+    "fromCellId": 1782,
+    "toCellId": 1782,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1782
+    ],
+    "status": "completed",
+    "result": "纤维 × 1 改变了持有者",
+    "diff": {
+      "materialId": 20,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 1782,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "witnessedBy": [
+        "rei-ayanami"
+      ],
+      "sourceEventIds": [
+        "e-3-action-rei-ayanami-75",
+        "e-3-action-rei-ayanami-79"
+      ],
+      "sourceLineageKeys": [
+        "drop:drop-3-rei-ayanami-separate-337"
+      ]
+    },
+    "planningTick": 15,
+    "orderInTick": 2
+  }
+]

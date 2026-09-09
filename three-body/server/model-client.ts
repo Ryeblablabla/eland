@@ -1,4 +1,5 @@
 import type { ModelProtocol, ResolvedModelEndpoint } from './model-config';
+import { modelSchemaGuideText } from './model-schema-guide';
 
 export interface ModelMessage {
   role: 'system' | 'user' | 'assistant';
@@ -84,15 +85,24 @@ function openAiChatThinking(endpoint: ResolvedModelEndpoint): Record<string, unk
 }
 
 function requestBody(endpoint: ResolvedModelEndpoint, request: ModelTextRequest): Record<string, unknown> {
-  // json_object only promises JSON syntax. Prompt-mode endpoints and
-  // Anthropic also need the actual field contract, not an unsent schema.
+  // Ollama's format controls decoding, but the model also needs to read the
+  // field meanings. Ground native Ollama output in the same explicit contract.
   const nativeSchema = endpoint.structuredOutput === 'native-json'
-    && (endpoint.protocol === 'openai-responses' || endpoint.protocol === 'ollama-chat');
-  const messages: ModelMessage[] = request.jsonObject && request.jsonSchema && !nativeSchema
-    ? [...request.messages, {
+    && endpoint.protocol === 'openai-responses';
+  const guide: ModelMessage | undefined = request.jsonObject && request.jsonSchema && !nativeSchema
+    ? {
       role: 'user',
-      content: `本轮输出使用以下 JSON Schema。它描述字段与引用格式，不改变人物目标或世界事实；只输出符合它的 JSON 对象。\n${JSON.stringify(request.jsonSchema.schema)}`,
-    }]
+      content: endpoint.protocol === 'ollama-chat' && endpoint.structuredOutput === 'native-json'
+        ? modelSchemaGuideText(request.jsonSchema.schema)
+        : `本轮输出使用以下 JSON Schema。它描述字段与引用格式，不改变人物目标或世界事实；只输出符合它的 JSON 对象。\n${JSON.stringify(request.jsonSchema.schema)}`,
+    }
+    : undefined;
+  // Read the output contract before the current scene. Corrections stay after
+  // the scene and prior answer; a large schema must not become the final task.
+  const firstUser = request.messages.findIndex((message) => message.role === 'user');
+  const guidePosition = firstUser < 0 ? request.messages.length : firstUser;
+  const messages: ModelMessage[] = guide
+    ? [...request.messages.slice(0, guidePosition), guide, ...request.messages.slice(guidePosition)]
     : request.messages;
   const common = {
     model: endpoint.model,

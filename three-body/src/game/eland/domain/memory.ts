@@ -1,5 +1,5 @@
 import type { ActionFact, SimulationState } from './model';
-import { isAlive, type MemoryRecord, type PersonState } from './person';
+import { isAlive, isDormantDehydratedHibernating, type MemoryRecord, type PersonState } from './person';
 import { causalMemoryTraceForAction, isMeaningfulCognitiveOutcome } from './cognition';
 import { memoryCapacityMultiplier, memoryDurationMultiplier } from './trait';
 import { personById } from './state-index';
@@ -389,6 +389,8 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
     ? causalMemoryTraceForAction(state, fact)
     : undefined;
   const languageBroadcast = fact.action.kind === 'talk' ? languageBroadcastFromDiff(fact.diff) : undefined;
+  const workModifications = fact.action.kind === 'world-interact' && Array.isArray(fact.diff.appliedEffects)
+    ? fact.diff.appliedEffects.filter((effect) => effect?.kind === 'modify-structure' && Array.isArray(effect.witnessedBy)) : [];
   const participantIds = fact.action.kind === 'talk'
     ? languageBroadcast?.perceivedByPersonIds ?? []
     : fact.action.kind === 'transfer'
@@ -399,7 +401,17 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
       : fact.action.kind === 'act'
         ? fact.action.targets.flatMap((target) => target.kind === 'person' ? [target.personId] : [])
         : fact.action.kind === 'world-interact'
-          ? fact.action.adjudication.targets.flatMap((target) => target.kind === 'person' ? [target.personId] : [])
+          ? [
+              ...fact.action.adjudication.targets.flatMap((target) => target.kind === 'person' ? [target.personId] : []),
+              ...(Array.isArray(fact.diff.appliedEffects) ? fact.diff.appliedEffects : [])
+                .flatMap((effect) => effect?.kind === 'transfer' ? [
+                  ...(effect.target?.kind === 'inventory-stack' && typeof effect.target.personId === 'string'
+                    ? [effect.target.personId] : []),
+                  ...(effect.destination?.kind === 'person' && typeof effect.destination.personId === 'string'
+                    ? [effect.destination.personId] : []),
+                ] : []),
+              ...workModifications.flatMap((effect) => effect.witnessedBy),
+            ]
         : fact.action.kind === 'attend' && fact.action.target.kind === 'person'
           ? [fact.action.target.personId]
           : [];
@@ -477,7 +489,7 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
     const observerIds = Array.isArray(fact.diff.witnessedBy) ? fact.diff.witnessedBy.filter((id): id is string => typeof id === 'string') : [];
     for (const observerId of new Set([victimId, ...observerIds])) {
       const observer = personById(state, observerId);
-      if (!observer || observer.id === actor.id) continue;
+      if (!observer || !isAlive(observer) || isDormantDehydratedHibernating(observer) || observer.id === actor.id) continue;
       const victim = personById(state, victimId);
       remember(observer, {
         id: `memory:${fact.id}:${observer.id}`,
@@ -493,28 +505,41 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
       });
     }
   }
-  const personTransfer = fact.action.kind === 'transfer' && fact.action.from.kind === 'person' ? fact.action : undefined;
+  const worldTransfer = fact.action.kind === 'world-interact' && Array.isArray(fact.diff.appliedEffects)
+    ? fact.diff.appliedEffects.find((effect) => effect?.kind === 'transfer') : undefined;
+  const personTransfer = fact.action.kind === 'transfer' ? fact.action
+    : worldTransfer ? {
+      from: worldTransfer.target?.kind === 'inventory-stack'
+        ? { kind: 'person' as const, personId: String(worldTransfer.target.personId) }
+        : { kind: 'ground' as const },
+      to: worldTransfer.destination?.kind === 'person'
+        ? { kind: 'person' as const, personId: String(worldTransfer.destination.personId) }
+        : { kind: 'ground' as const },
+    } : undefined;
   if (personTransfer) {
     const transfer = personTransfer;
     const transferFrom = transfer.from;
     const transferTo = transfer.to;
-    if (transferFrom.kind !== 'person') return;
-    const sourceOwnerId = transferFrom.personId;
-    const sourceOwner = personById(state, sourceOwnerId);
+    const sourceOwnerId = transferFrom.kind === 'person' ? transferFrom.personId : undefined;
+    const sourceOwner = sourceOwnerId ? personById(state, sourceOwnerId) : undefined;
     const receiverId = transferTo.kind === 'person' ? transferTo.personId : undefined;
     const receiver = receiverId ? personById(state, receiverId) : undefined;
     const unauthorized = fact.diff.authorized === false;
     const observerIds = Array.isArray(fact.diff.witnessedBy) ? fact.diff.witnessedBy.filter((id): id is string => typeof id === 'string') : [];
-    const participantIds = unauthorized ? [sourceOwner?.id, receiver?.id, ...observerIds] : [receiver?.id];
+    const transferred = Number(fact.diff.quantity ?? worldTransfer?.quantity) > 0;
+    const informedOwner = sourceOwner && (observerIds.includes(sourceOwner.id) || fact.diff.resistedBy === sourceOwner.id);
+    const participantIds = unauthorized
+      ? [informedOwner ? sourceOwner?.id : undefined, ...(transferred ? [receiver?.id] : []), ...observerIds]
+      : transferred ? [receiver?.id] : [];
     for (const observerId of new Set(participantIds.filter((id): id is string => Boolean(id)))) {
       const observer = personById(state, observerId);
-      if (!observer || observer.id === actor.id) continue;
+      if (!observer || !isAlive(observer) || isDormantDehydratedHibernating(observer) || observer.id === actor.id) continue;
       remember(observer, {
         id: `memory:${fact.id}:${observer.id}`,
         kind: 'episode',
         summary: unauthorized
-          ? `${actor.name}未经允许试图从${sourceOwner?.name ?? '他人'}处取得物质：${fact.result}`
-          : `${actor.name}把物质转交给自己：${fact.result}`,
+          ? `${actor.name}未经允许试图${sourceOwner ? `从${sourceOwner.name}处` : '从地面'}取得物质：${fact.result}`
+          : `${actor.name}把物质转交给${receiver?.name ?? observer.name}；${observer.name}已实际收到：${fact.result}`,
         importance: unauthorized ? (observer.id === sourceOwner?.id ? 94 : 76) : 72,
         createdAtMonth: fact.atMonth,
         lastRecalledAtMonth: fact.atMonth,
@@ -522,6 +547,25 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
         sourceEventIds: [fact.id],
       });
     }
+  }
+  const workObservers = new Map<string, string[]>();
+  for (const effect of workModifications) {
+    const work = state.world.works?.find((candidate) => candidate.id === effect.workId);
+    for (const observerId of effect.witnessedBy) {
+      if (typeof observerId !== 'string' || observerId === actor.id) continue;
+      const descriptions = workObservers.get(observerId) ?? [];
+      descriptions.push(`看见${actor.name}改动了${work ? `“${work.summary}”` : '眼前的造物'}`);
+      workObservers.set(observerId, descriptions);
+    }
+  }
+  for (const [observerId, descriptions] of workObservers) {
+    const observer = personById(state, observerId);
+    if (!observer || !isAlive(observer) || isDormantDehydratedHibernating(observer)) continue;
+    remember(observer, {
+      id: `memory:${fact.id}:${observer.id}`, kind: 'episode', summary: [...new Set(descriptions)].join('；'),
+      importance: 64, createdAtMonth: fact.atMonth, lastRecalledAtMonth: fact.atMonth,
+      personIds: [actor.id], sourceEventIds: [fact.id],
+    });
   }
   if (fact.action.kind === 'act' && typeof fact.diff.caredPersonId === 'string') {
     const cared = personById(state, fact.diff.caredPersonId);

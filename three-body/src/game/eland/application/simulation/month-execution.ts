@@ -1,6 +1,7 @@
 import { executePrimitiveAction } from '../../domain/action-executor';
 import { synchronizeAgreementResponseDeadlineSuspensions } from '../../domain/agreement';
 import { PLANNING_TICKS_PER_MONTH } from '../../domain/calendar';
+import { BODY_DAYS_PER_MONTH } from '../../domain/body-metabolism';
 import { ORDINARY_DECISION_PERSON_MONTHS } from '../../domain/decision-budget';
 import {
   chooseDependentCareReflex,
@@ -21,6 +22,7 @@ import type {
 } from '../../domain/model';
 import {
   advanceBodies,
+  advanceBodyTime,
   advanceSharedRelationshipExperience,
   synchronizeHibernationIntentSuspensions,
 } from '../../domain/monthly-processes';
@@ -45,7 +47,7 @@ import { hasCausalShelterAdaptationNeed } from '../project-options';
 import { RulePlanner } from '../rule-planner';
 import {
   activeIntent,
-  applyDecision,
+  commitDecision,
   continuesSelfCareAfterCaregiverReturn,
   decisionPlanningChannel,
   drainInterruptedIntentReturns,
@@ -156,18 +158,18 @@ export function createMonthExecution(input: {
       if (picked.decision.kind !== 'idle'
         || picked.usedModel
         || Boolean(picked.decision.characterAgendaUpdate)) {
-        prepared.events.push(applyDecision(
+        commitDecision(
           prepared.state,
           person,
           freshContext,
           picked.decision,
           picked.usedModel,
           prepared.atMonth,
-          prepared.events.length,
+          prepared.events,
           1,
           planningChannel,
           selectedOptionAtDecision,
-        ));
+        );
       }
       plannedAtTickOne.add(person.id);
       plannedAtTicks.set(person.id, 1);
@@ -210,20 +212,20 @@ export function applyPlanningDecisions(
       execution.ordinaryReplanPermits.delete(person.id);
     }
     if (decision.kind !== 'idle' || usedModel || Boolean(decision.characterAgendaUpdate)) {
-      events.push(applyDecision(
+      commitDecision(
         state,
         person,
         context,
         decision,
         usedModel,
         atMonth,
-        events.length,
+        events,
         planningTick,
         planningChannel,
         decision.kind === 'start' || decision.kind === 'revise'
           ? context.options.find((option) => option.id === decision.optionId)
           : undefined,
-      ));
+      );
     }
     execution.plannedAtTicks.set(person.id, planningTick);
     execution.reviewedPeople.add(person.id);
@@ -361,18 +363,18 @@ function executeActorControl(
       execution.ordinaryReplanPermits.delete(person.id);
     }
     execution.reviewedPeople.add(person.id);
-    if (control.decision.kind !== 'idle' || Boolean(control.decision.characterAgendaUpdate)) {
-      events.push(applyDecision(
+    if (control.decision.kind !== 'idle' || control.usedModel || Boolean(control.decision.characterAgendaUpdate)) {
+      commitDecision(
         state,
         person,
         control.context,
         control.decision,
         control.usedModel ?? false,
         atMonth,
-        events.length,
+        events,
         actionTick,
         planningChannel,
-      ));
+      );
     }
     if (control.decision.kind === 'idle') {
       if (person.lastActionAtMonth !== atMonth) person.currentActionText = control.decision.reason;
@@ -535,9 +537,54 @@ export function executePlanningTick(
           continue;
         }
         const rootBeforeInterruption = rootIntentForPerson(state, person);
-        const fact = executeProtectiveInterruption(state, person, reflex, 'survival-reflex', atMonth, actionTick, events);
+        let intakeStart = { cellId: person.position.cellId, z: person.position.z, ...person.body };
+        let fact = executeProtectiveInterruption(state, person, reflex, 'survival-reflex', atMonth, actionTick, events);
         person.currentActionText = fact.result;
         drainInterruptedIntentReturns(state, person, atMonth);
+        // The existing reflex can finish several immediate drinks/meals in
+        // the same activity interval. It still chooses each actual action;
+        // searches, travel and other work never enter this short intake loop.
+        let immediateIntake = false;
+        while (fact.status === 'completed' && fact.action.kind === 'act' && fact.action.operation === 'ingest'
+          && person.position.cellId === intakeStart.cellId && person.position.z === intakeStart.z
+          && person.body.hydration >= intakeStart.hydration && person.body.nutrition >= intakeStart.nutrition
+          && (person.body.hydration > intakeStart.hydration || person.body.nutrition > intakeStart.nutrition)
+          && isAlive(person) && !isDormantDehydratedHibernating(person) && !isRecoveringFromDehydratedHibernation(person)) {
+          immediateIntake = true;
+          const nextReflex = chooseSurvivalReflex(state, person, {
+            suppressThermalShelter: causalShelterWork, currentMonthEvents: events,
+          });
+          if (nextReflex?.kind !== 'act' || nextReflex.operation !== 'ingest') break;
+          const nextCare = dependentChild ? null : chooseDependentCareReflex(state, person, {
+            suppressThermalShelter: causalShelterWork, currentMonthEvents: events,
+          });
+          if (nextCare && dependentCareUrgency(state, person) > survivalReflexUrgency(state, person)) break;
+          intakeStart = { cellId: person.position.cellId, z: person.position.z, ...person.body };
+          fact = executeProtectiveInterruption(state, person, nextReflex, 'survival-reflex', atMonth, actionTick, events);
+          person.currentActionText = fact.result;
+          drainInterruptedIntentReturns(state, person, atMonth);
+          immediateIntake = false;
+        }
+        // Only the original body intent can use the remaining activity slot;
+        // this does not invoke another planner or choose another goal.
+        const originalWork = rootBeforeInterruption ? intentById(state, rootBeforeInterruption.id) : undefined;
+        if (immediateIntake && rootBeforeInterruption && originalWork?.ownerId === person.id
+          && originalWork.interruptionKind === undefined && originalWork.nextAction.kind !== 'talk'
+          && (originalWork.status === 'active' || originalWork.status === 'suspended') && !dependentChild
+          && isAlive(person) && !isDormantDehydratedHibernating(person) && !isRecoveringFromDehydratedHibernation(person)
+          && !chooseSurvivalReflex(state, person, { suppressThermalShelter: causalShelterWork, currentMonthEvents: events })
+          && !chooseDependentCareReflex(state, person, { suppressThermalShelter: causalShelterWork, currentMonthEvents: events })
+          && !shouldRemainSheltered(state, person)
+          && !shouldRemainShelteredForDependent(state, person)
+          && !shouldRemainShelteredFromWildlifeThreat(state, person, atMonth, events)) {
+          resolveClearedProtectiveInterruption(state, person, 'survival-reflex', atMonth);
+          drainInterruptedIntentReturns(state, person, atMonth);
+          const resumedWork = activeIntent(state, person);
+          if (resumedWork?.id === rootBeforeInterruption.id && resumedWork.ownerId === person.id
+            && resumedWork.interruptionKind === undefined && resumedWork.nextAction.kind !== 'talk') {
+            executeIntentStep(execution, person, actionTick, rootBeforeInterruption);
+          }
+        }
         grantTerminalReplanPermit(execution, person, rootBeforeInterruption);
         continue;
       }
@@ -608,6 +655,8 @@ export function executePlanningTick(
       }
       executeIntentStep(execution, person, actionTick, rootBeforePlanning);
     }
+    events.push(...advanceBodyTime(state, atMonth, actionTick,
+      BODY_DAYS_PER_MONTH / PLANNING_TICKS_PER_MONTH, events.length));
   }
 
   for (const personId of execution.participantIds) {

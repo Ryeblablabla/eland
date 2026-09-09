@@ -1,4 +1,4 @@
-import { type FactPredicate, type Intent, type PrimitiveAction, type RecordUseInputWitnessV1, type WorldRef } from './action';
+import { type FactPredicate, type Intent, type PrimitiveAction, type RecordUseInputWitnessV1, type WorldInteractionEffect, type WorldRef } from './action';
 import { Material, materialDefinition, materialHas, type MaterialId } from './material';
 import {
   ageMonths,
@@ -45,11 +45,18 @@ import {
   registerWork,
   workAt,
   workById,
+  captureWorkSupportUse,
+  recordWorkSupportUse,
+  recordWorkThermalProcessingUse,
 } from './works';
+import { processingSources, rainProtectedProcessingAt } from './thermal-process';
 import { applyAnimalBondContact, resetAnimalBond } from './animal-bonds';
 import { prepareWorldAssembly } from './actions/world-assembly';
+import { executeWorkRecovery } from './actions/work-recovery';
+import { reconcileWorkMaterials, syncWorkVoxelMutation } from './work-materials';
 import { planWorkLayout, workOccupiedVoxels, type PlannedWorkLayout } from './work-layout';
 import { worldInteractionResult } from './actions/world-interaction-result';
+import { captureBodySupports, settleChangedBodySupports } from './actions/support-settlement';
 import { communicationById } from './social-facts';
 import { remember, rememberAction } from './memory';
 import { recordExperiencedProcedure } from './procedural-knowledge';
@@ -89,15 +96,17 @@ import { geneticKinshipRisk } from './kinship';
 import { recordInteractionFailureKnowledge } from './interaction-knowledge';
 import { recordWitnessedDeclarationFulfillment } from './declaration';
 import { separationTechniqueId, separationTechniqueSummary, separationToolFits, voxelSeparationRuleFor } from './separation-rules';
-import { canAccessContainer, containerById, containerIdAt, containerQuantity, containerRemainingCapacity, GRANARY_CAPACITY, type ContainerState } from './container';
+import { canAccessContainer, containerById, containerForWork, containerIdAt, containerQuantity, containerRemainingCapacity, GRANARY_CAPACITY, type ContainerState } from './container';
+import { reconcileWorkStorage } from './work-storage';
 import { compareWorldEventsInCanonicalOrder, worldEventById } from './event-index';
 import { animalSpecies, isAnimalAlive } from './animal';
 import {
-  canPersonCollectProjectMaterialDrop,
+  captureProjectMaterialDeliveryUse,
+  recordProjectMaterialDeliveryUses,
   inspectProjectMaterialContributionRequest,
 } from './project-material-request';
 import { conceptionChance, reproductivePairReady } from './reproduction';
-import { positionsCanTouch } from './social-space';
+import { physicalRendezvous, positionsCanTouch } from './social-space';
 import { isInfant } from './dependent-care';
 import { lifePlanningStage } from './life-stage';
 import {
@@ -142,6 +151,9 @@ import {
 } from './actions/technique-learning-actions';
 import { executeInscribe, executeTalk } from './actions/talk-actions';
 import { executeAttend } from './actions/attend-actions';
+import { executeHeldBend } from './actions/held-force-actions';
+import { consumeVoxelPortion, takeSoftVoxelPortion } from './actions/voxel-material';
+import { solidSupportQuery } from './solid-support';
 import {
   projectEventHasEventTimeLead,
   projectIsLedBy,
@@ -467,7 +479,8 @@ export function goalSatisfied(
     const container = containerById(state, goal.containerId);
     return Boolean(container && containerQuantity(container, goal.materialId) >= goal.quantity);
   }
-  if (goal.kind === 'at-cell') return person.position.cellId === goal.cellId;
+  if (goal.kind === 'at-cell') return person.position.cellId === goal.cellId
+    && (goal.z === undefined || person.position.z === goal.z);
   if (goal.kind === 'sheltered') return Boolean(survivalShelterAt(state, person.position));
   if (goal.kind === 'voxel-is') return voxelAt(state.world.grid, goal.position.x, goal.position.y, goal.position.z) === goal.materialId;
   if (goal.kind === 'knowledge') {
@@ -501,6 +514,12 @@ export function goalSatisfied(
   if (goal.kind === 'technique-demonstrated') return projectById(state, goal.projectId)
     ?.techniqueDemonstrations?.some((basis) => basis.requestEventId === goal.requestEventId) ?? false;
   if (goal.kind === 'agreement-fulfilled') return agreementById(state, goal.agreementId)?.status === 'fulfilled';
+  if (goal.kind === 'agreement-status') return agreementById(state, goal.agreementId)?.status === goal.status;
+  if (goal.kind === 'agreement-response-recorded') {
+    const agreement = agreementById(state, goal.agreementId);
+    return Boolean((goal.response === 'accepted' ? agreement?.acceptedByPersonIds : agreement?.rejectedByPersonIds)
+      ?.includes(goal.personId));
+  }
   if (goal.kind === 'agreement-contribution-recorded') return agreementById(state, goal.agreementId)
     ?.fulfilledByPersonIds.includes(goal.personId) ?? false;
   if (goal.kind === 'death-mourned') return bereavementFor(person, goal.remainsId)?.lastMournedAtMonth !== undefined;
@@ -509,7 +528,7 @@ export function goalSatisfied(
   return Boolean(communicationById(state, goal.representationId));
 }
 
-function compactTraversedSurface(state: SimulationState, path: StandingPosition[], eventId: string): Array<{ cellId: number; z: number; from: MaterialId; to: MaterialId }> {
+function compactTraversedSurface(state: SimulationState, path: StandingPosition[], eventId: string, atMonth: number): Array<{ cellId: number; z: number; from: MaterialId; to: MaterialId }> {
   const changes: Array<{ cellId: number; z: number; from: MaterialId; to: MaterialId }> = [];
   state.world.traffic ??= {};
   for (const traversed of path.slice(1)) {
@@ -526,6 +545,7 @@ function compactTraversedSurface(state: SimulationState, path: StandingPosition[
         ? Material.PackedSoil
         : from;
     if (to === from) continue;
+    syncWorkVoxelMutation(state.world, { x, y, z: supportZ }, from, to, atMonth, eventId);
     setVoxel(state.world.grid, x, y, supportZ, to);
     changes.push({ cellId: traversed.cellId, z: supportZ, from, to });
   }
@@ -690,7 +710,8 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
   const movementMetabolism = movementMetabolicMultiplier(person);
   person.body.hydration = clamp(person.body.hydration - movementCost * 0.125 * movementMetabolism);
   person.body.nutrition = clamp(person.body.nutrition - movementCost * 0.08 * movementMetabolism);
-  const materialChanges = compactTraversedSurface(state, segment, eventId);
+  const workSupportUse = moved ? captureWorkSupportUse(state.world, segment) : [];
+  const materialChanges = compactTraversedSurface(state, segment, eventId, atMonth);
   if (waterAccess) {
     rememberMaterialPlace(person, waterAccess.materialId, waterAccess.waterPosition, atMonth, eventId);
   }
@@ -706,7 +727,10 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
       : action.wildlifeThreatBasis.response === 'flee-step'
         ? `${person.name}与可见野兽拉开距离`
         : `${person.name}无安全退路，原地警戒野兽`
-    : reached ? `沿可容身空间到达格 ${cellX(to.cellId)}, ${cellY(to.cellId)} 的高度 ${to.z}` : `沿可容身空间推进了 ${Math.max(0, segment.length - 1)} 步`;
+    : reached ? moved
+      ? `沿可容身空间到达格 ${cellX(to.cellId)}, ${cellY(to.cellId)} 的高度 ${to.z}`
+      : `已经处于本次接近或落脚所需的位置（${cellX(to.cellId)}, ${cellY(to.cellId)}, ${to.z}），无需移动；没有搬运或处理物品`
+      : `沿可容身空间推进了 ${Math.max(0, segment.length - 1)} 步`;
   return {
     status: reached ? 'completed' as const : 'progressed' as const,
     path: segment.map((position) => position.cellId),
@@ -719,6 +743,7 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
       movementMetabolism,
       verticalPath: segment.map((position) => position.z),
       materialChanges,
+      ...(workSupportUse.length ? { workSupportUse } : {}),
       ...(waterAccess ? {
         waterAccessBasisKey: waterAccess.basisKey,
         waterAccessMode: waterAccess.mode,
@@ -733,6 +758,10 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
 }
 
 function executeTransfer(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'transfer' }>, atMonth: number, eventId: string) {
+  if (!Number.isInteger(action.quantity) || action.quantity <= 0) return {
+    status: 'blocked' as const, result: '转移需要明确的正整数物品数量', diff: {},
+  };
+  if (action.sourceVoxel) return takeSoftVoxelPortion(state.world, person, action, eventId, atMonth);
   let available = 0;
   let surfaceWaterPosition: { x: number; y: number; z: number } | undefined;
   let sourceDrop: DropState | undefined;
@@ -765,41 +794,41 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       }
       available = 1;
     } else {
-      if (groundCellId !== person.position.cellId || sourceZ !== person.position.z) return { status: 'blocked' as const, result: '不在地面物品所在位置', diff: {} };
+      if (!sourceDrop || sourceDrop.materialId !== action.materialId
+        || sourceDrop.cellId !== groundCellId || sourceDrop.z !== sourceZ
+        || !positionsCanTouch(state.world.grid, person.position, { cellId: sourceDrop.cellId, z: sourceDrop.z })) {
+        return { status: 'blocked' as const, result: '真实地面物品不在无遮挡的近身取物范围', diff: {} };
+      }
       available = sourceDrop?.quantity ?? 0;
     }
   } else if (action.from.kind === 'person') {
     const sourcePersonId = action.from.personId;
     sourcePerson = personById(state, sourcePersonId);
-    if (!sourcePerson || !sameLocation(sourcePerson, person)) return { status: 'blocked' as const, result: '物品持有者不在近身范围', diff: {} };
-    sourceStack = sourcePerson.inventory.find((stack) => (action.stackId ? stack.id === action.stackId : stack.materialId === action.materialId));
+    if (!sourcePerson || !positionsCanTouch(state.world.grid, sourcePerson.position, person.position)) return { status: 'blocked' as const, result: '物品持有者不在无遮挡的近身范围', diff: {} };
+    sourceStack = sourcePerson.inventory.find((stack) => stack.materialId === action.materialId
+      && (!action.stackId || stack.id === action.stackId));
     available = sourceStack?.quantity ?? 0;
   } else {
     sourceContainer = containerById(state, action.from.containerId);
     if (!sourceContainer || !canAccessContainer(person, sourceContainer)) return { status: 'blocked' as const, result: '不在容器的近身操作范围', diff: {} };
-    sourceStack = sourceContainer.inventory.find((stack) => (action.stackId ? stack.id === action.stackId : stack.materialId === action.materialId));
+    sourceStack = sourceContainer.inventory.find((stack) => stack.materialId === action.materialId
+      && (!action.stackId || stack.id === action.stackId));
     available = sourceStack?.quantity ?? 0;
   }
-  if (available <= 0) return { status: 'blocked' as const, result: '来源中已经没有这种物质', diff: {} };
-  if (sourceStack?.containedByStackId) {
-    return { status: 'blocked' as const, result: '容器中的液体必须随容器使用，不能单独转移', diff: {} };
-  }
-  if (sourceStack?.materialId === Material.Container
-    && sourcePerson?.inventory.some((stack) => stack.containedByStackId === sourceStack?.id && stack.quantity > 0)) {
-    return { status: 'blocked' as const, result: '装有液体的容器不能与内容物分开转移', diff: {} };
-  }
-  if (sourceDrop && !canPersonCollectProjectMaterialDrop(state, person.id, sourceDrop, atMonth)) {
-    return {
-      status: 'blocked' as const,
-      result: '这份地面物料仍在等待原项目请求者查收',
-      diff: {
-        authorized: false,
-        projectMaterialDeliveryRestricted: true,
-        projectId: sourceDrop.projectMaterialDelivery?.projectId,
-        requestEventId: sourceDrop.projectMaterialDelivery?.requestEventId,
-        expiresAtMonth: sourceDrop.projectMaterialDelivery?.expiresAtMonth,
-      },
-    };
+  if (available <= 0) {
+    if (action.from.kind === 'person' && action.from.personId === person.id && action.stackId) {
+      const namedStack = person.inventory.find((stack) => stack.id === action.stackId);
+      if (!namedStack) return { status: 'blocked' as const, result: '点名的本人库存已经不存在，无法从中转移物品', diff: {} };
+      if (namedStack.quantity <= 0) return { status: 'blocked' as const, result: '点名的本人库存已经耗尽，无法从中转移物品', diff: {} };
+      if (namedStack.materialId !== action.materialId) return {
+        status: 'blocked' as const,
+        result: `点名的本人库存实际是${namedStack.quantity}份${materialDefinition(namedStack.materialId).name}，本次请求转移${action.quantity}份${materialDefinition(action.materialId).name}；材料不一致，没有转移物品`,
+        diff: { transferSourceMismatch: true, sourceStackId: namedStack.id,
+          actualMaterialId: namedStack.materialId, actualQuantity: namedStack.quantity,
+          requestedMaterialId: action.materialId, requestedQuantity: action.quantity },
+      };
+    }
+    return { status: 'blocked' as const, result: '来源中已经没有这种物质', diff: {} };
   }
   const estateCareRemains = action.estateCarePersonId
     ? (state.world.remains ?? []).find((remains) => remains.personId === action.estateCarePersonId)
@@ -816,20 +845,59 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   if (action.to.kind === 'person') {
     const receiverId = action.to.personId;
     destinationPerson = personById(state, receiverId);
-    if (!destinationPerson || !sameLocation(destinationPerson, person)) return { status: 'blocked' as const, result: '接收者不在近身范围', diff: {} };
+    if (!destinationPerson || !positionsCanTouch(state.world.grid, destinationPerson.position, person.position)) return { status: 'blocked' as const, result: '接收者不在无遮挡的近身范围', diff: {} };
   } else if (action.to.kind === 'container') {
     destinationContainer = containerById(state, action.to.containerId);
     if (!destinationContainer || !canAccessContainer(person, destinationContainer)) return { status: 'blocked' as const, result: '目标容器不在近身操作范围', diff: {} };
   } else {
     const destinationZ = action.to.z ?? person.position.z;
-    if (action.to.cellId !== person.position.cellId || destinationZ !== person.position.z) {
-      return { status: 'blocked' as const, result: '只能把物品放到本人当前所在的地面位置', diff: {} };
+    const groundPosition = { cellId: action.to.cellId, z: destinationZ };
+    if (!positionsCanTouch(state.world.grid, person.position, groundPosition)
+      || voxelAt(state.world.grid, cellX(groundPosition.cellId), cellY(groundPosition.cellId), destinationZ) !== Material.Air
+      || materialDefinition(voxelAt(state.world.grid, cellX(groundPosition.cellId), cellY(groundPosition.cellId), destinationZ - 1)).phase !== 'solid') {
+      return { status: 'blocked' as const, result: '放置物品需要无遮挡且有实际支撑的近身空位', diff: {} };
     }
+  }
+  const sameEndpoint = Boolean(sourcePerson && destinationPerson && sourcePerson.id === destinationPerson.id)
+    || Boolean(sourceContainer && destinationContainer && sourceContainer.id === destinationContainer.id)
+    || Boolean(sourceDrop && action.to.kind === 'ground' && sourceDrop.cellId === action.to.cellId
+      && sourceDrop.z === (action.to.z ?? person.position.z));
+  if (sameEndpoint) return {
+    status: 'completed' as const,
+    result: `${materialDefinition(action.materialId).name}仍在原来的持有者或存放位置，本次没有转移物品`,
+    diff: { materialId: action.materialId, quantity: 0, requestedQuantity: action.quantity,
+      from: action.from, to: action.to, transferNoChange: true },
+  };
+  const liquid = materialDefinition(action.materialId).phase === 'liquid';
+  if (destinationContainer?.carrier && liquid && !destinationContainer.retainsWater) return {
+    status: 'blocked' as const, result: '这个实际空腔的围护材料会漏水，尚未倒入液体', diff: {},
+  };
+  const pouringContainedWater = sourceStack?.containedByStackId && liquid && destinationContainer?.carrier
+    && sourcePerson?.inventory.some((stack) => stack.id === sourceStack.containedByStackId
+      && stack.materialId === Material.Container && stack.quantity > 0);
+  if (sourceStack?.containedByStackId && !pouringContainedWater) {
+    return { status: 'blocked' as const, result: '容器中的液体必须随容器使用，不能单独转移', diff: {} };
+  }
+  const waterIntoCarriedContainer = liquid && action.to.kind === 'person' && (surfaceWaterPosition || sourceContainer?.carrier);
+  if (waterIntoCarriedContainer) {
+    const vessel = destinationPerson?.inventory.find((stack) => stack.id === action.containerStackId
+      && stack.materialId === Material.Container && stack.quantity > 0);
+    if (!vessel || destinationPerson?.inventory.some((stack) => stack.containedByStackId === vessel.id && stack.quantity > 0)) return {
+      status: 'blocked' as const, result: '取回液体需要接收者实际持有且点名的空容器，尚未取水', diff: {},
+    };
+  }
+  if (sourceStack?.materialId === Material.Container
+    && sourcePerson?.inventory.some((stack) => stack.containedByStackId === sourceStack?.id && stack.quantity > 0)) {
+    return { status: 'blocked' as const, result: '装有液体的容器不能与内容物分开转移', diff: {} };
   }
   const containerCapacity = destinationContainer ? containerRemainingCapacity(destinationContainer) : Number.POSITIVE_INFINITY;
   if (containerCapacity <= 0) return { status: 'blocked' as const, result: '目标容器已经没有可用容量', diff: { containerId: destinationContainer?.id } };
   const quantity = Math.max(1, Math.min(action.quantity, available, containerCapacity));
-  const projectMaterialDelivery = projectMaterialDeliveryForTransfer(state, person, action, atMonth);
+  const projectMaterialDelivery = projectMaterialDeliveryForTransfer(state, person, action, atMonth)
+    ?? sourceDrop?.projectMaterialDelivery;
+  const projectMaterialDeliveryUse = sourceDrop ? captureProjectMaterialDeliveryUse(state, person, sourceDrop, {
+    operation: action.to.kind === 'ground' ? 'relocate' : 'take', quantity, atMonth, authorizationRef: action.authorizationRef,
+  }) : undefined;
   const possibleAgreement = action.authorizationRef ? agreementById(state, action.authorizationRef) : undefined;
   const agreementAuthorized = agreementAuthorizesTransfer(possibleAgreement, person.id, action, quantity);
   const possiblePermission = action.authorizationRef ? permissionById(state, action.authorizationRef) : undefined;
@@ -837,10 +905,12 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   const possibleMandate = action.authorizationRef ? mandateById(state, action.authorizationRef) : undefined;
   const mandateUse = mandateSupportsTransfer(state, possibleMandate, person.id, action, atMonth);
   const mandateAuthorized = Boolean(mandateUse);
-  const referencedNorm = agreementAuthorized ? possibleAgreement : permissionAuthorized ? possiblePermission : mandateAuthorized ? possibleMandate : undefined;
   // 容器目前只是空间持有者，不自带所有权；以后由 claim/title 决定规范授权。
-  const authorized = action.from.kind === 'ground' || action.from.kind === 'container' || action.from.personId === person.id || agreementAuthorized || permissionAuthorized || mandateAuthorized;
-  const witnessedBy = state.people.filter((candidate) => sameLocation(candidate, person)).map((candidate) => candidate.id);
+  const authorized = action.from.kind === 'ground' ? projectMaterialDeliveryUse?.authorized !== false
+    : action.from.kind === 'container' || action.from.personId === person.id || agreementAuthorized || permissionAuthorized || mandateAuthorized;
+  const witnessedBy = state.people.filter((candidate) => isAlive(candidate)
+    && !isDormantDehydratedHibernating(candidate)
+    && positionsCanTouch(state.world.grid, candidate.position, person.position)).map((candidate) => candidate.id);
   const ownerCanContest = Boolean(sourcePerson
     && isAlive(sourcePerson)
     && !isDormantDehydratedHibernating(sourcePerson)
@@ -862,7 +932,6 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     || takingContest.actorPotential * (0.5 + takingContest.actorRoll)
       > takingContest.ownerPotential * (0.5 + takingContest.ownerRoll);
   if (!authorized && sourcePerson && !takingSucceeded) {
-    applyRelationEvidence(sourcePerson, person.id, eventId, { trust: -7, fear: 3 });
     return {
       status: 'blocked' as const,
       result: `${sourcePerson.name}察觉并阻止了未经授权的取物`,
@@ -885,11 +954,6 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     sourceContainer.inventory = sourceContainer.inventory.filter((stack) => stack.quantity > 0);
     sourceContainer.sourceEventIds = [...new Set([...sourceContainer.sourceEventIds, eventId])].slice(-24);
   }
-  if (!authorized && sourcePerson) {
-    for (const witness of state.people.filter((candidate) => witnessedBy.includes(candidate.id) && candidate.id !== person.id)) {
-      applyRelationEvidence(witness, person.id, eventId, { trust: witness.id === sourcePerson.id ? -12 : -5, fear: witness.id === sourcePerson.id ? 8 : 2 });
-    }
-  }
   const sourceEventIds = [...new Set([
     ...(sourceDrop?.sourceEventIds ?? []),
     ...(sourceStack?.sourceEventIds ?? []),
@@ -908,6 +972,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       : []),
   ])];
   const recordPayloadId = sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId;
+  const mechanicalState = sourceStack?.mechanicalState ?? sourceDrop?.mechanicalState;
   if (sourceDrop) {
     rememberMineralDeposit(person, sourceDrop.materialId, {
       x: cellX(sourceDrop.cellId),
@@ -916,7 +981,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     }, atMonth, eventId);
   }
   if (destinationPerson) {
-    if (surfaceWaterPosition && action.containerStackId) {
+    if (waterIntoCarriedContainer && action.containerStackId) {
       addContainedInventory(
         destinationPerson,
         action.materialId,
@@ -926,7 +991,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
         `stack-${destinationPerson.id}-${action.materialId}-${eventId}`,
         sourceLineageKeys,
       );
-      rememberMaterialPlace(destinationPerson, Material.Water, surfaceWaterPosition, atMonth, eventId);
+      if (surfaceWaterPosition) rememberMaterialPlace(destinationPerson, Material.Water, surfaceWaterPosition, atMonth, eventId);
     } else {
       addInventory(
         destinationPerson,
@@ -938,15 +1003,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
           : `stack-${destinationPerson.id}-${action.materialId}-${atMonth}`,
         recordPayloadId,
         sourceLineageKeys,
-      );
-    }
-    if (destinationPerson.id !== person.id && !referencedNorm) {
-      applyRelationEvidence(
-        destinationPerson,
-        person.id,
-        eventId,
-        { trust: authorized ? 3 : -8, bond: authorized ? 2 : -5 },
-        authorized ? { atMonth, kinds: ['substantive', 'direct-intimacy'] } : undefined,
+        mechanicalState,
       );
     }
   } else if (destinationContainer) {
@@ -960,6 +1017,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
         : `stack-${destinationContainer.id}-${action.materialId}-${atMonth}`,
       recordPayloadId,
       sourceLineageKeys,
+      mechanicalState,
     );
     destinationContainer.sourceEventIds = [...new Set([...destinationContainer.sourceEventIds, eventId])].slice(-24);
   } else if (action.to.kind === 'ground') {
@@ -970,12 +1028,13 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       action.to.cellId,
       atMonth,
       sourceEventIds,
-      `${person.id}-put`,
+      mechanicalState ? `${person.id}-put-${eventId}` : `${person.id}-put`,
       recordPayloadId,
       action.to.z ?? person.position.z,
       sourceLineageKeys,
       undefined,
       projectMaterialDelivery,
+      mechanicalState,
     );
   }
   state.world.drops = state.world.drops.filter((drop) => drop.quantity > 0);
@@ -983,7 +1042,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     status: 'completed' as const,
     result: surfaceWaterPosition
       ? `${person.name}用随身容器从真实水源装取了水`
-      : `${materialDefinition(action.materialId).name} × ${quantity} ${authorized ? '改变了持有者' : '被未经授权地取走'}`,
+      : `${materialDefinition(action.materialId).name} × ${quantity} ${authorized || projectMaterialDeliveryUse ? '改变了持有者' : '被未经授权地取走'}`,
     diff: {
       materialId: action.materialId,
       quantity,
@@ -996,6 +1055,12 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       from: action.from,
       to: action.to,
       witnessedBy,
+      ...((sourceContainer?.carrier || destinationContainer?.carrier) ? { workStorageUse: [
+        ...(sourceContainer?.carrier ? [{ workId: sourceContainer.carrier.workId, containerId: sourceContainer.id,
+          operation: 'take', materialId: action.materialId, quantity }] : []),
+        ...(destinationContainer?.carrier ? [{ workId: destinationContainer.carrier.workId, containerId: destinationContainer.id,
+          operation: 'store', materialId: action.materialId, quantity }] : []),
+      ] } : {}),
       ...(!authorized && sourcePerson ? {
         unauthorizedTaking: true,
         ownerCouldContest: ownerCanContest,
@@ -1012,6 +1077,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       ...(sourceDrop?.estateOfPersonId ? { estateOfPersonId: sourceDrop.estateOfPersonId } : {}),
       ...(action.estateCarePersonId ? { estateCare: true, estateCarePersonId: action.estateCarePersonId } : {}),
       ...(projectMaterialDelivery ? { projectMaterialDelivery } : {}),
+      ...(projectMaterialDeliveryUse ? { projectMaterialDeliveryUses: [projectMaterialDeliveryUse] } : {}),
     },
   };
 }
@@ -1032,6 +1098,23 @@ function consumeStack(person: PersonState, stack: ItemStack): { materialId: Mate
 function executeIngest(state: SimulationState, person: PersonState, targets: WorldRef[], atMonth: number, eventId: string) {
   const target = targets[0];
   if (!target) return { status: 'failed' as const, result: '没有摄入对象', diff: {} };
+  if (target.kind === 'container' || target.kind === 'work') {
+    const storage = target.kind === 'work' ? containerForWork(state, target.workId) : containerById(state, target.containerId);
+    if (!storage?.carrier || !canAccessContainer(person, storage)) return {
+      status: 'blocked' as const, result: '实际储水空腔不在近身可取用范围，尚未饮用', diff: {},
+    };
+    const water = storage.inventory.find((stack) => stack.materialId === Material.Water && stack.quantity > 0);
+    if (!water) return { status: 'blocked' as const, result: '这个储存空间里没有剩余的水，尚未饮用', diff: {} };
+    const consumedStackId = water.id;
+    const consumedSourceEventIds = [...water.sourceEventIds];
+    const consumedSourceLineageKeys = [...new Set([...(water.sourceLineageKeys ?? []), `container:${storage.id}:${water.id}`])];
+    const consumed = consumeStack(person, water);
+    storage.inventory = storage.inventory.filter((stack) => stack.quantity > 0);
+    return { status: 'completed' as const, result: `从实际储存空腔饮用了1份水，剩余${containerQuantity(storage, Material.Water)}份`,
+      diff: { ...consumed, quantity: 1, consumedStackId, consumedSourceEventIds, consumedSourceLineageKeys,
+        workStorageUse: [{ workId: storage.carrier.workId, containerId: storage.id, operation: 'drink', materialId: Material.Water, quantity: 1 }],
+        remainingWater: containerQuantity(storage, Material.Water) } };
+  }
   if (target.kind === 'inventory-stack') {
     if (target.personId !== person.id) return { status: 'blocked' as const, result: '不能直接摄入他人背包物品', diff: {} };
     const stack = person.inventory.find((candidate) => candidate.id === target.stackId && candidate.quantity > 0);
@@ -1062,6 +1145,8 @@ function executeIngest(state: SimulationState, person: PersonState, targets: Wor
 function executeSeparate(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'act' }>, atMonth: number, eventId: string) {
   const targets = action.targets;
   const target = targets[0];
+  const workRecovery = executeWorkRecovery(state, person, action, atMonth, eventId);
+  if (workRecovery) return workRecovery;
   if (target?.kind === 'person') {
     const restrainedCandidate = personById(state, target.personId);
     const restrained = restrainedCandidate && sameLocation(restrainedCandidate, person) ? restrainedCandidate : undefined;
@@ -1099,6 +1184,8 @@ function executeSeparate(state: SimulationState, person: PersonState, action: Ex
     setVoxel(state.world.grid, x, y, z, Material.Air);
     for (let below = z - 1; below >= 0; below -= 1) {
       if (voxelAt(state.world.grid, x, y, below) !== Material.Wood) continue;
+      // A neighbouring constructed timber is not part of the natural tree.
+      if (workAt(state.world, { x, y, z: below })) break;
       setVoxel(state.world.grid, x, y, below, Material.Air);
       break;
     }
@@ -1139,7 +1226,8 @@ function executeSeparate(state: SimulationState, person: PersonState, action: Ex
       const container = containerById(state, containerId);
       if (container) {
         for (const stack of container.inventory) {
-          addDrop(state, stack.materialId, stack.quantity, person.position.cellId, atMonth, [eventId, ...stack.sourceEventIds], `${person.id}-container-spill`, stack.recordPayloadId, person.position.z);
+          addDrop(state, stack.materialId, stack.quantity, person.position.cellId, atMonth, [eventId, ...stack.sourceEventIds], `${person.id}-container-spill`, stack.recordPayloadId, person.position.z,
+            stack.sourceLineageKeys ?? [], undefined, undefined, stack.mechanicalState);
           spilled.push({ materialId: stack.materialId, quantity: stack.quantity });
         }
       }
@@ -1305,6 +1393,11 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
   const interaction = inventoryVoxelInteractionFor(stack.materialId, current);
   if (!interaction) return { status: 'blocked' as const, result: '这次材料试作没有产生可见变化', diff: { inputMaterialId: stack.materialId, targetMaterialId: current } };
   const output = interaction.outputMaterialId;
+  if (interaction.process === 'install' && materialDefinition(output).phase === 'solid'
+    && !solidSupportQuery(state.world.grid, [{ position: voxelRef.position, solid: true }])(voxelRef.position)) return {
+    status: 'blocked' as const, result: '目标空位没有通过连续实体连接到地基，需要先搭支撑或调整安装位置',
+    diff: { unsupportedPlacement: true, outputMaterialId: output, position: voxelRef.position },
+  };
   if (materialHas(output, 'solid') && bodyOccupies(state, voxelRef.position)) return { status: 'blocked' as const, result: '目标空气体素正被身体占据，不能放入固体物质', diff: { outputMaterialId: output, position: voxelRef.position } };
   stack.quantity -= 1;
   removeEmptyStacks(person);
@@ -1352,6 +1445,9 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
 }
 
 function executeExert(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'act' }>, atMonth: number, eventId: string) {
+  if (action.targets.length === 1 && action.targets[0].kind === 'inventory-stack' && !action.toolStackId) {
+    return executeHeldBend(person, action, atMonth, eventId);
+  }
   const stackRef = action.targets.find((item): item is Extract<WorldRef, { kind: 'inventory-stack' }> => item.kind === 'inventory-stack');
   const voxelRef = action.targets.find((item): item is Extract<WorldRef, { kind: 'voxel' }> => item.kind === 'voxel');
   if (!stackRef && voxelRef && action.toolStackId) {
@@ -1492,10 +1588,8 @@ function executeExert(state: SimulationState, person: PersonState, action: Extra
   } else {
     victim.conditions.push({ id: `condition-wound-${victim.id}-${atMonth}`, kind: 'wound', stage: damage >= 7 ? 2 : 1, sinceMonth: atMonth, sourceEventIds: [eventId], otherPersonId: person.id });
   }
-  const witnessedBy = state.people.filter((candidate) => sameLocation(candidate, person) && candidate.id !== person.id).map((candidate) => candidate.id);
-  for (const witness of state.people.filter((candidate) => witnessedBy.includes(candidate.id))) {
-    applyRelationEvidence(witness, person.id, eventId, { trust: witness.id === victim.id ? -14 : -6, fear: witness.id === victim.id ? 12 : 5 });
-  }
+  const witnessedBy = state.people.filter((candidate) => isAlive(candidate) && !isDormantDehydratedHibernating(candidate)
+    && sameLocation(candidate, person) && candidate.id !== person.id).map((candidate) => candidate.id);
   return { status: 'completed' as const, result: `${person.name}对${victim.name}施力并造成伤害`, diff: { victimId: victim.id, damage, health: victim.body.health, witnessedBy } };
 }
 
@@ -1977,9 +2071,15 @@ function executeExpose(state: SimulationState, person: PersonState, targets: Wor
   const targetMaterialId = voxelAt(state.world.grid, voxelRef.position.x, voxelRef.position.y, voxelRef.position.z);
   const rule = exposureRuleFor(stack.materialId, targetMaterialId);
   if (!rule) return { status: 'blocked' as const, result: '这些物质当前没有可发生的暴露响应', diff: { inputMaterialId: stack.materialId, targetMaterialId } };
+  const inputStackId = stack.id;
+  const inputSourceEventIds = [...stack.sourceEventIds];
+  const sources = processingSources(stack, person.id, eventId);
+  const fireRainProtection = targetMaterialId === Material.Fire
+    ? rainProtectedProcessingAt(state, voxelRef.position, atMonth) : undefined;
   stack.quantity -= 1;
   removeEmptyStacks(person);
-  const outputStack = addInventory(person, rule.outputMaterialId, 1, [eventId], `stack-${person.id}-${rule.outputMaterialId}-${atMonth}`);
+  const outputStack = addInventory(person, rule.outputMaterialId, 1, sources.sourceEventIds,
+    `stack-${person.id}-${rule.outputMaterialId}-${atMonth}`, undefined, sources.sourceLineageKeys);
   const techniqueId = exposureTechniqueId(rule);
   const known = knowledgeFactById(person, techniqueId);
   if (known) {
@@ -1992,9 +2092,14 @@ function executeExpose(state: SimulationState, person: PersonState, targets: Wor
     diff: {
       techniqueId,
       inputMaterialId: stack.materialId,
+      inputStackId,
+      inputQuantity: 1,
+      inputSourceEventIds,
       targetMaterialId,
       outputMaterialId: rule.outputMaterialId,
       outputStackId: outputStack.id,
+      outputQuantity: 1,
+      ...(fireRainProtection ? { fireRainProtection } : {}),
       position: voxelRef.position,
       sourceEventId: eventId,
       ...(materialHas(targetMaterialId, 'facility') ? { facilityMaterialId: targetMaterialId } : {}),
@@ -2088,7 +2193,7 @@ function hibernationRecoveryActionAllowed(
       || voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z) === Material.CropMature));
 }
 
-function worldInteractionTargetCell(state: SimulationState, person: PersonState, target: WorldRef): number | undefined {
+function worldInteractionTargetCell(state: DecisionAuthorityState, _person: PersonState, target: WorldRef): number | undefined {
   if (target.kind === 'voxel') return cellId(target.position.x, target.position.y);
   if (target.kind === 'work') {
     const work = workById(state.world, target.workId);
@@ -2096,9 +2201,9 @@ function worldInteractionTargetCell(state: SimulationState, person: PersonState,
       ? cellId(work.position.x, work.position.y) : undefined;
   }
   if (target.kind === 'inventory-stack') {
-    return target.personId === person.id
-      && person.inventory.some((stack) => stack.id === target.stackId && stack.quantity > 0)
-      ? person.position.cellId
+    const holder = personById(state, target.personId);
+    return holder?.inventory.some((stack) => stack.id === target.stackId && stack.quantity > 0)
+      ? holder.position.cellId
       : undefined;
   }
   if (target.kind === 'drop') return state.world.drops.find((drop) => drop.id === target.dropId && drop.quantity > 0)?.cellId;
@@ -2111,10 +2216,10 @@ function worldInteractionTargetCell(state: SimulationState, person: PersonState,
   return remainsById(state, target.remainsId)?.position.cellId;
 }
 
-function worldInteractionTargetZ(state: SimulationState, person: PersonState, target: WorldRef): number | undefined {
+function worldInteractionTargetZ(state: DecisionAuthorityState, _person: PersonState, target: WorldRef): number | undefined {
   if (target.kind === 'voxel') return target.position.z;
   if (target.kind === 'work') return workById(state.world, target.workId)?.position.z;
-  if (target.kind === 'inventory-stack') return target.personId === person.id ? person.position.z : undefined;
+  if (target.kind === 'inventory-stack') return personById(state, target.personId)?.position.z;
   if (target.kind === 'drop') return state.world.drops.find((drop) => drop.id === target.dropId && drop.quantity > 0)?.z;
   if (target.kind === 'container') return containerById(state, target.containerId)?.position.z;
   if (target.kind === 'person') return personById(state, target.personId)?.position.z;
@@ -2146,8 +2251,8 @@ function assembleAnchorPosition(
   return null;
 }
 
-function worldInteractionApproachPosition(
-  state: SimulationState,
+export function worldInteractionApproachPosition(
+  state: DecisionAuthorityState,
   person: PersonState,
   target: WorldRef,
   excluded?: StandingPosition,
@@ -2175,6 +2280,88 @@ function worldInteractionApproachPosition(
   return candidates[0]?.position ?? null;
 }
 
+function executeWorldTransferStep(
+  state: SimulationState,
+  person: PersonState,
+  action: Extract<PrimitiveAction, { kind: 'world-interact' }>,
+  effect: Extract<WorldInteractionEffect, { kind: 'transfer' }>,
+  atMonth: number,
+  eventId: string,
+) {
+  if (!Number.isInteger(effect.quantity) || effect.quantity <= 0) return {
+    status: 'blocked' as const, result: '取放物品需要明确的正整数数量', diff: {},
+  };
+  const target = effect.target;
+  const holder = target.kind === 'inventory-stack' ? personById(state, target.personId) : undefined;
+  const stack = target.kind === 'inventory-stack' ? holder?.inventory.find((entry) => entry.id === target.stackId) : undefined;
+  const drop = target.kind === 'drop' ? state.world.drops.find((entry) => entry.id === target.dropId) : undefined;
+  const materialId = stack?.materialId ?? drop?.materialId;
+  if (materialId === undefined || (stack?.quantity ?? drop?.quantity ?? 0) <= 0) return {
+    status: 'blocked' as const, result: '点名的那份物品已经不在原持有者或地面位置', diff: {},
+  };
+  const destination = effect.destination;
+  const receiver = destination.kind === 'person' ? personById(state, destination.personId) : undefined;
+  const destinationPosition = destination.kind === 'voxel' ? {
+    cellId: cellId(destination.position.x, destination.position.y),
+    z: destination.position.z + (voxelAt(state.world.grid, destination.position.x,
+      destination.position.y, destination.position.z) === Material.Air ? 0 : 1),
+  } : receiver?.position;
+  if (!destinationPosition) return { status: 'blocked' as const, result: '点名的接收者已经不存在', diff: {} };
+  const primitive: Extract<PrimitiveAction, { kind: 'transfer' }> = {
+    kind: 'transfer', materialId, quantity: effect.quantity,
+    from: holder ? { kind: 'person', personId: holder.id }
+      : { kind: 'ground', cellId: drop!.cellId, z: drop!.z },
+    to: receiver ? { kind: 'person', personId: receiver.id }
+      : { kind: 'ground', cellId: destinationPosition.cellId, z: destinationPosition.z },
+    ...(stack ? { stackId: stack.id } : { dropId: drop!.id }),
+  };
+  const endpoints = [
+    { person: holder, position: holder?.position ?? { cellId: drop!.cellId, z: drop!.z } },
+    { person: receiver, position: destinationPosition },
+  ].filter((endpoint) => endpoint.person?.id !== person.id);
+  const canOperateFrom = (position: StandingPosition) => endpoints.every((endpoint) =>
+    positionsCanTouch(state.world.grid, position, endpoint.position));
+  if (!canOperateFrom(person.position)) {
+    // Keep a previously seen entity reference while walking; inspect and
+    // transfer the exact stack again only once the actual bodies can touch.
+    const rendezvous = endpoints.flatMap((endpoint) => endpoint.person
+      ? [physicalRendezvous(state, person, endpoint.person)].flatMap((meeting) => meeting ? [meeting] : [])
+      : []);
+    const candidates = [...rendezvous, ...endpoints.flatMap((endpoint) => cellsInRadius(endpoint.position.cellId, 1)
+      .flatMap((id) => standingPositions(state.world.grid, id))
+      .filter(canOperateFrom)
+      .map((position) => ({ position, path: findStandingPath(state.world.grid, person.position, position) }))) ]
+      .filter((candidate) => candidate.path.length > 1 && canOperateFrom(candidate.position))
+      .sort((left, right) => left.path.length - right.path.length);
+    if (!candidates[0]) return {
+      status: 'blocked' as const,
+      result: '没有能同时触及这份物品与放置对象的通路；可先拿到自己手中，再另行运送',
+      diff: { worldAdjudicatedNoPath: true, transferAttempted: false },
+    };
+    const movement = executeMove(state, person, {
+      kind: 'move', toCellId: candidates[0].position.cellId, toZ: candidates[0].position.z,
+    }, eventId, atMonth);
+    return { ...movement, status: movement.status === 'blocked' ? 'blocked' as const : 'progressed' as const,
+      result: `${movement.result}（先到能实际取放物品的位置，尚未转移物品）`,
+      diff: { ...movement.diff, worldAdjudicatedApproach: true, transferAttempted: false } };
+  }
+  const outcome = executeTransfer(state, person, primitive, atMonth, eventId);
+  const appliedEffects = [{ kind: 'transfer', target, destination,
+    ...outcome.diff, status: outcome.status, result: outcome.result }];
+  // A transfer can meet another person's resistance. Subsequent processing
+  // must be chosen against its receipt, never against assumed possession.
+  const deferredEffects = action.adjudication.effects.filter((candidate) => candidate !== effect
+    && candidate.kind !== 'move-self');
+  return {
+    status: outcome.status,
+    result: worldInteractionResult(state, appliedEffects)
+      + (deferredEffects.length ? '；其余操作尚未执行，需要根据本次取放结果继续' : ''),
+    diff: { ...outcome.diff, worldAdjudicated: true, request: action.adjudication.request,
+      resolverInterpretation: action.adjudication.result, appliedEffects,
+      transferStepResolved: true, ...(deferredEffects.length ? { deferredEffects } : {}) },
+  };
+}
+
 function executeWorldInteraction(
   state: SimulationState,
   person: PersonState,
@@ -2185,8 +2372,7 @@ function executeWorldInteraction(
   const verdict = action.adjudication;
   if (verdict.version !== 'world-adjudicated-interaction-v1'
     || !verdict.request.trim()
-    || !verdict.result.trim()
-    || verdict.targets.length > 8) {
+    || !verdict.result.trim()) {
     return { status: 'blocked' as const, result: '世界裁决缺少完整的交互、对象或结果', diff: {} };
   }
   const perceptionRadius = 4 + Math.floor(person.baselineCapacities.perception / 25);
@@ -2200,7 +2386,7 @@ function executeWorldInteraction(
   if (verdict.effects.some((effect) => (
     'target' in effect && effect.target && !targetKeys.has(JSON.stringify(effect.target))
   ))) return { status: 'blocked' as const, result: '世界裁决试图改动人物没有点名的对象', diff: {} };
-  if (verdict.effects.some((effect) => effect.kind === 'relocate'
+  if (verdict.effects.some((effect) => (effect.kind === 'relocate' || effect.kind === 'transfer')
     && !targetKeys.has(JSON.stringify(effect.destination)))) {
     return { status: 'blocked' as const, result: '世界裁决试图把物件移到人物没有点名的位置', diff: {} };
   }
@@ -2255,6 +2441,8 @@ function executeWorldInteraction(
       };
     }
   }
+  const transferStep = verdict.effects.find((effect) => effect.kind === 'transfer');
+  if (transferStep && verdict.status !== 'blocked') return executeWorldTransferStep(state, person, action, transferStep, atMonth, eventId);
   const interactionCellId = person.position.cellId;
   // 人物在近身作业区（自身与邻格、以及伸手可及的再外一格）可以直接操作；
   // 搭建天然是"脚边材料 + 坡面/水面"的跨格协作，操作半径过小会扼杀建造。
@@ -2382,7 +2570,7 @@ function executeWorldInteraction(
       return { status: 'blocked' as const, result: '世界裁决产生了当前世界无法表示的材料', diff: {} };
     }
     if (effect.kind === 'consume') {
-      if (effect.quantity < 1 || effect.quantity > 8) return { status: 'blocked' as const, result: '世界裁决的材料消耗量无法执行', diff: {} };
+      if (!Number.isSafeInteger(effect.quantity) || effect.quantity < 1) return { status: 'blocked' as const, result: '材料投入需要可计量的正整数份数', diff: {} };
       if (effect.target.kind === 'inventory-stack') {
         const stackId = effect.target.stackId;
         const stack = person.inventory.find((candidate) => candidate.id === stackId);
@@ -2487,17 +2675,46 @@ function executeWorldInteraction(
   }>();
   const consumedVoxels = verdict.effects.flatMap((effect) => effect.kind === 'consume' && effect.target.kind === 'voxel'
     ? [effect.target.position] : []);
-  const layoutGrid = consumedVoxels.length ? {
+  const hasStructuralEffects = verdict.effects.some((effect) => effect.kind === 'assemble'
+    || effect.kind === 'modify-structure' || effect.kind === 'replace-voxel');
+  const layoutGrid = consumedVoxels.length || hasStructuralEffects ? {
     ...state.world.grid,
     voxels: Uint16Array.from({ length: state.world.grid.width * state.world.grid.depth * state.world.grid.levels },
       (_, index) => state.world.grid.voxels[index] ?? 0),
   } : state.world.grid;
-  for (const position of consumedVoxels) setVoxel(layoutGrid, position.x, position.y, position.z, Material.Air);
+  // Preview both physical removal and the affected aggregate before adding the
+  // consumed portions back as new inputs. Otherwise consuming a Work's own
+  // voxel and modifying it in one interaction counts that portion twice.
+  const touchedWorkIds = new Set(verdict.effects.flatMap((effect) => {
+    const work = effect.kind === 'modify-structure'
+      ? (effect.target.kind === 'work' ? workById(state.world, effect.target.workId) : workAt(state.world, effect.target.position))
+      : (effect.kind === 'consume' || effect.kind === 'replace-voxel') && effect.target.kind === 'voxel'
+        ? workAt(state.world, effect.target.position) : undefined;
+    return work ? [work.id] : [];
+  }));
+  const layoutWorld = { ...state.world, grid: layoutGrid,
+    works: (state.world.works ?? []).map((work) => touchedWorkIds.has(work.id) ? structuredClone(work) : work),
+    drops: [] as DropState[] };
+  for (const work of [...layoutWorld.works]) if (touchedWorkIds.has(work.id)) reconcileWorkMaterials(layoutWorld, work, atMonth, eventId);
   for (const effect of verdict.effects) {
+    if (effect.kind === 'consume' && effect.target.kind === 'voxel') {
+      consumeVoxelPortion(layoutWorld, effect.target.position, eventId, atMonth);
+      continue;
+    }
+    if (effect.kind === 'replace-voxel') {
+      const position = effect.target.position;
+      const previous = voxelAt(layoutGrid, position.x, position.y, position.z);
+      syncWorkVoxelMutation(layoutWorld, position, previous, effect.materialId, atMonth, eventId);
+      setVoxel(layoutGrid, position.x, position.y, position.z, effect.materialId);
+      continue;
+    }
     if (effect.kind !== 'assemble' && effect.kind !== 'modify-structure') continue;
     const existing = effect.kind === 'modify-structure'
-      ? (effect.target.kind === 'work' ? workById(state.world, effect.target.workId) : workAt(state.world, effect.target.position))
+      ? (effect.target.kind === 'work' ? workById(layoutWorld, effect.target.workId) : workAt(layoutWorld, effect.target.position))
       : undefined;
+    if (effect.kind === 'modify-structure' && !existing) return {
+      status: 'blocked' as const, result: '本次取料后原造物已没有保留的实体，需用取出的材料另行装配', diff: {},
+    };
     const work = effect.kind === 'assemble' ? createWork({
       position: assemblyPositions.get(effect)!, arrangement: effect.arrangement,
       components: assembly.components, summary: effect.summary,
@@ -2511,7 +2728,7 @@ function executeWorldInteraction(
     const layout = planWorkLayout({
       grid: layoutGrid, position: work.position, anchorMaterialId: work.anchorMaterialId,
       components: work.components, layout: work.layout, existingWork: existing,
-      otherWorks: state.world.works, people: state.people,
+      otherWorks: layoutWorld.works, people: state.people,
     });
     if (!layout.ok) {
       if (layout.conflict === 'occupied-person' && layout.blockingPersonIds?.every((id) => id === person.id)) {
@@ -2537,11 +2754,17 @@ function executeWorldInteraction(
     }
     work.layout = layout.layout;
     work.anchorMaterialId = layout.anchorMaterialId;
-    assemblyChanges.set(effect, { work, ...(existing ? { previousWork: structuredClone(existing) } : {}), layout });
+    assemblyChanges.set(effect, { work: structuredClone(work), ...(existing ? { previousWork: structuredClone(existing) } : {}), layout });
+    // Each later change plans against the immediately preceding layout. Real
+    // state remains untouched until every effect has passed this transaction.
+    for (const voxel of layout.clearVoxels) setVoxel(layoutGrid, voxel.position.x, voxel.position.y, voxel.position.z, Material.Air);
+    for (const voxel of layout.placeVoxels) setVoxel(layoutGrid, voxel.position.x, voxel.position.y, voxel.position.z, voxel.materialId);
+    registerWork(layoutWorld, work);
   }
   const applied: Record<string, unknown>[] = [];
   let movementPath: number[] | undefined;
   for (const effect of verdict.effects) {
+    if (effect.kind === 'transfer') continue; // Resolved as the separate physical step above.
     if (effect.kind === 'knowledge') {
       const factId = `observation:world-agent:${eventId}:${applied.length + 1}`;
       const summary = `本人对这次尝试的判断：${effect.summary}`;
@@ -2563,12 +2786,13 @@ function executeWorldInteraction(
       } else if (effect.target.kind === 'drop') {
         const dropId = effect.target.dropId;
         const drop = state.world.drops.find((candidate) => candidate.id === dropId)!;
+        const deliveryUse = captureProjectMaterialDeliveryUse(state, person, drop, { operation: 'consume', quantity: effect.quantity, atMonth });
         drop.quantity -= effect.quantity;
-        applied.push({ kind: effect.kind, target: effect.target, materialId: drop.materialId, quantity: effect.quantity });
+        applied.push({ kind: effect.kind, target: effect.target, materialId: drop.materialId, quantity: effect.quantity,
+          ...(deliveryUse ? { projectMaterialDeliveryUses: [deliveryUse] } : {}),
+        });
       } else if (effect.target.kind === 'voxel') {
-        const materialId = voxelAt(state.world.grid, effect.target.position.x, effect.target.position.y, effect.target.position.z);
-        setVoxel(state.world.grid, effect.target.position.x, effect.target.position.y, effect.target.position.z, Material.Air);
-        applied.push({ kind: effect.kind, target: effect.target, materialId, quantity: 1 });
+        applied.push(consumeVoxelPortion(state.world, effect.target.position, eventId, atMonth));
       }
     } else if (effect.kind === 'produce') {
       if (effect.destination === 'inventory') {
@@ -2596,6 +2820,9 @@ function executeWorldInteraction(
         ...(sourceDrop ? [`drop:${sourceDrop.id}`, ...(sourceDrop.sourceLineageKeys ?? [])] : []),
         ...(sourceStack ? [`inventory:${person.id}:${sourceStack.id}`, ...(sourceStack.sourceLineageKeys ?? [])] : []),
       ])].slice(-32);
+      const deliveryUse = sourceDrop ? captureProjectMaterialDeliveryUse(state, person, sourceDrop, {
+        operation: 'relocate', quantity: effect.quantity, atMonth,
+      }) : undefined;
       if (sourceDrop) sourceDrop.quantity -= effect.quantity;
       if (sourceStack) sourceStack.quantity -= effect.quantity;
       const destinationMaterial = voxelAt(
@@ -2618,6 +2845,9 @@ function executeWorldInteraction(
         sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId,
         destinationZ,
         sourceLineageKeys,
+        sourceDrop?.estateOfPersonId,
+        sourceDrop?.projectMaterialDelivery,
+        sourceStack?.mechanicalState ?? sourceDrop?.mechanicalState,
       );
       applied.push({
         kind: effect.kind,
@@ -2626,13 +2856,21 @@ function executeWorldInteraction(
         materialId,
         quantity: effect.quantity,
         dropId: drop.id,
+        ...(deliveryUse ? { projectMaterialDeliveryUses: [deliveryUse] } : {}),
       });
     } else if (effect.kind === 'replace-voxel') {
       const previousMaterialId = voxelAt(state.world.grid, effect.target.position.x, effect.target.position.y, effect.target.position.z);
+      const workMaterialChange = syncWorkVoxelMutation(state.world, effect.target.position, previousMaterialId, effect.materialId, atMonth, eventId);
       setVoxel(state.world.grid, effect.target.position.x, effect.target.position.y, effect.target.position.z, effect.materialId);
-      applied.push({ kind: effect.kind, target: effect.target, previousMaterialId, materialId: effect.materialId });
+      applied.push({ kind: effect.kind, target: effect.target, previousMaterialId, materialId: effect.materialId,
+        ...(workMaterialChange ? { workMaterialChange } : {}) });
     } else if (effect.kind === 'assemble' || effect.kind === 'modify-structure') {
       const change = assemblyChanges.get(effect)!;
+      // These people can perceive the nearby actor at execution time. Being
+      // a historical builder alone does not make an absent person a witness.
+      const witnessedBy = effect.kind === 'modify-structure' ? state.people.filter((candidate) => isAlive(candidate)
+        && !isDormantDehydratedHibernating(candidate)
+        && positionsCanTouch(state.world.grid, candidate.position, person.position)).map((candidate) => candidate.id) : [];
       for (const voxel of change.layout.clearVoxels) {
         if (voxelAt(state.world.grid, voxel.position.x, voxel.position.y, voxel.position.z) === voxel.materialId) {
           setVoxel(state.world.grid, voxel.position.x, voxel.position.y, voxel.position.z, Material.Air);
@@ -2661,16 +2899,6 @@ function executeWorldInteraction(
         const priorBuilderIds = existing.builderIds.filter((id) => id !== person.id);
         const updated = change.work;
         registerWork(state.world, updated);
-        // 在别人的造物上继续添砖加瓦是最具体的协作：每一次真实加件都在
-        // 建造者之间留下双向关系证据，共同造物由此成为社会纽带的载体。
-        const collaborationPartnerIds: string[] = [];
-        for (const partnerId of priorBuilderIds) {
-          const partner = personById(state, partnerId);
-          if (!partner || !isAlive(partner)) continue;
-          applyRelationEvidence(person, partnerId, eventId, { trust: 4, bond: 2 });
-          applyRelationEvidence(partner, person.id, eventId, { trust: 4, bond: 2 });
-          collaborationPartnerIds.push(partnerId);
-        }
         applied.push({
           kind: effect.kind,
           workId: updated.id,
@@ -2685,7 +2913,7 @@ function executeWorldInteraction(
           occupiedVoxels: change.layout.occupiedVoxels,
           previousWork: { arrangement: existing.arrangement, components: existing.components, layout: existing.layout,
             profile: existing.profile, position: existing.position, anchorMaterialId: existing.anchorMaterialId },
-          ...(collaborationPartnerIds.length ? { collaborationPartnerIds } : {}),
+          priorBuilderIds, witnessedBy,
         });
       }
     } else if (effect.kind === 'move-self') {
@@ -2815,9 +3043,19 @@ export function executePrimitiveAction(
   },
 ): ActionFact {
   const eventId = `e-${atMonth}-action-${person.id}-${orderInMonth}`;
+  const referencedIntent = meta.intentId ? intentById(state, meta.intentId) : undefined;
+  const sourceIntent = referencedIntent?.ownerId === person.id ? referencedIntent : undefined;
+  const executionDecisionEventId = meta.cause === 'decision-language' && meta.languageBroadcast
+    ? meta.languageBroadcast.sourceEventId : sourceIntent?.sourceDecisionEventId;
+  const decisionSource: ActionFact['decisionSource'] = executionDecisionEventId ? {
+    executionDecisionEventId,
+    ...(sourceIntent?.planSourceDecisionEventId ? { intentionDecisionEventId: sourceIntent.planSourceDecisionEventId } : {}),
+  } : undefined;
   const fromCellId = person.position.cellId;
   const fromZ = person.position.z;
-  const blockedByHibernationRecovery = isRecoveringFromDehydratedHibernation(person)
+  const bodySupportsBefore = captureBodySupports(state);
+  const committedLanguage = meta.cause === 'decision-language' && action.kind === 'talk' && meta.languageBroadcast;
+  const blockedByHibernationRecovery = !committedLanguage && isRecoveringFromDehydratedHibernation(person)
     && !hibernationRecoveryActionAllowed(state, person, action, atMonth);
   const techniqueLearning = action.kind === 'act'
     ? validateTechniqueLearningAction(state, person, action, atMonth)
@@ -2854,8 +3092,17 @@ export function executePrimitiveAction(
       });
     }
   }
+  const supportSettlements = settleChangedBodySupports(state, bodySupportsBefore, atMonth, eventId);
+  const storageChanges = reconcileWorkStorage(state, atMonth, eventId);
+  if (storageChanges.length) Object.assign(outcome.diff, { workStorageChanges: storageChanges });
+  if (supportSettlements.length) {
+    Object.assign(outcome.diff, { supportSettlements });
+    outcome.result += `；${supportSettlements.map((settlement) => settlement.result).join('；')}`;
+  }
   applyTechniqueLearning(techniqueLearning, outcome, eventId, atMonth);
   const pathSegment = 'path' in outcome && Array.isArray(outcome.path) ? outcome.path : [fromCellId];
+  if (supportSettlements.some((settlement) => settlement.personId === person.id && settlement.landed)
+    && pathSegment.at(-1) !== person.position.cellId) pathSegment.push(person.position.cellId);
   const fact: ActionFact = {
     id: eventId,
     kind: 'action',
@@ -2865,6 +3112,7 @@ export function executePrimitiveAction(
     cellId: person.position.cellId,
     who: person.id,
     ...(meta.intentId ? { intentId: meta.intentId } : {}),
+    ...(decisionSource ? { decisionSource } : {}),
     cause: meta.cause,
     action,
     fromCellId,
@@ -2876,7 +3124,13 @@ export function executePrimitiveAction(
     result: outcome.result,
     diff: outcome.diff,
   };
+  const workSupportReceipts = recordWorkSupportUse(state.world, fact);
+  const thermalProcessingReceipts = recordWorkThermalProcessingUse(state.world, fact);
+  if (workSupportReceipts.length || thermalProcessingReceipts.length) fact.diff.workUseReceipts = [...workSupportReceipts, ...thermalProcessingReceipts];
   person.lastActionAtMonth = atMonth;
+  // Keep the attempted no-change fact available to planning, without treating
+  // untouched items as a delivery, social act, learned success or new source.
+  if (fact.diff.transferNoChange === true) return fact;
   recordAgreementAction(state, fact);
   recordCollectiveAction(state, fact);
   recordGovernanceAction(state, fact);
@@ -2885,6 +3139,7 @@ export function executePrimitiveAction(
   recordWitnessedDeclarationFulfillment(state, fact);
   recordExperiencedProcedure(state, person, fact);
   rememberAction(state, fact);
+  recordProjectMaterialDeliveryUses(state, fact);
   recordPersonalityEvidence(state, fact);
   recordActionOutcomeBelief(state, fact);
   return fact;

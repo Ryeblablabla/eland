@@ -1,0 +1,23 @@
+import { DatabaseSync } from 'node:sqlite';
+import { deserialize } from 'node:v8';
+import { writeFileSync } from 'node:fs';
+import { decodeSessionSnapshotParts, createSessionTimelineChunkReference } from '../../../three-body/server/session-snapshot-codec';
+import { inheritedFrames, inheritedSnapshot } from '../../../three-body/server/eland-session/timeline';
+import { toSocietyState } from '../../../three-body/src/game/eland/adapter';
+const db = new DatabaseSync('/Users/wangyu.rye/Desktop/eland/three-body/data/eland.sqlite3', {readOnly:true});
+const chunk = (hash:string) => Buffer.from(db.prepare('SELECT data FROM chunks WHERE hash = ?').get(hash)!.data as Uint8Array);
+const out='/Users/wangyu.rye/Desktop/eland/output/promo-v2/data';
+const saveId=process.argv[2] || 'save-mt1m7vkc-1014f920';
+const row=db.prepare('SELECT * FROM manual_saves WHERE id = ?').get(saveId)!;
+const manifest=deserialize(chunk(row.snapshot_hash as string));
+const save:any=decodeSessionSnapshotParts({compressedShell:chunk(manifest.shellHash),chunks:manifest.timelineChunkHashes.map(createSessionTimelineChunkReference)});
+const s=save.session; const timeline=s.branches.get(s.activeBranchId);const frames=inheritedFrames(s.branches,timeline);
+const resolve=(reference:any)=>chunk(reference.__elandSessionChunkV2);
+const slimEvent=(e:any)=>({id:e.id,kind:e.kind,atMonth:e.atMonth,personId:e.personId,actorId:e.actorId,change:e.change,action:e.action,summary:e.summary,text:e.text,outcome:e.outcome});
+const summary={row,runId:s.runId,activeBranchId:s.activeBranchId,frames:frames.length,range:[frames[0]?.elapsedMonths,frames.at(-1)?.elapsedMonths],branches:[...s.branches.values()].map((b:any)=>({id:b.id,parent:b.parentBranchId,forkAtMonth:b.forkAtMonth,frames:b.history.length,snapshots:b.snapshots.size,conversations:b.conversationTurns})),people:s.latestState.people.map((p:any)=>({id:p.id,name:p.name,status:p.status,body:p.body,home:p.home,work:p.work})),civilization:s.latestState.civilization,frameKeys:Object.keys(frames[0]||{}),stateKeys:Object.keys(s.latestState)};
+writeFileSync(`${out}/${saveId}-summary.json`,JSON.stringify(summary,null,2));
+writeFileSync(`${out}/${saveId}-entries.json`,JSON.stringify(frames.flatMap((f:any)=>({month:f.elapsedMonths,epoch:f.epoch,skySample:f.skySample,entries:f.entries})),null,2));
+console.log(JSON.stringify({saveId,runId:s.runId,frames:summary.frames,range:summary.range,branches:summary.branches.map((b:any)=>({...b,conversations:b.conversations?.length})),people:summary.people.map((p:any)=>({id:p.id,name:p.name,status:p.status})),civilization:{number:summary.civilization.number,status:summary.civilization.status,epoch:summary.civilization.epoch,climate:summary.civilization.climate},frameKeys:summary.frameKeys,stateKeys:summary.stateKeys},null,2));
+const months=process.argv[3]?.split(',').map(Number)||[];
+for(const month of months){const state=inheritedSnapshot(s.branches,timeline,month,resolve);if(!state){console.log('missing',month);continue}const frame=frames.find((f:any)=>f.elapsedMonths===month);if(!frame){console.log('no frame',month);continue}writeFileSync(`${out}/c${s.civilizationId}-m${month}-events.json`,JSON.stringify(state.lastStep,null,2));for(const event of [...state.world.past,...state.lastStep]){const action=(event as any).action;if(action?.kind==='communicate'){action.kind='talk';action.speakerMeaning=action.content;}}for(const intent of state.intents as any[]){if(intent.nextAction?.kind==='communicate'){intent.nextAction.kind='talk';intent.nextAction.speakerMeaning=intent.nextAction.content;}}const full={...frame,society:toSocietyState(state)};writeFileSync(`${out}/c${s.civilizationId}-m${month}-frame.json`,JSON.stringify(full));console.log(JSON.stringify({month,bytes:JSON.stringify(full).length,people:full.society.agents.map((p:any)=>({id:p.id,name:p.name,cellId:p.cellId,action:p.action,currentAction:p.currentAction,tickPath:p.tickPath,lastPath:p.lastPath})),entries:full.entries,civilization:{status:state.civilization.status,epoch:state.civilization.epoch,climate:state.civilization.climate}}));}
+db.close();

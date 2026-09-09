@@ -2,6 +2,7 @@ import type { VoxelPosition } from './action';
 import { Material, materialDefinition, type MaterialId } from './material';
 import type { PersonState } from './person';
 import type { WorkComponent, WorkState } from './works';
+import { solidSupportQuery } from './solid-support';
 import { cellX, cellY, voxelAt, type VoxelWorld } from '../world/grid';
 
 export interface WorkLayoutVoxel {
@@ -175,38 +176,20 @@ export function planWorkLayout(input: PlanWorkLayoutInput): PlannedWorkLayout {
     blockingPositions: blockedWorld.map((voxel) => voxel.position),
   };
   const newByPosition = new Map(occupiedVoxels.map((voxel) => [positionKey(voxel.position), voxel]));
-  // Every disconnected part needs a path through matter to something already
-  // supporting it. Material quantity alone cannot suspend a roof in empty air.
-  const unvisited = new Set(newByPosition.keys());
-  const offsets = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
-  while (unvisited.size) {
-    const firstKey = unvisited.values().next().value!;
-    const frontier = [newByPosition.get(firstKey)!];
-    const component: OccupiedWorkVoxel[] = [];
-    let supported = false;
-    unvisited.delete(firstKey);
-    for (let index = 0; index < frontier.length; index += 1) {
-      const current = frontier[index];
-      component.push(current);
-      for (const [dx, dy, dz] of offsets) {
-        const adjacent = { x: current.position.x + dx, y: current.position.y + dy, z: current.position.z + dz };
-        const key = positionKey(adjacent);
-        const next = newByPosition.get(key);
-        if (next) {
-          if (unvisited.delete(key)) frontier.push(next);
-          continue;
-        }
-        // Removed old components cannot continue supporting the new form.
-        if (!oldByPosition.has(key) && materialDefinition(voxelAt(input.grid, adjacent.x, adjacent.y, adjacent.z)).phase === 'solid') {
-          supported = true;
-        }
-      }
-    }
-    if (!supported) return {
-      ok: false, conflict: 'invalid-layout', reason: '部分构件悬在空中，尚未连接到支撑物，需要先搭支撑或调整排布',
-      blockingPositions: component.map((voxel) => voxel.position),
-    };
-  }
+  // The same rooted-matter query governs existing shelter and proposed forms.
+  // Old removed components and a separate floating cluster cannot be anchors.
+  const support = solidSupportQuery(input.grid, [
+    ...oldVoxels.filter((voxel) => !newByPosition.has(positionKey(voxel.position))
+      && !foreignOccupants.has(positionKey(voxel.position))
+      && voxelAt(input.grid, voxel.position.x, voxel.position.y, voxel.position.z) === voxel.materialId)
+      .map((voxel) => ({ position: voxel.position, solid: false })),
+    ...occupiedVoxels.map((voxel) => ({ position: voxel.position, solid: true })),
+  ]);
+  const unsupported = occupiedVoxels.filter((voxel) => !support(voxel.position));
+  if (unsupported.length) return {
+    ok: false, conflict: 'invalid-layout', reason: '部分构件没有通过连续实体连接到地基，需要先搭支撑或调整排布',
+    blockingPositions: unsupported.map((voxel) => voxel.position),
+  };
   const clearVoxels = oldVoxels.flatMap((voxel) => {
     const key = positionKey(voxel.position);
     if (newByPosition.get(key)?.materialId === voxel.materialId || foreignOccupants.has(key)

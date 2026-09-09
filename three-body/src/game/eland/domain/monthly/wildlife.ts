@@ -75,6 +75,7 @@ function moveAnimal(state: SimulationState, animal: AnimalState, targetCell: num
   const species = animalSpecies(animal.speciesId);
   animal.position.previousCellId = animal.position.cellId;
   animal.position.previousZ = animal.position.z;
+  animal.position.movementPath = [{ cellId: animal.position.cellId, z: animal.position.z }];
   if (targetCell === animal.position.cellId) return;
   for (let step = 0; step < species.movementPerMonth; step += 1) {
     const candidates = neighbors4(animal.position.cellId)
@@ -95,6 +96,7 @@ function moveAnimal(state: SimulationState, animal: AnimalState, targetCell: num
     const next = candidates[0];
     animal.position.cellId = next.cellId;
     animal.position.z = next.z;
+    animal.position.movementPath.push({ cellId: next.cellId, z: next.z });
     if (targetCell !== undefined && next.cellId === targetCell) break;
   }
 }

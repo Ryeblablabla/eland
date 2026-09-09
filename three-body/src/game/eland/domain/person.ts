@@ -1,7 +1,9 @@
+import type { ActionWorkProgress } from './action-work';
 import type { BiologicalSex } from '../population';
 import type { NamingTradition } from '../naming';
 import type { CharacterAgendaState } from './character-agenda';
 import type { MaterialId } from './material';
+import type { ItemMechanicalState } from './material-mechanics';
 import type { BereavementState } from './mortuary';
 import type { ProjectFunction, ProjectNeed } from './project';
 import type { SocialLearningState } from './social-learning';
@@ -62,6 +64,8 @@ export interface ItemStack {
   /** Portable liquid is physically bound to one carried container stack. */
   containedByStackId?: string;
   recordPayloadId?: string;
+  /** Physical condition of one conserved portion, including any fragments. */
+  mechanicalState?: ItemMechanicalState;
 }
 
 export interface KnownFact {
@@ -324,6 +328,8 @@ export interface PersonState {
     tickPath: number[];
   };
   body: { health: number; hydration: number; nutrition: number };
+  /** Unfinished directly controlled work; Intent-owned work stays on that Intent. */
+  actionWork?: ActionWorkProgress;
   baselineCapacities: {
     locomotion: number;
     manipulation: number;

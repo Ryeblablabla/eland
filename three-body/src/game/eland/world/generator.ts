@@ -20,6 +20,8 @@ import {
   type VoxelWorld,
 } from './grid';
 import { biomeProfileAt } from './biome';
+import { normalLandform } from '../../art-direction/normalLandform';
+import { woodlandDensityMultiplier } from '../../art-direction/riverbendLayout';
 
 export interface GeneratedDrop {
   id: string;
@@ -64,9 +66,9 @@ function fillColumn(world: VoxelWorld, x: number, y: number, height: number, sur
   setVoxel(world, x, y, Math.max(0, height - 1), surface);
 }
 
-const INITIAL_TERRAIN_HEIGHT = 5;
+const INITIAL_RIVER_HEIGHT = 5;
 const SPAWN_CLEARING_RADIUS = 6;
-export const CURRENT_WORLD_GENERATOR_VERSION = 'material-world-v4-regional-geology' as const;
+export const CURRENT_WORLD_GENERATOR_VERSION = 'material-world-v5-river-terraces' as const;
 
 export interface RiverCourseRow {
   y: number;
@@ -93,7 +95,7 @@ function waterCurrentSegmentId(seed: number, upstreamY: number, lane: number): s
 
 export function waterCurrentSegmentsForSeed(seed: number): WaterCurrentSegment[] {
   const rows = riverCourse(seed);
-  const waterZ = INITIAL_TERRAIN_HEIGHT - 1;
+  const waterZ = INITIAL_RIVER_HEIGHT - 1;
   return rows.slice(0, -1).flatMap((row, rowIndex) => [0, 1].map((lane) => {
     const downstream = rows[rowIndex + 1];
     const from = { x: row.waterX[lane], y: row.y, z: waterZ };
@@ -139,34 +141,42 @@ export function generateVoxelWorld(seed: number): {
     voxels: new Uint16Array(WORLD_VOXEL_COUNT),
   };
   const drops: GeneratedDrop[] = [];
+  const course = riverCourse(seed);
+  const centerY = 27;
+  const riverAtSpawn = course[centerY]?.waterX[0] ?? 10;
+  const centerX = Math.min(WORLD_WIDTH - 3, riverAtSpawn + 4);
+  const landform = normalLandform({
+    seed, width: WORLD_WIDTH, depth: WORLD_DEPTH, course, spawnX: centerX, spawnY: centerY,
+  });
   for (let y = 0; y < WORLD_DEPTH; y += 1) {
     for (let x = 0; x < WORLD_WIDTH; x += 1) {
       const profile = biomeProfileAt(seed, x, y);
       const surfaceSample = smoothNoise(seed + 71, x, y, 5) * 0.86
         + seededFraction(seed + 71, `surface-detail:${x}:${y}`) * 0.14;
-      const surface = surfaceSample < profile.sandChance
-        ? Material.Sand
-        : surfaceSample < profile.sandChance + profile.richSoilChance
-          ? Material.RichSoil
-          : Material.Grass;
+      const height = landform.heights[cellId(x, y)];
+      const surface = height >= 8 && smoothNoise(seed + 47, x, y, 7) > 0.56
+        ? Material.Stone
+        : surfaceSample < profile.sandChance
+          ? Material.Sand
+          : surfaceSample < profile.sandChance + profile.richSoilChance
+            ? Material.RichSoil
+            : Material.Grass;
       fillColumn(
         world,
         x,
         y,
-        INITIAL_TERRAIN_HEIGHT,
+        height,
         surface,
       );
     }
   }
 
-  const course = riverCourse(seed);
-  let riverAtSpawn = course[0]?.waterX[0] ?? 10;
   for (const row of course) {
-    if (row.y === 27) riverAtSpawn = row.waterX[0];
     for (const x of row.waterX) {
-      // 河床下切一层，但水面与初始陆地齐平，避免整条河凸成蓝色墙带。
-      setVoxel(world, x, row.y, INITIAL_TERRAIN_HEIGHT - 2, Material.Sand);
-      setVoxel(world, x, row.y, INITIAL_TERRAIN_HEIGHT - 1, Material.Water);
+      // The precomputed landform leaves both authoritative water lanes at height 5.
+      // Keep z=4 water and directed current facts aligned as the banks rise away.
+      setVoxel(world, x, row.y, INITIAL_RIVER_HEIGHT - 2, Material.Sand);
+      setVoxel(world, x, row.y, INITIAL_RIVER_HEIGHT - 1, Material.Water);
     }
     for (const bankX of [row.waterX[0] - 1, row.waterX[1] + 1]) {
       if (bankX < 0 || bankX >= WORLD_WIDTH) continue;
@@ -175,8 +185,6 @@ export function generateVoxelWorld(seed: number): {
     }
   }
 
-  const centerX = Math.min(WORLD_WIDTH - 3, riverAtSpawn + 4);
-  const centerY = 27;
   const inSpawnClearing = (id: number): boolean => {
     const x = id % WORLD_WIDTH;
     const y = Math.floor(id / WORLD_WIDTH);
@@ -191,15 +199,19 @@ export function generateVoxelWorld(seed: number): {
     const y = Math.floor(id / WORLD_WIDTH);
     const z = topZ(world, id);
     const profile = biomeProfileAt(seed, x, y);
-    const forest = smoothNoise(seed + 313, x, y, 9);
+    const woodland = woodlandDensityMultiplier(seed, x, y);
     const sample = seededFraction(seed, `life:${id}`);
-    const treeChance = Math.min(0.68, profile.treeDensity * (0.68 + forest * 0.64));
+    // Groves and quiet openings share one broad density field with the art study.
+    // Understory follows the canopy; berries retain a baseline in the open ground.
+    const treeChance = Math.min(0.52, profile.treeDensity * woodland);
+    const berryChance = profile.berryDensity * (0.8 + Math.min(1, woodland) * 0.2);
+    const shrubChance = profile.shrubDensity * (0.3 + Math.min(1.5, woodland) * 0.55);
     if (sample < treeChance && z + 2 < WORLD_LEVELS) {
       setVoxel(world, x, y, z + 1, Material.Wood);
       setVoxel(world, x, y, z + 2, Material.Leaves);
-    } else if (sample < treeChance + profile.berryDensity) {
+    } else if (sample < treeChance + berryChance) {
       setVoxel(world, x, y, z, Material.BerryBush);
-    } else if (sample < treeChance + profile.berryDensity + profile.shrubDensity) {
+    } else if (sample < treeChance + berryChance + shrubChance) {
       setVoxel(world, x, y, z, Material.Shrub);
     }
     if (seededFraction(seed, `stone:${id}`) > 0.955) drops.push({ id: `stone-${id}`, materialId: Material.Stone, cellId: id, z: z + 1, quantity: 3, sourceEventIds: [], createdAtMonth: 0 });

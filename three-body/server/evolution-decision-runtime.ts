@@ -9,9 +9,10 @@ export interface EvolutionDecisionRuntime {
   decider?: BatchDecider;
 }
 
-export function resolveEvolutionDecisionRuntime(): EvolutionDecisionRuntime {
-  if (readEvolutionMode() === 'local') return { provider: 'local', model: 'rule-planner-v1' };
-  const endpoint = hasExplicitModelRoute('decision') ? modelEndpointStatus('decision') : null;
+export function resolveEvolutionDecisionRuntime(requestedEndpoint?: string): EvolutionDecisionRuntime {
+  if (!requestedEndpoint && readEvolutionMode() === 'local') return { provider: 'local', model: 'rule-planner-v1' };
+  const endpoint = requestedEndpoint || hasExplicitModelRoute('decision')
+    ? modelEndpointStatus('decision', requestedEndpoint) : null;
   if (!endpoint?.configured || !endpoint.endpointId || !endpoint.model) {
     throw new Error(`模型演化无法开始：${endpoint?.issue ?? '尚未配置人物决策模型'}。`);
   }

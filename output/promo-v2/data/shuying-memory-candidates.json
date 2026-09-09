@@ -1,0 +1,2790 @@
+[
+  {
+    "month": 397,
+    "name": "孙疏影",
+    "agentId": "born-16-cai-wenji-7",
+    "memoryCount": 24,
+    "memories": [
+      {
+        "id": "memory:intent-action-failed:intent-397-born-16-cai-wenji-7-9153:397",
+        "kind": "failure",
+        "summary": "尝试结合食物与木制生产工具失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 397,
+        "lastRecalledAtMonth": 397,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-397-action-born-16-cai-wenji-7-24"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-397-action-born-16-cai-wenji-7-24",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 397,
+            "orderInMonth": 24,
+            "cellId": 2867,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-397-born-16-cai-wenji-7-9153",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-21-57"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-41-328"
+                }
+              ]
+            },
+            "fromCellId": 2867,
+            "toCellId": 2867,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2867
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                21,
+                41
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 23
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-390-born-16-cai-wenji-7-9042:391",
+        "kind": "failure",
+        "summary": "尝试复现“石与木材可结合为石制工具”失败：背包中的结合材料已经不存在",
+        "importance": 78,
+        "createdAtMonth": 391,
+        "lastRecalledAtMonth": 391,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-391-action-born-16-cai-wenji-7-23"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-391-action-born-16-cai-wenji-7-23",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 391,
+            "orderInMonth": 23,
+            "cellId": 2950,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-390-born-16-cai-wenji-7-9042",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-1-372"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-13-388"
+                }
+              ]
+            },
+            "fromCellId": 2950,
+            "toCellId": 2950,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2950
+            ],
+            "status": "blocked",
+            "result": "背包中的结合材料已经不存在",
+            "diff": {},
+            "planningTick": 1,
+            "orderInTick": 21
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-387-born-16-cai-wenji-7-8933:387",
+        "kind": "failure",
+        "summary": "尝试结合绳与磨坊失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 387,
+        "lastRecalledAtMonth": 387,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-387-action-born-16-cai-wenji-7-11"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-387-action-born-16-cai-wenji-7-11",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 387,
+            "orderInMonth": 11,
+            "cellId": 2867,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-387-born-16-cai-wenji-7-8933",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-23-329"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-59-e-232-action-born-16-cai-wenji-7-28"
+                }
+              ]
+            },
+            "fromCellId": 2867,
+            "toCellId": 2867,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2867
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                23,
+                59
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 9
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-386-born-16-cai-wenji-7-8907:386",
+        "kind": "failure",
+        "summary": "尝试结合石与木制生产工具失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 386,
+        "lastRecalledAtMonth": 386,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-386-action-born-16-cai-wenji-7-18"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-386-action-born-16-cai-wenji-7-18",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 386,
+            "orderInMonth": 18,
+            "cellId": 2867,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-386-born-16-cai-wenji-7-8907",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-1-372"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-41-328"
+                }
+              ]
+            },
+            "fromCellId": 2867,
+            "toCellId": 2867,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2867
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                1,
+                41
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 15
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-385-born-16-cai-wenji-7-8882:385",
+        "kind": "failure",
+        "summary": "尝试结合熟食与骨失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 385,
+        "lastRecalledAtMonth": 385,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-385-action-born-16-cai-wenji-7-18"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-385-action-born-16-cai-wenji-7-18",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 385,
+            "orderInMonth": 18,
+            "cellId": 2867,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-385-born-16-cai-wenji-7-8882",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-25-176"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-31-325"
+                }
+              ]
+            },
+            "fromCellId": 2867,
+            "toCellId": 2867,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2867
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                25,
+                31
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 16
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-384-born-16-cai-wenji-7-8857:384",
+        "kind": "failure",
+        "summary": "尝试结合生肉与生肉失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 384,
+        "lastRecalledAtMonth": 384,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-384-action-born-16-cai-wenji-7-23"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-384-action-born-16-cai-wenji-7-23",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 384,
+            "orderInMonth": 23,
+            "cellId": 2867,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-384-born-16-cai-wenji-7-8857",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                }
+              ]
+            },
+            "fromCellId": 2867,
+            "toCellId": 2867,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2867
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                29,
+                29
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 21
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-383-born-16-cai-wenji-7-8811:383",
+        "kind": "failure",
+        "summary": "尝试结合食物与木制生产工具失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 383,
+        "lastRecalledAtMonth": 383,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-383-action-born-16-cai-wenji-7-11"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-383-action-born-16-cai-wenji-7-11",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 383,
+            "orderInMonth": 11,
+            "cellId": 2867,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-383-born-16-cai-wenji-7-8811",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-21-57"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-41-328"
+                }
+              ]
+            },
+            "fromCellId": 2867,
+            "toCellId": 2867,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2867
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                21,
+                41
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 9
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-382-born-16-cai-wenji-7-8792:382",
+        "kind": "failure",
+        "summary": "尝试结合石与生肉失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 382,
+        "lastRecalledAtMonth": 382,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-382-action-born-16-cai-wenji-7-27"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-382-action-born-16-cai-wenji-7-27",
+            "kind": "action",
+            "actionTick": 2,
+            "atMonth": 382,
+            "orderInMonth": 27,
+            "cellId": 2867,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-382-born-16-cai-wenji-7-8792",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-1-372"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                }
+              ]
+            },
+            "fromCellId": 2867,
+            "toCellId": 2867,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2867
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                1,
+                29
+              ]
+            },
+            "planningTick": 2,
+            "orderInTick": 4
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-379-born-16-cai-wenji-7-8648:379",
+        "kind": "failure",
+        "summary": "尝试结合石与木制生产工具失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 379,
+        "lastRecalledAtMonth": 379,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-379-action-born-16-cai-wenji-7-7"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-379-action-born-16-cai-wenji-7-7",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 379,
+            "orderInMonth": 7,
+            "cellId": 2618,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-379-born-16-cai-wenji-7-8648",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-1-372"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-41-328"
+                }
+              ]
+            },
+            "fromCellId": 2618,
+            "toCellId": 2618,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2618
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                1,
+                41
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 5
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-378-born-16-cai-wenji-7-8645:378",
+        "kind": "failure",
+        "summary": "尝试结合生肉与生肉失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 378,
+        "lastRecalledAtMonth": 378,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-378-action-born-16-cai-wenji-7-32"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-378-action-born-16-cai-wenji-7-32",
+            "kind": "action",
+            "actionTick": 5,
+            "atMonth": 378,
+            "orderInMonth": 32,
+            "cellId": 2618,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-378-born-16-cai-wenji-7-8645",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                }
+              ]
+            },
+            "fromCellId": 2618,
+            "toCellId": 2618,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2618
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                29,
+                29
+              ]
+            },
+            "planningTick": 5,
+            "orderInTick": 1
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-377-born-16-cai-wenji-7-8626:377",
+        "kind": "failure",
+        "summary": "尝试结合绳与生肉失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 377,
+        "lastRecalledAtMonth": 377,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-377-action-born-16-cai-wenji-7-22"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-377-action-born-16-cai-wenji-7-22",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 377,
+            "orderInMonth": 22,
+            "cellId": 2615,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-377-born-16-cai-wenji-7-8626",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-23-329"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                }
+              ]
+            },
+            "fromCellId": 2615,
+            "toCellId": 2615,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2615
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                23,
+                29
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 17
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-376-born-16-cai-wenji-7-8597:376",
+        "kind": "failure",
+        "summary": "尝试结合石与生肉失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 376,
+        "lastRecalledAtMonth": 376,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-376-action-born-16-cai-wenji-7-15"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-376-action-born-16-cai-wenji-7-15",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 376,
+            "orderInMonth": 15,
+            "cellId": 2615,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-376-born-16-cai-wenji-7-8597",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-1-372"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                }
+              ]
+            },
+            "fromCellId": 2615,
+            "toCellId": 2615,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2615
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                1,
+                29
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 12
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-375-born-16-cai-wenji-7-8565:375",
+        "kind": "failure",
+        "summary": "尝试结合熟食与生肉失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 375,
+        "lastRecalledAtMonth": 375,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-375-action-born-16-cai-wenji-7-5"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-375-action-born-16-cai-wenji-7-5",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 375,
+            "orderInMonth": 5,
+            "cellId": 2615,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-375-born-16-cai-wenji-7-8565",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-25-176"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                }
+              ]
+            },
+            "fromCellId": 2615,
+            "toCellId": 2615,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2615
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                25,
+                29
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 4
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-374-born-16-cai-wenji-7-8531:374",
+        "kind": "failure",
+        "summary": "尝试结合种子与木制生产工具失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 374,
+        "lastRecalledAtMonth": 374,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-374-action-born-16-cai-wenji-7-20"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-374-action-born-16-cai-wenji-7-20",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 374,
+            "orderInMonth": 20,
+            "cellId": 2615,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-374-born-16-cai-wenji-7-8531",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-22-61"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-41-328"
+                }
+              ]
+            },
+            "fromCellId": 2615,
+            "toCellId": 2615,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2615
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                22,
+                41
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 19
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-371-born-16-cai-wenji-7-8414:372",
+        "kind": "failure",
+        "summary": "尝试复现“石与木材可结合为石制工具”失败：背包中的结合材料已经不存在",
+        "importance": 78,
+        "createdAtMonth": 372,
+        "lastRecalledAtMonth": 372,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-372-action-born-16-cai-wenji-7-30"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-372-action-born-16-cai-wenji-7-30",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 372,
+            "orderInMonth": 30,
+            "cellId": 2615,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-371-born-16-cai-wenji-7-8414",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-1-370"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-13-356"
+                }
+              ]
+            },
+            "fromCellId": 2615,
+            "toCellId": 2615,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2615
+            ],
+            "status": "blocked",
+            "result": "背包中的结合材料已经不存在",
+            "diff": {},
+            "planningTick": 1,
+            "orderInTick": 13
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-369-born-16-cai-wenji-7-8338:370",
+        "kind": "failure",
+        "summary": "尝试复现“石与木材可结合为石制工具”失败：背包中的结合材料已经不存在",
+        "importance": 78,
+        "createdAtMonth": 370,
+        "lastRecalledAtMonth": 370,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-370-action-born-16-cai-wenji-7-29"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-370-action-born-16-cai-wenji-7-29",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 370,
+            "orderInMonth": 29,
+            "cellId": 2615,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-369-born-16-cai-wenji-7-8338",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-1-366"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-13-356"
+                }
+              ]
+            },
+            "fromCellId": 2615,
+            "toCellId": 2615,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2615
+            ],
+            "status": "blocked",
+            "result": "背包中的结合材料已经不存在",
+            "diff": {},
+            "planningTick": 1,
+            "orderInTick": 13
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-365-born-16-cai-wenji-7-8185:366",
+        "kind": "failure",
+        "summary": "尝试复现“石与木材可结合为石制工具”失败：背包中的结合材料已经不存在",
+        "importance": 78,
+        "createdAtMonth": 366,
+        "lastRecalledAtMonth": 366,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-366-action-born-16-cai-wenji-7-38"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-366-action-born-16-cai-wenji-7-38",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 366,
+            "orderInMonth": 38,
+            "cellId": 2531,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-365-born-16-cai-wenji-7-8185",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-1-358"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-13-356"
+                }
+              ]
+            },
+            "fromCellId": 2531,
+            "toCellId": 2531,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2531
+            ],
+            "status": "blocked",
+            "result": "背包中的结合材料已经不存在",
+            "diff": {},
+            "planningTick": 1,
+            "orderInTick": 22
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-355-born-16-cai-wenji-7-7783:355",
+        "kind": "failure",
+        "summary": "尝试结合绳与生肉失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 355,
+        "lastRecalledAtMonth": 355,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-355-action-born-16-cai-wenji-7-31"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-355-action-born-16-cai-wenji-7-31",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 355,
+            "orderInMonth": 31,
+            "cellId": 2701,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-355-born-16-cai-wenji-7-7783",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-23-329"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                }
+              ]
+            },
+            "fromCellId": 2701,
+            "toCellId": 2701,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2701
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                23,
+                29
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 15
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-354-born-16-cai-wenji-7-7736:354",
+        "kind": "failure",
+        "summary": "尝试结合熟食与生肉失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 354,
+        "lastRecalledAtMonth": 354,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-354-action-born-16-cai-wenji-7-25"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-354-action-born-16-cai-wenji-7-25",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 354,
+            "orderInMonth": 25,
+            "cellId": 2701,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-354-born-16-cai-wenji-7-7736",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-25-176"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                }
+              ]
+            },
+            "fromCellId": 2701,
+            "toCellId": 2701,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2701
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                25,
+                29
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 9
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-353-born-16-cai-wenji-7-7680:353",
+        "kind": "failure",
+        "summary": "尝试用石制工具向骨施力失败：这些物质当前没有可发生的施力响应",
+        "importance": 78,
+        "createdAtMonth": 353,
+        "lastRecalledAtMonth": 353,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-353-action-born-16-cai-wenji-7-30"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-353-action-born-16-cai-wenji-7-30",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 353,
+            "orderInMonth": 30,
+            "cellId": 2701,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-353-born-16-cai-wenji-7-7680",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "exert",
+              "toolStackId": "stack-born-16-cai-wenji-7-24-161",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-31-325"
+                },
+                {
+                  "kind": "voxel",
+                  "position": {
+                    "x": 13,
+                    "y": 31,
+                    "z": 5
+                  }
+                }
+              ]
+            },
+            "fromCellId": 2701,
+            "toCellId": 2701,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2701
+            ],
+            "status": "blocked",
+            "result": "这些物质当前没有可发生的施力响应",
+            "diff": {
+              "toolMaterialId": 24,
+              "inputMaterialId": 31,
+              "targetMaterialId": 0
+            },
+            "planningTick": 1,
+            "orderInTick": 13
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-350-born-16-cai-wenji-7-7569:352",
+        "kind": "failure",
+        "summary": "尝试复现“石与木材可结合为石制工具”失败：背包中的结合材料已经不存在",
+        "importance": 78,
+        "createdAtMonth": 352,
+        "lastRecalledAtMonth": 352,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-352-action-born-16-cai-wenji-7-32"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-352-action-born-16-cai-wenji-7-32",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 352,
+            "orderInMonth": 32,
+            "cellId": 2701,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-350-born-16-cai-wenji-7-7569",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-1-261"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-13-336"
+                }
+              ]
+            },
+            "fromCellId": 2701,
+            "toCellId": 2701,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2701
+            ],
+            "status": "blocked",
+            "result": "背包中的结合材料已经不存在",
+            "diff": {},
+            "planningTick": 1,
+            "orderInTick": 14
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-352-born-16-cai-wenji-7-7660:352",
+        "kind": "failure",
+        "summary": "尝试结合种子与木制生产工具失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 352,
+        "lastRecalledAtMonth": 352,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-352-action-born-16-cai-wenji-7-53"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-352-action-born-16-cai-wenji-7-53",
+            "kind": "action",
+            "actionTick": 2,
+            "atMonth": 352,
+            "orderInMonth": 53,
+            "cellId": 2701,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-352-born-16-cai-wenji-7-7660",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-22-61"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-41-328"
+                }
+              ]
+            },
+            "fromCellId": 2701,
+            "toCellId": 2701,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2701
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                22,
+                41
+              ]
+            },
+            "planningTick": 2,
+            "orderInTick": 11
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-349-born-16-cai-wenji-7-7554:349",
+        "kind": "failure",
+        "summary": "尝试用石制工具向木制生产工具施力失败：这些物质当前没有可发生的施力响应",
+        "importance": 78,
+        "createdAtMonth": 349,
+        "lastRecalledAtMonth": 349,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-349-action-born-16-cai-wenji-7-60"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-349-action-born-16-cai-wenji-7-60",
+            "kind": "action",
+            "actionTick": 9,
+            "atMonth": 349,
+            "orderInMonth": 60,
+            "cellId": 2701,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-349-born-16-cai-wenji-7-7554",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "exert",
+              "toolStackId": "stack-born-16-cai-wenji-7-24-161",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-41-328"
+                },
+                {
+                  "kind": "voxel",
+                  "position": {
+                    "x": 13,
+                    "y": 31,
+                    "z": 5
+                  }
+                }
+              ]
+            },
+            "fromCellId": 2701,
+            "toCellId": 2701,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2701
+            ],
+            "status": "blocked",
+            "result": "这些物质当前没有可发生的施力响应",
+            "diff": {
+              "toolMaterialId": 24,
+              "inputMaterialId": 41,
+              "targetMaterialId": 0
+            },
+            "planningTick": 9,
+            "orderInTick": 1
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-344-born-16-cai-wenji-7-7267:344",
+        "kind": "failure",
+        "summary": "尝试用石制工具向木制生产工具施力失败：这些物质当前没有可发生的施力响应",
+        "importance": 78,
+        "createdAtMonth": 344,
+        "lastRecalledAtMonth": 344,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-344-action-born-16-cai-wenji-7-34"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-344-action-born-16-cai-wenji-7-34",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 344,
+            "orderInMonth": 34,
+            "cellId": 2950,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-344-born-16-cai-wenji-7-7267",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "exert",
+              "toolStackId": "stack-born-16-cai-wenji-7-24-161",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-41-328"
+                },
+                {
+                  "kind": "voxel",
+                  "position": {
+                    "x": 10,
+                    "y": 34,
+                    "z": 5
+                  }
+                }
+              ]
+            },
+            "fromCellId": 2950,
+            "toCellId": 2950,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              2950
+            ],
+            "status": "blocked",
+            "result": "这些物质当前没有可发生的施力响应",
+            "diff": {
+              "toolMaterialId": 24,
+              "inputMaterialId": 41,
+              "targetMaterialId": 0
+            },
+            "planningTick": 1,
+            "orderInTick": 20
+          }
+        ]
+      }
+    ],
+    "cognitionKeys": []
+  },
+  {
+    "month": 528,
+    "name": "孙疏影",
+    "agentId": "born-16-cai-wenji-7",
+    "memoryCount": 24,
+    "memories": [
+      {
+        "id": "memory:intent-action-failed:intent-527-born-16-cai-wenji-7-12345:527",
+        "kind": "failure",
+        "summary": "尝试让绳暴露于邻近陶窑失败：这些物质当前没有可发生的暴露响应",
+        "importance": 78,
+        "createdAtMonth": 527,
+        "lastRecalledAtMonth": 527,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-527-action-born-16-cai-wenji-7-20"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-527-action-born-16-cai-wenji-7-20",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 527,
+            "orderInMonth": 20,
+            "cellId": 3122,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-527-born-16-cai-wenji-7-12345",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "expose",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-23-329"
+                },
+                {
+                  "kind": "voxel",
+                  "position": {
+                    "x": 15,
+                    "y": 37,
+                    "z": 5
+                  }
+                }
+              ]
+            },
+            "fromCellId": 3122,
+            "toCellId": 3122,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3122
+            ],
+            "status": "blocked",
+            "result": "这些物质当前没有可发生的暴露响应",
+            "diff": {
+              "inputMaterialId": 23,
+              "targetMaterialId": 58
+            },
+            "planningTick": 1,
+            "orderInTick": 18
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-526-born-16-cai-wenji-7-12331:526",
+        "kind": "failure",
+        "summary": "尝试结合铜与磨坊失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 526,
+        "lastRecalledAtMonth": 526,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-526-action-born-16-cai-wenji-7-23"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-526-action-born-16-cai-wenji-7-23",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 526,
+            "orderInMonth": 23,
+            "cellId": 3122,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-526-born-16-cai-wenji-7-12331",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-46-451"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-59-e-232-action-born-16-cai-wenji-7-28"
+                }
+              ]
+            },
+            "fromCellId": 3122,
+            "toCellId": 3122,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3122
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                46,
+                59
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 19
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-525-born-16-cai-wenji-7-12297:525",
+        "kind": "failure",
+        "summary": "尝试结合种子与木炭失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 525,
+        "lastRecalledAtMonth": 525,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-525-action-born-16-cai-wenji-7-13"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-525-action-born-16-cai-wenji-7-13",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 525,
+            "orderInMonth": 13,
+            "cellId": 3122,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-525-born-16-cai-wenji-7-12297",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-22-61"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-35-446"
+                }
+              ]
+            },
+            "fromCellId": 3122,
+            "toCellId": 3122,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3122
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                22,
+                35
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 12
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-524-born-16-cai-wenji-7-12287:524",
+        "kind": "failure",
+        "summary": "尝试结合食物与铜失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 524,
+        "lastRecalledAtMonth": 524,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-524-action-born-16-cai-wenji-7-23"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-524-action-born-16-cai-wenji-7-23",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 524,
+            "orderInMonth": 23,
+            "cellId": 3122,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-524-born-16-cai-wenji-7-12287",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-21-57"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-46-451"
+                }
+              ]
+            },
+            "fromCellId": 3122,
+            "toCellId": 3122,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3122
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                21,
+                46
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 22
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-523-born-16-cai-wenji-7-12247:523",
+        "kind": "failure",
+        "summary": "尝试结合熟食与木炭失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 523,
+        "lastRecalledAtMonth": 523,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-523-action-born-16-cai-wenji-7-4"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-523-action-born-16-cai-wenji-7-4",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 523,
+            "orderInMonth": 4,
+            "cellId": 3122,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-523-born-16-cai-wenji-7-12247",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-25-176"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-35-446"
+                }
+              ]
+            },
+            "fromCellId": 3122,
+            "toCellId": 3122,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3122
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                25,
+                35
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 3
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-522-born-16-cai-wenji-7-12213:522",
+        "kind": "failure",
+        "summary": "尝试结合种子与生肉失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 522,
+        "lastRecalledAtMonth": 522,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-522-action-born-16-cai-wenji-7-17"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-522-action-born-16-cai-wenji-7-17",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 522,
+            "orderInMonth": 17,
+            "cellId": 3122,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-522-born-16-cai-wenji-7-12213",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-22-61"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                }
+              ]
+            },
+            "fromCellId": 3122,
+            "toCellId": 3122,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3122
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                22,
+                29
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 16
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-521-born-16-cai-wenji-7-12205:521",
+        "kind": "failure",
+        "summary": "尝试结合食物与生肉失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 521,
+        "lastRecalledAtMonth": 521,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-521-action-born-16-cai-wenji-7-40"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-521-action-born-16-cai-wenji-7-40",
+            "kind": "action",
+            "actionTick": 10,
+            "atMonth": 521,
+            "orderInMonth": 40,
+            "cellId": 3122,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-521-born-16-cai-wenji-7-12205",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-21-57"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                }
+              ]
+            },
+            "fromCellId": 3122,
+            "toCellId": 3122,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3122
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                21,
+                29
+              ]
+            },
+            "planningTick": 10,
+            "orderInTick": 1
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-517-born-16-cai-wenji-7-12122:517",
+        "kind": "failure",
+        "summary": "尝试结合食物与铜失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 517,
+        "lastRecalledAtMonth": 517,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-517-action-born-16-cai-wenji-7-13"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-517-action-born-16-cai-wenji-7-13",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 517,
+            "orderInMonth": 13,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-517-born-16-cai-wenji-7-12122",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-21-57"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-46-451"
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                21,
+                46
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 10
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-516-born-16-cai-wenji-7-12097:516",
+        "kind": "failure",
+        "summary": "尝试结合骨与骨失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 516,
+        "lastRecalledAtMonth": 516,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-516-action-born-16-cai-wenji-7-17"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-516-action-born-16-cai-wenji-7-17",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 516,
+            "orderInMonth": 17,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-516-born-16-cai-wenji-7-12097",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-31-325"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-31-325"
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                31,
+                31
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 15
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-514-born-16-cai-wenji-7-12051:514",
+        "kind": "failure",
+        "summary": "尝试结合熟食与木炭失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 514,
+        "lastRecalledAtMonth": 514,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-514-action-born-16-cai-wenji-7-11"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-514-action-born-16-cai-wenji-7-11",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 514,
+            "orderInMonth": 11,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-514-born-16-cai-wenji-7-12051",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-25-176"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-35-446"
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                25,
+                35
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 9
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-513-born-16-cai-wenji-7-12044:513",
+        "kind": "failure",
+        "summary": "尝试结合木制生产工具与铜失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 513,
+        "lastRecalledAtMonth": 513,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-513-action-born-16-cai-wenji-7-27"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-513-action-born-16-cai-wenji-7-27",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 513,
+            "orderInMonth": 27,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-513-born-16-cai-wenji-7-12044",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-41-328"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-46-451"
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                41,
+                46
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 25
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-512-born-16-cai-wenji-7-12007:512",
+        "kind": "failure",
+        "summary": "尝试结合食物与生肉失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 512,
+        "lastRecalledAtMonth": 512,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-512-action-born-16-cai-wenji-7-12"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-512-action-born-16-cai-wenji-7-12",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 512,
+            "orderInMonth": 12,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-512-born-16-cai-wenji-7-12007",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-21-57"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                21,
+                29
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 10
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-511-born-16-cai-wenji-7-11988:511",
+        "kind": "failure",
+        "summary": "尝试结合石制工具与生肉失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 511,
+        "lastRecalledAtMonth": 511,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-511-action-born-16-cai-wenji-7-28"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-511-action-born-16-cai-wenji-7-28",
+            "kind": "action",
+            "actionTick": 2,
+            "atMonth": 511,
+            "orderInMonth": 28,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-511-born-16-cai-wenji-7-11988",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-24-161"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                24,
+                29
+              ]
+            },
+            "planningTick": 2,
+            "orderInTick": 4
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-508-born-16-cai-wenji-7-11910:508",
+        "kind": "failure",
+        "summary": "尝试结合骨与骨失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 508,
+        "lastRecalledAtMonth": 508,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-508-action-born-16-cai-wenji-7-13"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-508-action-born-16-cai-wenji-7-13",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 508,
+            "orderInMonth": 13,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-508-born-16-cai-wenji-7-11910",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-31-325"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-31-325"
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                31,
+                31
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 11
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-507-born-16-cai-wenji-7-11892:507",
+        "kind": "failure",
+        "summary": "尝试结合石制工具与木制生产工具失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 507,
+        "lastRecalledAtMonth": 507,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-507-action-born-16-cai-wenji-7-8"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-507-action-born-16-cai-wenji-7-8",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 507,
+            "orderInMonth": 8,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-507-born-16-cai-wenji-7-11892",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-24-161"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-41-328"
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                24,
+                41
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 7
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-506-born-16-cai-wenji-7-11867:506",
+        "kind": "failure",
+        "summary": "尝试结合木制生产工具与铜失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 506,
+        "lastRecalledAtMonth": 506,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-506-action-born-16-cai-wenji-7-16"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-506-action-born-16-cai-wenji-7-16",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 506,
+            "orderInMonth": 16,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-506-born-16-cai-wenji-7-11867",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-41-328"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-46-451"
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                41,
+                46
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 13
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-505-born-16-cai-wenji-7-11832:505",
+        "kind": "failure",
+        "summary": "尝试结合生肉与骨失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 505,
+        "lastRecalledAtMonth": 505,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-505-action-born-16-cai-wenji-7-3"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-505-action-born-16-cai-wenji-7-3",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 505,
+            "orderInMonth": 3,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-505-born-16-cai-wenji-7-11832",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-31-325"
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                29,
+                31
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 3
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-504-born-16-cai-wenji-7-11817:504",
+        "kind": "failure",
+        "summary": "尝试让绳暴露于邻近陶窑失败：这些物质当前没有可发生的暴露响应",
+        "importance": 78,
+        "createdAtMonth": 504,
+        "lastRecalledAtMonth": 504,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-504-action-born-16-cai-wenji-7-2"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-504-action-born-16-cai-wenji-7-2",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 504,
+            "orderInMonth": 2,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-504-born-16-cai-wenji-7-11817",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "expose",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-23-329"
+                },
+                {
+                  "kind": "voxel",
+                  "position": {
+                    "x": 15,
+                    "y": 37,
+                    "z": 5
+                  }
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些物质当前没有可发生的暴露响应",
+            "diff": {
+              "inputMaterialId": 23,
+              "targetMaterialId": 58
+            },
+            "planningTick": 1,
+            "orderInTick": 1
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-503-born-16-cai-wenji-7-11796:503",
+        "kind": "failure",
+        "summary": "尝试结合石制工具与生肉失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 503,
+        "lastRecalledAtMonth": 503,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-503-action-born-16-cai-wenji-7-14"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-503-action-born-16-cai-wenji-7-14",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 503,
+            "orderInMonth": 14,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-503-born-16-cai-wenji-7-11796",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-24-161"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                24,
+                29
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 13
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-502-born-16-cai-wenji-7-11768:502",
+        "kind": "failure",
+        "summary": "尝试结合石制工具与骨失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 502,
+        "lastRecalledAtMonth": 502,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-502-action-born-16-cai-wenji-7-19"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-502-action-born-16-cai-wenji-7-19",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 502,
+            "orderInMonth": 19,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-502-born-16-cai-wenji-7-11768",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-24-161"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-31-325"
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                24,
+                31
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 17
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-501-born-16-cai-wenji-7-11728:501",
+        "kind": "failure",
+        "summary": "尝试结合生肉与木制生产工具失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 501,
+        "lastRecalledAtMonth": 501,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-501-action-born-16-cai-wenji-7-28"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-501-action-born-16-cai-wenji-7-28",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 501,
+            "orderInMonth": 28,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-501-born-16-cai-wenji-7-11728",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-41-328"
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                29,
+                41
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 24
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-500-born-16-cai-wenji-7-11679:500",
+        "kind": "failure",
+        "summary": "尝试结合石制工具与木制生产工具失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 500,
+        "lastRecalledAtMonth": 500,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-500-action-born-16-cai-wenji-7-11"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-500-action-born-16-cai-wenji-7-11",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 500,
+            "orderInMonth": 11,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-500-born-16-cai-wenji-7-11679",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-24-161"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-41-328"
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                24,
+                41
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 9
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-499-born-16-cai-wenji-7-11648:499",
+        "kind": "failure",
+        "summary": "尝试结合种子与铜失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 499,
+        "lastRecalledAtMonth": 499,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-499-action-born-16-cai-wenji-7-4"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-499-action-born-16-cai-wenji-7-4",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 499,
+            "orderInMonth": 4,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-499-born-16-cai-wenji-7-11648",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-22-61"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-46-451"
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                22,
+                46
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 2
+          }
+        ]
+      },
+      {
+        "id": "memory:intent-action-failed:intent-498-born-16-cai-wenji-7-11642:498",
+        "kind": "failure",
+        "summary": "尝试结合生肉与骨失败：这些随身物质当前没有可发生的结合规则",
+        "importance": 78,
+        "createdAtMonth": 498,
+        "lastRecalledAtMonth": 498,
+        "personIds": [],
+        "sourceEventIds": [
+          "e-498-action-born-16-cai-wenji-7-23"
+        ],
+        "sourceEvents": [
+          {
+            "id": "e-498-action-born-16-cai-wenji-7-23",
+            "kind": "action",
+            "actionTick": 1,
+            "atMonth": 498,
+            "orderInMonth": 23,
+            "cellId": 3039,
+            "who": "born-16-cai-wenji-7",
+            "intentId": "intent-498-born-16-cai-wenji-7-11642",
+            "cause": "intent",
+            "action": {
+              "kind": "act",
+              "operation": "combine",
+              "targets": [
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-29-329"
+                },
+                {
+                  "kind": "inventory-stack",
+                  "personId": "born-16-cai-wenji-7",
+                  "stackId": "stack-born-16-cai-wenji-7-31-325"
+                }
+              ]
+            },
+            "fromCellId": 3039,
+            "toCellId": 3039,
+            "fromZ": 5,
+            "toZ": 5,
+            "pathSegment": [
+              3039
+            ],
+            "status": "blocked",
+            "result": "这些随身物质当前没有可发生的结合规则",
+            "diff": {
+              "inputMaterialIds": [
+                29,
+                31
+              ]
+            },
+            "planningTick": 1,
+            "orderInTick": 21
+          }
+        ]
+      }
+    ],
+    "cognitionKeys": []
+  }
+]

@@ -1,0 +1,1417 @@
+[
+  {
+    "id": "e-1-environment-climate-0",
+    "kind": "environment",
+    "atMonth": 1,
+    "orderInMonth": 0,
+    "cellId": 0,
+    "change": "climate",
+    "result": "本月地表处于温和环境",
+    "diff": {
+      "epoch": "stable",
+      "kind": "temperate",
+      "severity": 1,
+      "eraSequence": 0,
+      "eraSinceMonth": 0
+    },
+    "planningTick": 0,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-1-environment-weather-0",
+    "kind": "environment",
+    "atMonth": 1,
+    "orderInMonth": 1,
+    "cellId": 0,
+    "change": "weather",
+    "result": "本月天气转为风暴",
+    "diff": {
+      "kind": "storm",
+      "intensity": 3
+    },
+    "planningTick": 0,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-1-environment-material-0",
+    "kind": "environment",
+    "atMonth": 1,
+    "orderInMonth": 2,
+    "cellId": 0,
+    "change": "material",
+    "result": "10 个格子的物质因自然过程发生变化",
+    "diff": {
+      "changes": [
+        {
+          "cellId": 427,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 873,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 984,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 1300,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 1717,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 2306,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 2411,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 3249,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 3375,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 3824,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        }
+      ]
+    },
+    "planningTick": 0,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-1-environment-animal-1",
+    "kind": "environment",
+    "atMonth": 1,
+    "orderInMonth": 3,
+    "cellId": 1285,
+    "change": "animal",
+    "result": "鹿取食并改变了一处植物地表",
+    "diff": {
+      "animalId": "animal-deer-0",
+      "animalSpeciesId": "deer",
+      "process": "forage",
+      "fromMaterialId": 10,
+      "toMaterialId": 9
+    },
+    "planningTick": 0,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-1-environment-animal-2",
+    "kind": "environment",
+    "atMonth": 1,
+    "orderInMonth": 4,
+    "cellId": 1877,
+    "change": "animal",
+    "result": "兔取食并改变了一处植物地表",
+    "diff": {
+      "animalId": "animal-rabbit-1",
+      "animalSpeciesId": "rabbit",
+      "process": "forage",
+      "fromMaterialId": 10,
+      "toMaterialId": 9
+    },
+    "planningTick": 0,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-1-environment-animal-3",
+    "kind": "environment",
+    "atMonth": 1,
+    "orderInMonth": 5,
+    "cellId": 3792,
+    "change": "animal",
+    "result": "兔取食并改变了一处植物地表",
+    "diff": {
+      "animalId": "animal-rabbit-3",
+      "animalSpeciesId": "rabbit",
+      "process": "forage",
+      "fromMaterialId": 10,
+      "toMaterialId": 9
+    },
+    "planningTick": 0,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-1-environment-animal-4",
+    "kind": "environment",
+    "atMonth": 1,
+    "orderInMonth": 6,
+    "cellId": 213,
+    "change": "animal",
+    "result": "兔取食并改变了一处植物地表",
+    "diff": {
+      "animalId": "animal-rabbit-6",
+      "animalSpeciesId": "rabbit",
+      "process": "forage",
+      "fromMaterialId": 10,
+      "toMaterialId": 9
+    },
+    "planningTick": 0,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-1-environment-animal-5",
+    "kind": "environment",
+    "atMonth": 1,
+    "orderInMonth": 7,
+    "cellId": 56,
+    "change": "animal",
+    "result": "野猪取食并改变了一处植物地表",
+    "diff": {
+      "animalId": "animal-boar-1",
+      "animalSpeciesId": "boar",
+      "process": "forage",
+      "fromMaterialId": 10,
+      "toMaterialId": 9
+    },
+    "planningTick": 0,
+    "orderInTick": 7
+  },
+  {
+    "id": "e-1-environment-animal-6",
+    "kind": "environment",
+    "atMonth": 1,
+    "orderInMonth": 8,
+    "cellId": 1596,
+    "change": "animal",
+    "result": "野猪取食并改变了一处植物地表",
+    "diff": {
+      "animalId": "animal-boar-2",
+      "animalSpeciesId": "boar",
+      "process": "forage",
+      "fromMaterialId": 10,
+      "toMaterialId": 9
+    },
+    "planningTick": 0,
+    "orderInTick": 8
+  },
+  {
+    "id": "e-1-opportunity-potianfeng",
+    "kind": "decision-opportunity",
+    "atMonth": 1,
+    "orderInMonth": 9,
+    "planningTick": 0,
+    "orderInTick": 9,
+    "who": "potianfeng",
+    "cellId": 2286,
+    "probability": 0.645,
+    "sample": 0.7360445391386747,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "开局批量初始决策"
+    ],
+    "result": "破天锋获得开局初始决策"
+  },
+  {
+    "id": "e-1-opportunity-rei-ayanami",
+    "kind": "decision-opportunity",
+    "atMonth": 1,
+    "orderInMonth": 10,
+    "planningTick": 0,
+    "orderInTick": 10,
+    "who": "rei-ayanami",
+    "cellId": 2202,
+    "probability": 0.645,
+    "sample": 0.7046529799699783,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "开局批量初始决策"
+    ],
+    "result": "绫波丽获得开局初始决策"
+  },
+  {
+    "id": "e-1-opportunity-freyja",
+    "kind": "decision-opportunity",
+    "atMonth": 1,
+    "orderInMonth": 11,
+    "planningTick": 0,
+    "orderInTick": 11,
+    "who": "freyja",
+    "cellId": 2285,
+    "probability": 0.645,
+    "sample": 0.6715111560188234,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "开局批量初始决策"
+    ],
+    "result": "芙蕾雅获得开局初始决策"
+  },
+  {
+    "id": "e-1-opportunity-cai-wenji",
+    "kind": "decision-opportunity",
+    "atMonth": 1,
+    "orderInMonth": 12,
+    "planningTick": 0,
+    "orderInTick": 12,
+    "who": "cai-wenji",
+    "cellId": 2287,
+    "probability": 0.645,
+    "sample": 0.8039541488979012,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "开局批量初始决策"
+    ],
+    "result": "蔡文姬获得开局初始决策"
+  },
+  {
+    "id": "e-1-opportunity-sun-wu",
+    "kind": "decision-opportunity",
+    "atMonth": 1,
+    "orderInMonth": 13,
+    "planningTick": 0,
+    "orderInTick": 13,
+    "who": "sun-wu",
+    "cellId": 2370,
+    "probability": 0.645,
+    "sample": 0.5308135533705354,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "开局批量初始决策"
+    ],
+    "result": "孙武获得开局初始决策"
+  },
+  {
+    "id": "e-1-opportunity-aphrodite",
+    "kind": "decision-opportunity",
+    "atMonth": 1,
+    "orderInMonth": 14,
+    "planningTick": 0,
+    "orderInTick": 14,
+    "who": "aphrodite",
+    "cellId": 2118,
+    "probability": 0.645,
+    "sample": 0.30769624444656074,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "开局批量初始决策"
+    ],
+    "result": "阿佛洛狄忒获得开局初始决策"
+  },
+  {
+    "id": "e-1-opportunity-houyi",
+    "kind": "decision-opportunity",
+    "atMonth": 1,
+    "orderInMonth": 15,
+    "planningTick": 0,
+    "orderInTick": 15,
+    "who": "houyi",
+    "cellId": 2201,
+    "probability": 0.645,
+    "sample": 0.34866831894032657,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "开局批量初始决策"
+    ],
+    "result": "后羿获得开局初始决策"
+  },
+  {
+    "id": "e-1-decision-potianfeng-1-16",
+    "kind": "decision",
+    "atMonth": 1,
+    "orderInMonth": 16,
+    "planningTick": 1,
+    "orderInTick": 0,
+    "cellId": 2286,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "project:project-1-potianfeng-shelter-capacity:locked-drop-project-logistics:project-1-potianfeng-shelter-capacity:0:drop:starter-13-2370",
+      "reason": "该地面来源已经由本人亲眼确认；其他更近来源不会替换尚未结算的项目目标"
+    },
+    "intentId": "intent-1-potianfeng-0",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "破天锋决定：继续前往已锁定的木材来源"
+  },
+  {
+    "id": "e-1-decision-rei-ayanami-1-17",
+    "kind": "decision",
+    "atMonth": 1,
+    "orderInMonth": 17,
+    "planningTick": 1,
+    "orderInTick": 1,
+    "cellId": 2202,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "project:project-1-rei-ayanami-shelter-capacity:locked-drop-project-logistics:project-1-rei-ayanami-shelter-capacity:0:drop:starter-1-2118",
+      "reason": "该地面来源已经由本人亲眼确认；其他更近来源不会替换尚未结算的项目目标"
+    },
+    "intentId": "intent-1-rei-ayanami-1",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "绫波丽决定：继续前往已锁定的石来源"
+  },
+  {
+    "id": "e-1-decision-freyja-1-18",
+    "kind": "decision",
+    "atMonth": 1,
+    "orderInMonth": 18,
+    "planningTick": 1,
+    "orderInTick": 2,
+    "cellId": 2285,
+    "who": "freyja",
+    "decision": {
+      "kind": "start",
+      "optionId": "meet:potianfeng",
+      "reason": "看见另一个人，接近后才能沟通、求助或共同做事"
+    },
+    "intentId": "intent-1-freyja-2",
+    "domain": "social",
+    "usedModel": false,
+    "result": "芙蕾雅决定：去与破天锋会合"
+  },
+  {
+    "id": "e-1-decision-cai-wenji-1-19",
+    "kind": "decision",
+    "atMonth": 1,
+    "orderInMonth": 19,
+    "planningTick": 1,
+    "orderInTick": 3,
+    "cellId": 2287,
+    "who": "cai-wenji",
+    "decision": {
+      "kind": "start",
+      "optionId": "project:project-1-cai-wenji-shelter-capacity:locked-drop-project-logistics:project-1-cai-wenji-shelter-capacity:0:drop:starter-13-2370",
+      "reason": "该地面来源已经由本人亲眼确认；其他更近来源不会替换尚未结算的项目目标"
+    },
+    "intentId": "intent-1-cai-wenji-3",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "蔡文姬决定：继续前往已锁定的木材来源"
+  },
+  {
+    "id": "e-1-decision-sun-wu-1-20",
+    "kind": "decision",
+    "atMonth": 1,
+    "orderInMonth": 20,
+    "planningTick": 1,
+    "orderInTick": 4,
+    "cellId": 2370,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "project:project-1-sun-wu-shelter-capacity:locked-drop-project-logistics:project-1-sun-wu-shelter-capacity:0:drop:starter-13-2370",
+      "reason": "本人已经抵达先前亲眼确认并持续保留的项目来源"
+    },
+    "intentId": "intent-1-sun-wu-4",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "孙武决定：从已锁定来源取得木材"
+  },
+  {
+    "id": "e-1-decision-aphrodite-1-21",
+    "kind": "decision",
+    "atMonth": 1,
+    "orderInMonth": 21,
+    "planningTick": 1,
+    "orderInTick": 5,
+    "cellId": 2118,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "start",
+      "optionId": "project:project-1-aphrodite-shelter-capacity:locked-drop-project-logistics:project-1-aphrodite-shelter-capacity:0:drop:starter-1-2118",
+      "reason": "本人已经抵达先前亲眼确认并持续保留的项目来源"
+    },
+    "intentId": "intent-1-aphrodite-5",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒决定：从已锁定来源取得石"
+  },
+  {
+    "id": "e-1-decision-houyi-1-22",
+    "kind": "decision",
+    "atMonth": 1,
+    "orderInMonth": 22,
+    "planningTick": 1,
+    "orderInTick": 6,
+    "cellId": 2201,
+    "who": "houyi",
+    "decision": {
+      "kind": "start",
+      "optionId": "project:project-1-houyi-shelter-capacity:locked-drop-project-logistics:project-1-houyi-shelter-capacity:0:drop:starter-1-2118",
+      "reason": "该地面来源已经由本人亲眼确认；其他更近来源不会替换尚未结算的项目目标"
+    },
+    "intentId": "intent-1-houyi-6",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "后羿决定：继续前往已锁定的石来源"
+  },
+  {
+    "id": "e-1-action-potianfeng-23",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 1,
+    "orderInMonth": 23,
+    "cellId": 2370,
+    "who": "potianfeng",
+    "intentId": "intent-1-potianfeng-0",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2370,
+      "toZ": 5
+    },
+    "fromCellId": 2286,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286,
+      2370
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 28 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 7
+  },
+  {
+    "id": "e-1-action-freyja-24",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 1,
+    "orderInMonth": 24,
+    "cellId": 2286,
+    "who": "freyja",
+    "intentId": "intent-1-freyja-2",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2370,
+      "toZ": 5
+    },
+    "fromCellId": 2285,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2285,
+      2286
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 8
+  },
+  {
+    "id": "e-1-action-potianfeng-25",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 1,
+    "orderInMonth": 25,
+    "cellId": 2370,
+    "who": "potianfeng",
+    "intentId": "intent-1-potianfeng-0",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 13,
+      "quantity": 1,
+      "from": {
+        "kind": "ground",
+        "cellId": 2370,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "potianfeng"
+      },
+      "dropId": "starter-13-2370"
+    },
+    "fromCellId": 2370,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370
+    ],
+    "status": "completed",
+    "result": "木材 × 1 改变了持有者",
+    "diff": {
+      "materialId": 13,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 2370,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "potianfeng"
+      },
+      "witnessedBy": [
+        "potianfeng",
+        "sun-wu"
+      ],
+      "sourceEventIds": [
+        "e-1-action-potianfeng-25"
+      ],
+      "sourceLineageKeys": [
+        "drop:starter-13-2370"
+      ]
+    },
+    "planningTick": 2,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-1-action-rei-ayanami-26",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 1,
+    "orderInMonth": 26,
+    "cellId": 2118,
+    "who": "rei-ayanami",
+    "intentId": "intent-1-rei-ayanami-1",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2118,
+      "toZ": 5
+    },
+    "fromCellId": 2202,
+    "toCellId": 2118,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2202,
+      2118
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 25 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-1-action-freyja-27",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 1,
+    "orderInMonth": 27,
+    "cellId": 2370,
+    "who": "freyja",
+    "intentId": "intent-1-freyja-2",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2370,
+      "toZ": 5
+    },
+    "fromCellId": 2286,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286,
+      2370
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 28 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-1-action-potianfeng-28",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 1,
+    "orderInMonth": 28,
+    "cellId": 2286,
+    "who": "potianfeng",
+    "intentId": "intent-1-potianfeng-0",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2286,
+      "toZ": 5
+    },
+    "fromCellId": 2370,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370,
+      2286
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 27 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-1-action-rei-ayanami-29",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 1,
+    "orderInMonth": 29,
+    "cellId": 2118,
+    "who": "rei-ayanami",
+    "intentId": "intent-1-rei-ayanami-1",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 1,
+      "quantity": 1,
+      "from": {
+        "kind": "ground",
+        "cellId": 2118,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "dropId": "starter-1-2118"
+    },
+    "fromCellId": 2118,
+    "toCellId": 2118,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2118
+    ],
+    "status": "completed",
+    "result": "石 × 1 改变了持有者",
+    "diff": {
+      "materialId": 1,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 2118,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "witnessedBy": [
+        "rei-ayanami",
+        "aphrodite"
+      ],
+      "sourceEventIds": [
+        "e-1-action-rei-ayanami-29"
+      ],
+      "sourceLineageKeys": [
+        "drop:starter-1-2118"
+      ]
+    },
+    "planningTick": 3,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-1-action-aphrodite-30",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 1,
+    "orderInMonth": 30,
+    "cellId": 2118,
+    "who": "aphrodite",
+    "intentId": "intent-1-aphrodite-5",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 1,
+      "quantity": 1,
+      "from": {
+        "kind": "ground",
+        "cellId": 2118,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "aphrodite"
+      },
+      "dropId": "starter-1-2118"
+    },
+    "fromCellId": 2118,
+    "toCellId": 2118,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2118
+    ],
+    "status": "completed",
+    "result": "石 × 1 改变了持有者",
+    "diff": {
+      "materialId": 1,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 2118,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "aphrodite"
+      },
+      "witnessedBy": [
+        "rei-ayanami",
+        "aphrodite"
+      ],
+      "sourceEventIds": [
+        "e-1-action-aphrodite-30"
+      ],
+      "sourceLineageKeys": [
+        "drop:starter-1-2118"
+      ]
+    },
+    "planningTick": 3,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-1-action-cai-wenji-31",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 1,
+    "orderInMonth": 31,
+    "cellId": 2286,
+    "who": "cai-wenji",
+    "intentId": "intent-1-cai-wenji-3",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2370,
+      "toZ": 5
+    },
+    "fromCellId": 2287,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2287,
+      2286
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2286,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 4,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-1-action-aphrodite-32",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 1,
+    "orderInMonth": 32,
+    "cellId": 2202,
+    "who": "aphrodite",
+    "intentId": "intent-1-aphrodite-5",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2286,
+      "toZ": 5
+    },
+    "fromCellId": 2118,
+    "toCellId": 2202,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2118,
+      2202
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 4,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-1-action-potianfeng-33",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 1,
+    "orderInMonth": 33,
+    "cellId": 2286,
+    "who": "potianfeng",
+    "intentId": "intent-1-potianfeng-0",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "combine",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "potianfeng",
+          "stackId": "stack-potianfeng-13-1"
+        },
+        {
+          "kind": "voxel",
+          "position": {
+            "x": 17,
+            "y": 27,
+            "z": 5
+          }
+        }
+      ]
+    },
+    "fromCellId": 2286,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286
+    ],
+    "status": "completed",
+    "result": "木材与空气结合为木板",
+    "diff": {
+      "techniqueId": "technique:combine:13:0:19",
+      "inputMaterialId": 13,
+      "targetMaterialId": 0,
+      "outputMaterialId": 19,
+      "position": {
+        "x": 17,
+        "y": 27,
+        "z": 5
+      },
+      "sourceEventId": "e-1-action-potianfeng-33"
+    },
+    "planningTick": 4,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-1-action-rei-ayanami-34",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 1,
+    "orderInMonth": 34,
+    "cellId": 2202,
+    "who": "rei-ayanami",
+    "intentId": "intent-1-rei-ayanami-1",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2286,
+      "toZ": 5
+    },
+    "fromCellId": 2118,
+    "toCellId": 2202,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2118,
+      2202
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 4,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-1-action-rei-ayanami-35",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 1,
+    "orderInMonth": 35,
+    "cellId": 2286,
+    "who": "rei-ayanami",
+    "intentId": "intent-1-rei-ayanami-1",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2286,
+      "toZ": 5
+    },
+    "fromCellId": 2202,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2202,
+      2286
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 27 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 5,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-1-action-cai-wenji-36",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 1,
+    "orderInMonth": 36,
+    "cellId": 2370,
+    "who": "cai-wenji",
+    "intentId": "intent-1-cai-wenji-3",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2370,
+      "toZ": 5
+    },
+    "fromCellId": 2286,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286,
+      2370
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 28 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2370,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 5,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-1-action-potianfeng-37",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 1,
+    "orderInMonth": 37,
+    "cellId": 2286,
+    "who": "potianfeng",
+    "intentId": "intent-1-potianfeng-0",
+    "cause": "intent",
+    "action": {
+      "kind": "attend",
+      "target": {
+        "kind": "voxel",
+        "position": {
+          "x": 17,
+          "y": 27,
+          "z": 5
+        }
+      }
+    },
+    "fromCellId": 2286,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286
+    ],
+    "status": "completed",
+    "result": "核验了木材与空气可结合为木板",
+    "diff": {
+      "factId": "technique:combine:13:0:19",
+      "verifiedTechnique": true
+    },
+    "planningTick": 5,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-1-action-aphrodite-38",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 1,
+    "orderInMonth": 38,
+    "cellId": 2286,
+    "who": "aphrodite",
+    "intentId": "intent-1-aphrodite-5",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2286,
+      "toZ": 5
+    },
+    "fromCellId": 2202,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2202,
+      2286
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 27 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 5,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-1-action-rei-ayanami-39",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 1,
+    "orderInMonth": 39,
+    "cellId": 2286,
+    "who": "rei-ayanami",
+    "intentId": "intent-1-rei-ayanami-1",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "combine",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "rei-ayanami",
+          "stackId": "stack-rei-ayanami-1-1"
+        },
+        {
+          "kind": "voxel",
+          "position": {
+            "x": 17,
+            "y": 27,
+            "z": 6
+          }
+        }
+      ]
+    },
+    "fromCellId": 2286,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286
+    ],
+    "status": "completed",
+    "result": "石与空气结合为石",
+    "diff": {
+      "techniqueId": "technique:combine:1:0:1",
+      "inputMaterialId": 1,
+      "targetMaterialId": 0,
+      "outputMaterialId": 1,
+      "position": {
+        "x": 17,
+        "y": 27,
+        "z": 6
+      },
+      "sourceEventId": "e-1-action-rei-ayanami-39"
+    },
+    "planningTick": 6,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-1-action-cai-wenji-40",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 1,
+    "orderInMonth": 40,
+    "cellId": 2370,
+    "who": "cai-wenji",
+    "intentId": "intent-1-cai-wenji-3",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 13,
+      "quantity": 1,
+      "from": {
+        "kind": "ground",
+        "cellId": 2370,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "cai-wenji"
+      },
+      "dropId": "starter-13-2370"
+    },
+    "fromCellId": 2370,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370
+    ],
+    "status": "completed",
+    "result": "木材 × 1 改变了持有者",
+    "diff": {
+      "materialId": 13,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 2370,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "cai-wenji"
+      },
+      "witnessedBy": [
+        "freyja",
+        "cai-wenji",
+        "sun-wu"
+      ],
+      "sourceEventIds": [
+        "e-1-action-cai-wenji-40"
+      ],
+      "sourceLineageKeys": [
+        "drop:starter-13-2370"
+      ]
+    },
+    "planningTick": 6,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-1-action-sun-wu-41",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 1,
+    "orderInMonth": 41,
+    "cellId": 2370,
+    "who": "sun-wu",
+    "intentId": "intent-1-sun-wu-4",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 13,
+      "quantity": 1,
+      "from": {
+        "kind": "ground",
+        "cellId": 2370,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "sun-wu"
+      },
+      "dropId": "starter-13-2370"
+    },
+    "fromCellId": 2370,
+    "toCellId": 2370,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2370
+    ],
+    "status": "completed",
+    "result": "木材 × 1 改变了持有者",
+    "diff": {
+      "materialId": 13,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 2370,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "sun-wu"
+      },
+      "witnessedBy": [
+        "freyja",
+        "cai-wenji",
+        "sun-wu"
+      ],
+      "sourceEventIds": [
+        "e-1-action-sun-wu-41"
+      ],
+      "sourceLineageKeys": [
+        "drop:starter-13-2370"
+      ]
+    },
+    "planningTick": 6,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-1-action-aphrodite-42",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 1,
+    "orderInMonth": 42,
+    "cellId": 2286,
+    "who": "aphrodite",
+    "intentId": "intent-1-aphrodite-5",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "combine",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "aphrodite",
+          "stackId": "stack-aphrodite-1-1"
+        },
+        {
+          "kind": "voxel",
+          "position": {
+            "x": 18,
+            "y": 27,
+            "z": 7
+          }
+        }
+      ]
+    },
+    "fromCellId": 2286,
+    "toCellId": 2286,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2286
+    ],
+    "status": "completed",
+    "result": "石与空气结合为石",
+    "diff": {
+      "techniqueId": "technique:combine:1:0:1",
+      "inputMaterialId": 1,
+      "targetMaterialId": 0,
+      "outputMaterialId": 1,
+      "position": {
+        "x": 18,
+        "y": 27,
+        "z": 7
+      },
+      "sourceEventId": "e-1-action-aphrodite-42"
+    },
+    "planningTick": 6,
+    "orderInTick": 3
+  }
+]

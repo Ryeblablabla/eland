@@ -2,6 +2,8 @@ import type { ItemStack, PersonState } from './person';
 import type { DecisionAuthorityState } from './model';
 import { Material } from './material';
 import { cellId, cellX, cellY, voxelAt } from '../world/grid';
+import { workStorageSpaces } from './work-storage';
+import { workById } from './works';
 
 export interface ContainerState {
   id: string;
@@ -11,6 +13,9 @@ export interface ContainerState {
   sourceEventIds: string[];
   /** Physical capacity belongs to the placed object, not to a global unlock. */
   capacity?: number;
+  /** An actual open cavity in a Work, separate from legacy container voxels. */
+  carrier?: { kind: 'work'; workId: string; cavityPoint: { x: number; y: number; z: number } };
+  retainsWater?: boolean;
 }
 
 export const CONTAINER_CAPACITY = 24;
@@ -26,8 +31,24 @@ export function containerById(
 ): ContainerState | undefined {
   const container = state.containers.find((candidate) => candidate.id === id);
   if (!container) return undefined;
+  if (container.carrier) {
+    const work = workById(state.world, container.carrier.workId);
+    const point = container.carrier.cavityPoint;
+    return work && workStorageSpaces(state.world, work).some((space) => space.cells.some((cell) =>
+      cell.x === point.x && cell.y === point.y && cell.z === point.z)) ? container : undefined;
+  }
   const materialId = voxelAt(state.world.grid, container.position.x, container.position.y, container.position.z);
   return materialId === Material.Container || materialId === Material.Granary ? container : undefined;
+}
+
+/** A Work with several separate cavities requires a specific container ref. */
+export function containerForWork(
+  state: Pick<DecisionAuthorityState, 'containers' | 'world'>,
+  workId: string,
+): ContainerState | undefined {
+  const containers = state.containers.filter((candidate) => candidate.carrier?.workId === workId
+    && containerById(state, candidate.id));
+  return containers.length === 1 ? containers[0] : undefined;
 }
 
 export function containerCell(container: ContainerState): number {

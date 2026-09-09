@@ -235,6 +235,67 @@ try {
   assert.equal(invalidResume, null,
     'waiting-for-world-change must not become executable merely because Plan repeats its handle');
 
+  // A flee episode ends when the actual animal is outside its existing alarm
+  // range; the old threat id cannot keep ordinary work suspended by itself.
+  const wildlifeBundle = path.join(temporaryDirectory, 'wildlife-escape.mjs');
+  execFileSync(esbuild, ['--bundle', '--platform=node', '--format=esm', '--loader=ts',
+    '--sourcefile=wildlife-escape.ts', `--outfile=${wildlifeBundle}`, '--log-level=error'], {
+    stdio: ['pipe', 'pipe', 'pipe'], input: `
+      export { chooseSurvivalReflex } from './src/game/eland/domain/survival-reflex';
+      export { visibleWildlifeThreats } from './src/game/eland/domain/wildlife-threat';
+      export { cellId, cellX, cellY, setVoxel } from './src/game/eland/world/grid';
+      export { Material } from './src/game/eland/domain/material';
+    `,
+  });
+  const wildlife = await import(pathToFileURL(wildlifeBundle).href);
+  const escapeState = simulation.createInitialState(17, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const escaping = escapeState.people[0];
+  escaping.body = { health: 100, hydration: 100, nutrition: 100 };
+  escaping.conditions = [];
+  escaping.position = { ...escaping.position, cellId: wildlife.cellId(10, 12), z: 1 };
+  const boar = escapeState.world.animals.find((animal) => animal.speciesId === 'boar');
+  assert(boar);
+  boar.position = { ...boar.position, cellId: wildlife.cellId(13, 12), z: 1 };
+  boar.ecology = { ...boar.ecology, currentBehavior: { atMonth: 1, mode: 'forage' } };
+  escapeState.world.animals = [boar];
+  for (let x = 8; x <= 16; x += 1) for (let y = 8; y <= 16; y += 1) {
+    for (let z = 0; z < escapeState.world.grid.levels; z += 1) wildlife.setVoxel(escapeState.world.grid, x, y, z,
+      z === 0 ? wildlife.Material.Stone : wildlife.Material.Air);
+  }
+  const previousWork = { ...structuredClone(oldIntent), id: 'intent:work-before-wildlife', ownerId: escaping.id,
+    goal: { kind: 'at-cell', cellId: wildlife.cellId(8, 8), z: 1 },
+    nextAction: { kind: 'move', toCellId: wildlife.cellId(8, 8), toZ: 1 },
+    status: 'active', actionEventIds: [], sourceFactIds: [], progress: 0,
+  };
+  escapeState.intents = [previousWork];
+  escaping.activeIntentId = previousWork.id;
+  const escapeAction = wildlife.chooseSurvivalReflex(escapeState, escaping);
+  assert.equal(escapeAction?.wildlifeThreatBasis?.response, 'flee-step', 'a nearby boar still triggers real protection');
+  const escapeEvents = [];
+  const escaped = execution.executeProtectiveInterruption(escapeState, escaping, escapeAction, 'survival-reflex', 1, 1, escapeEvents);
+  escapeState.world.past.push(...escapeEvents);
+  assert.equal(escaped.status, 'completed', escaped.result);
+  assert.equal(escaped.diff.wildlifeThreatDistanceBefore, 3);
+  assert.equal(escaped.diff.wildlifeThreatDistanceAfter, 4);
+  const fleeingIntent = escapeState.intents.find((intent) => intent.id === escaping.activeIntentId);
+  assert.equal(fleeingIntent.interruptionKind, 'survival-reflex');
+  assert.equal(wildlife.chooseSurvivalReflex(escapeState, escaping), null, 'a still-visible foraging animal outside alarm range cannot prolong a flee episode');
+
+  const farBoarPosition = { ...boar.position };
+  boar.position.cellId = wildlife.cellId(wildlife.cellX(escaping.position.cellId) + 1, wildlife.cellY(escaping.position.cellId));
+  assert(wildlife.chooseSurvivalReflex(escapeState, escaping)?.wildlifeThreatBasis,
+    'remaining near the animal still requires protection');
+  boar.position = farBoarPosition;
+  boar.ecology.currentBehavior = { atMonth: 1, mode: 'pursue-human', targetPersonId: escaping.id };
+  assert(wildlife.visibleWildlifeThreats(escapeState, escaping).some((threat) => threat.targetingPersonId === escaping.id));
+  assert(wildlife.chooseSurvivalReflex(escapeState, escaping)?.wildlifeThreatBasis,
+    'a current pursuit remains dangerous beyond the ordinary alarm range');
+  boar.ecology.currentBehavior = { atMonth: 1, mode: 'forage' };
+  assert.equal(wildlife.chooseSurvivalReflex(escapeState, escaping), null);
+  assert(execution.resolveClearedProtectiveInterruption(escapeState, escaping, 'survival-reflex', 1));
+  assert.equal(fleeingIntent.status, 'completed');
+  assert.equal(escaping.activeIntentId, previousWork.id, 'the existing clear-and-return path restores the same original work');
+  assert.equal(previousWork.status, 'active');
   console.log('[intent-portfolio] 多事务自然挂起、可见与模型恢复通过');
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });

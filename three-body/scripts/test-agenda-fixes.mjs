@@ -179,5 +179,99 @@ assert.equal(modelReview.characterAgendaRevisionDue(reviewContext, 10), false, '
 assert.equal(modelReview.characterAgendaRevisionDue(reviewContext, 100), false, '等待更久也不能重新制造复核压力');
 console.log('[fix-E] 关切复核由新世界事实触发且只消费一次');
 
+// ---------- Fix F: a durable aim can begin with a short native step ----------
+const physicalBundle = path.join(temporaryDirectory, 'agenda-physical.mjs');
+execFileSync(path.resolve('node_modules/.bin/esbuild'), [
+  '--bundle', '--format=esm', '--platform=node', '--loader=ts', '--sourcefile=agenda-physical.ts',
+  `--outfile=${physicalBundle}`, '--log-level=error',
+], { cwd: projectDirectory, stdio: ['pipe', 'pipe', 'pipe'], input: `
+  export { createInitialState } from './src/game/eland/simulation';
+  export { executePrimitiveAction } from './src/game/eland/domain/action-executor';
+  export { assessIntentPlan } from './src/game/eland/application/simulation/plan-progress';
+  export { Material } from './src/game/eland/domain/material';
+  export { cellId, setVoxel } from './src/game/eland/world/grid';
+` });
+const physical = await import(pathToFileURL(physicalBundle).href);
+
+function shortStepScenario({ emptyGoal = false, collect = false, terminalOnly = false } = {}) {
+  const worldState = physical.createInitialState(31, { endpoint: { kind: 'months', value: 2 } });
+  const owner = worldState.people[0];
+  for (let x = 10; x <= 12; x += 1) for (let y = 10; y <= 12; y += 1) {
+    for (let z = 0; z < worldState.world.grid.levels; z += 1) physical.setVoxel(worldState.world.grid, x, y, z,
+      z === 0 ? physical.Material.Stone : physical.Material.Air);
+  }
+  owner.position = { ...owner.position, cellId: physical.cellId(10, 10), z: 1 };
+  owner.conditions = []; owner.characterAgenda = undefined;
+  const destination = physical.cellId(11, 10);
+  const option = {
+    id: 'native:walk-to-material', summary: '走到可见木材旁', reason: '本人选定的下一步',
+    goal: { kind: 'at-cell', cellId: destination },
+    nextAction: { kind: 'move', toCellId: destination, toZ: 1 },
+    estimatedDuration: 'one-month', sourceFactIds: [],
+  };
+  const context = { state: worldState, person: owner, visibleCells: [owner.position.cellId, destination],
+    visiblePeople: [], visibleDrops: [], visibleAnimals: [], options: [option], followUpOptions: [] };
+  const aim = {
+    basisKey: 'model:three-wood', aim: '到空地取得三份木材', theme: 'acquisition',
+    importance: 50, horizonMonths: 12, sourceFactIds: [],
+    approach: { summary: option.summary, disposition: 'executable-now', sourceFactIds: [] },
+  };
+  assert.equal(app.optionDeservesDurableAgenda(option), false, 'the one-step move does not automatically create a local long undertaking');
+  const compiled = app.compileCharacterAgendaProposal(context, aim, option);
+  assert.equal(compiled.compilerDisposition, 'accepted-existing-action', 'the model-authored durable aim may use a short move');
+  const accepted = app.acceptCharacterAgendaProposal(owner, context, aim, option, 1, 'model-proposal');
+  const chosen = {
+    id: 'intent:short-native-step', ownerId: owner.id, summary: option.summary, goal: option.goal,
+    nextAction: option.nextAction, status: 'active', createdAtMonth: 1, lastProgressAtMonth: 1,
+    sourceDecisionEventId: 'decision:long-aim', actionEventIds: [],
+    plan: { version: 'mental-plan-translation-v1', disposition: 'act', steps: ['到木材旁', '取三份木材'],
+      completion: {
+        step: { description: '已到木材旁', conditions: [{ kind: 'fact', predicate: option.goal }] },
+        goal: { description: aim.aim, conditions: emptyGoal ? [] : [{ kind: 'fact', predicate: {
+          kind: 'inventory-at-least', materialId: physical.Material.Wood, quantity: 3,
+        } }] },
+      },
+    },
+  };
+  assert(app.bindAcceptedAgendaToIntent(owner, accepted.item, accepted.approach, chosen));
+  worldState.intents.push(chosen);
+  const moved = physical.executePrimitiveAction(worldState, owner, option.nextAction, 1, 1,
+    { cause: 'intent', actionTick: 1, intentId: chosen.id });
+  assert.equal(moved.status, 'completed', moved.result);
+  chosen.actionEventIds.push(moved.id);
+  const completedEvents = [moved];
+  if (collect) {
+    worldState.world.drops.push({ id: 'drop:three-wood', materialId: physical.Material.Wood, quantity: 3,
+      cellId: destination, z: 1, createdAtMonth: 1, sourceEventIds: [] });
+    const taken = physical.executePrimitiveAction(worldState, owner, {
+      kind: 'transfer', materialId: physical.Material.Wood, quantity: 3, dropId: 'drop:three-wood',
+      from: { kind: 'ground', cellId: destination, z: 1 }, to: { kind: 'person', personId: owner.id },
+    }, 1, 2, { cause: 'intent', actionTick: 2, intentId: chosen.id });
+    assert.equal(taken.status, 'completed', taken.result);
+    chosen.actionEventIds.push(taken.id); completedEvents.push(taken);
+  }
+  chosen.status = 'completed';
+  chosen.goalOutcome = { kind: 'achieved', sourceEventIds: [chosen.actionEventIds.at(-1)] };
+  chosen.planAssessment = physical.assessIntentPlan(worldState, owner, chosen);
+  assert.equal(chosen.planAssessment.step, 'satisfied', 'the local arrival is objectively complete');
+  assert.equal(chosen.planAssessment.goal, emptyGoal ? 'unverified' : collect ? 'satisfied' : 'unmet');
+  app.reconcileCharacterAgendasForMonth(worldState, terminalOnly ? [] : completedEvents, 1);
+  const item = owner.characterAgenda.items.find((candidate) => candidate.id === accepted.item.id);
+  assert.equal(item.status === 'fulfilled', collect && !emptyGoal,
+    'only the actual larger goal, never the local move or an empty goal, completes the durable aim');
+  assert.equal(item.activeIntentId, undefined, 'the completed short action releases its execution slot');
+  if (!collect) {
+    const revision = app.compileCharacterAgendaProposal(context, {
+      ...aim, basisKey: item.basisKey, approach: { ...aim.approach, summary: '接着取得木材' },
+    }, option);
+    assert.equal(revision.compilerDisposition, 'accepted-existing-action', 'an existing durable aim also accepts another short means');
+  }
+}
+shortStepScenario();
+shortStepScenario({ emptyGoal: true });
+shortStepScenario({ terminalOnly: true });
+shortStepScenario({ collect: true });
+console.log('[fix-F] 模型长期目标接纳短步骤；局部完成/空总体条件不关闭目标，真实总体成果才完成');
+
 rmSync(temporaryDirectory, { recursive: true, force: true });
 console.log('全部定点自测通过');

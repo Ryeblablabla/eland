@@ -1,7 +1,6 @@
 import { Material, materialDefinition } from '../../domain/material';
 import type { DropState, SimulationState } from '../../domain/model';
 import type { ActionFact } from '../../domain/model';
-import { canPersonPlanToCollectProjectMaterialDrop } from '../../domain/project-material-request';
 import {
   bestProductionToolStack,
   isCompletedPersonalProductionLaborEvent,
@@ -91,17 +90,14 @@ function directlyCollectibleDrop(
   state: SimulationState,
   observer: PersonState,
   drop: DropState,
-  atMonth: number,
 ): boolean {
-  return canPersonPlanToCollectProjectMaterialDrop(state, observer.id, drop, atMonth)
-    && findStandingPath(state.world.grid, observer.position, { cellId: drop.cellId, z: drop.z }).length > 0;
+  return findStandingPath(state.world.grid, observer.position, { cellId: drop.cellId, z: drop.z }).length > 0;
 }
 
 function visibleCapabilityExemplars(
   state: SimulationState,
   observer: PersonState,
   view: CapabilityReplicationView,
-  atMonth: number,
 ): VisibleCapabilityExemplar[] {
   const holders = view.visiblePeople
     .filter((person) => person.id !== observer.id)
@@ -129,7 +125,7 @@ function visibleCapabilityExemplars(
       kind: 'visible-drop' as const,
       outputMaterialId: drop.materialId,
       dropId: drop.id,
-      directlyCollectible: directlyCollectibleDrop(state, observer, drop, atMonth),
+      directlyCollectible: directlyCollectibleDrop(state, observer, drop),
     }];
   });
   return [...holders, ...drops];
@@ -163,7 +159,7 @@ export function capabilityReplicationBasisFor(
   const recentLabor = recentPersonalProductionLaborEvents(state, observer.id, atMonth)[0];
   if (!recentLabor) return undefined;
   const baselineToolRank = productionToolRank(bestProductionToolStack(observer)?.materialId ?? Material.Air);
-  const exemplars = visibleCapabilityExemplars(state, observer, view, atMonth)
+  const exemplars = visibleCapabilityExemplars(state, observer, view)
     .filter((candidate) => productionToolRank(candidate.outputMaterialId) > baselineToolRank);
   const tradeCandidate = productionToolUpgradeTradeCandidate(state, observer, view.visiblePeople);
   const directlyAccessibleRank = exemplars.reduce((highest, candidate) => (

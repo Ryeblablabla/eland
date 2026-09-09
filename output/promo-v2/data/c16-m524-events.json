@@ -1,0 +1,1309 @@
+[
+  {
+    "id": "e-524-environment-material-0",
+    "kind": "environment",
+    "atMonth": 524,
+    "orderInMonth": 0,
+    "cellId": 0,
+    "change": "material",
+    "result": "2 个格子的物质因自然过程发生变化",
+    "diff": {
+      "changes": [
+        {
+          "cellId": 3563,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 3894,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        }
+      ]
+    },
+    "planningTick": 0,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-524-decision-aphrodite-1-1",
+    "kind": "decision",
+    "atMonth": 524,
+    "orderInMonth": 1,
+    "planningTick": 1,
+    "orderInTick": 0,
+    "cellId": 4218,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "start",
+      "optionId": "revoke-permission:524:permission:offer-permission:523:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+      "reason": "持有者对未来取用授权保留明确撤回能力"
+    },
+    "intentId": "intent-524-aphrodite-12277",
+    "domain": "social",
+    "usedModel": false,
+    "result": "阿佛洛狄忒决定：向芙蕾雅撤回公共谷仓取用许可"
+  },
+  {
+    "id": "e-524-action-aphrodite-2",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 524,
+    "orderInMonth": 2,
+    "cellId": 4218,
+    "who": "aphrodite",
+    "intentId": "intent-524-aphrodite-12277",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "revoke-permission:524:permission:offer-permission:523:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:523:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+        "summary": "我撤回你对我的公共谷仓的取用许可"
+      },
+      "audience": [
+        "freyja"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 4218,
+    "toCellId": 4218,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4218
+    ],
+    "status": "completed",
+    "result": "阿佛洛狄忒向芙蕾雅表达：我撤回你对我的公共谷仓的取用许可",
+    "diff": {
+      "audience": [
+        "freyja"
+      ],
+      "content": {
+        "id": "revoke-permission:524:permission:offer-permission:523:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:523:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+        "summary": "我撤回你对我的公共谷仓的取用许可"
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-524-decision-born-244-potianfeng-13-1-3",
+    "kind": "decision",
+    "atMonth": 524,
+    "orderInMonth": 3,
+    "planningTick": 1,
+    "orderInTick": 2,
+    "cellId": 689,
+    "who": "born-244-potianfeng-13",
+    "decision": {
+      "kind": "start",
+      "optionId": "project:project-510-born-244-potianfeng-13-alloy-capability:request-project-material-project-510-born-244-potianfeng-13-alloy-capability-47",
+      "reason": "项目已经记录具体缺口和固定设施；请求只发给眼前确实持有该材料的人，不会读取远处背包或追逐移动目标"
+    },
+    "intentId": "intent-524-born-244-potianfeng-13-12278",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "孙守一决定：请求附近持料者把锡送到固定冶炼工地"
+  },
+  {
+    "id": "e-524-action-born-244-potianfeng-13-4",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 524,
+    "orderInMonth": 4,
+    "cellId": 689,
+    "who": "born-244-potianfeng-13",
+    "intentId": "intent-524-born-244-potianfeng-13-12278",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "project-material-request:project-510-born-244-potianfeng-13-alloy-capability:47",
+        "kind": "request",
+        "summary": "“在固定工地汇合铜锡并反复校验比例，得到可用青铜”还缺锡 × 1，请送到工地",
+        "projectMaterialContribution": {
+          "version": "project-material-contribution-request-v1",
+          "projectId": "project-510-born-244-potianfeng-13-alloy-capability",
+          "requesterId": "born-244-potianfeng-13",
+          "materialId": 47,
+          "quantity": 1,
+          "site": {
+            "cellId": 773,
+            "z": 5
+          },
+          "expiresAtMonth": 535
+        }
+      },
+      "audience": [
+        "born-22-potianfeng-8"
+      ],
+      "channel": "gesture"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙守一向孙朝宗表达：“在固定工地汇合铜锡并反复校验比例，得到可用青铜”还缺锡 × 1，请送到工地",
+    "diff": {
+      "audience": [
+        "born-22-potianfeng-8"
+      ],
+      "content": {
+        "id": "project-material-request:project-510-born-244-potianfeng-13-alloy-capability:47",
+        "kind": "request",
+        "summary": "“在固定工地汇合铜锡并反复校验比例，得到可用青铜”还缺锡 × 1，请送到工地",
+        "projectMaterialContribution": {
+          "version": "project-material-contribution-request-v1",
+          "projectId": "project-510-born-244-potianfeng-13-alloy-capability",
+          "requesterId": "born-244-potianfeng-13",
+          "materialId": 47,
+          "quantity": 1,
+          "site": {
+            "cellId": 773,
+            "z": 5
+          },
+          "expiresAtMonth": 535
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-524-decision-houyi-1-5",
+    "kind": "decision",
+    "atMonth": 524,
+    "orderInMonth": 5,
+    "planningTick": 1,
+    "orderInTick": 4,
+    "cellId": 1358,
+    "who": "houyi",
+    "decision": {
+      "kind": "start",
+      "optionId": "revoke-permission:524:permission:offer-permission:517:collective:offer-collective:29:houyi:sun-wu:houyi:cai-wenji:56",
+      "reason": "持有者对未来取用授权保留明确撤回能力"
+    },
+    "intentId": "intent-524-houyi-12279",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后羿决定：向蔡文姬撤回公共谷仓取用许可"
+  },
+  {
+    "id": "e-524-action-houyi-6",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 524,
+    "orderInMonth": 6,
+    "cellId": 1358,
+    "who": "houyi",
+    "intentId": "intent-524-houyi-12279",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "revoke-permission:524:permission:offer-permission:517:collective:offer-collective:29:houyi:sun-wu:houyi:cai-wenji:56",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:517:collective:offer-collective:29:houyi:sun-wu:houyi:cai-wenji:56",
+        "summary": "我撤回你对我的公共谷仓的取用许可"
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1358,
+    "toCellId": 1358,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1358
+    ],
+    "status": "completed",
+    "result": "后羿向蔡文姬表达：我撤回你对我的公共谷仓的取用许可",
+    "diff": {
+      "audience": [
+        "cai-wenji"
+      ],
+      "content": {
+        "id": "revoke-permission:524:permission:offer-permission:517:collective:offer-collective:29:houyi:sun-wu:houyi:cai-wenji:56",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:517:collective:offer-collective:29:houyi:sun-wu:houyi:cai-wenji:56",
+        "summary": "我撤回你对我的公共谷仓的取用许可"
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 1,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-524-decision-sun-wu-1-7",
+    "kind": "decision",
+    "atMonth": 524,
+    "orderInMonth": 7,
+    "planningTick": 1,
+    "orderInTick": 6,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "teach:524:sun-wu:technique:expose:43:58:46:born-244-potianfeng-13",
+      "reason": "自己可靠掌握这项技术，而身边达到学习年龄的人还不会；一次明确教导即可传授"
+    },
+    "intentId": "intent-524-sun-wu-12280",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：把“让铜矿炭料暴露于陶窑，可得到铜”教给孙守一"
+  },
+  {
+    "id": "e-524-action-sun-wu-8",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 524,
+    "orderInMonth": 8,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-524-sun-wu-12280",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "teach:524:sun-wu:technique:expose:43:58:46:born-244-potianfeng-13",
+        "kind": "claim",
+        "summary": "让铜矿炭料暴露于陶窑，可得到铜",
+        "factId": "technique:expose:43:58:46"
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙武向孙守一表达：让铜矿炭料暴露于陶窑，可得到铜",
+    "diff": {
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "content": {
+        "id": "teach:524:sun-wu:technique:expose:43:58:46:born-244-potianfeng-13",
+        "kind": "claim",
+        "summary": "让铜矿炭料暴露于陶窑，可得到铜",
+        "factId": "technique:expose:43:58:46"
+      },
+      "assertedFactId": "technique:expose:43:58:46",
+      "assertedFactSourceEventIds": [
+        "e-265-action-rei-ayanami-25"
+      ],
+      "teachingFactId": "technique:expose:43:58:46",
+      "teachingKnowledgeKind": "technique",
+      "teachingTeacherConfidence": 60,
+      "taughtAudienceIds": [
+        "born-244-potianfeng-13"
+      ],
+      "teachingReliableConfidence": 60
+    },
+    "planningTick": 1,
+    "orderInTick": 7
+  },
+  {
+    "id": "e-524-decision-born-193-cai-wenji-12-1-9",
+    "kind": "decision",
+    "atMonth": 524,
+    "orderInMonth": 9,
+    "planningTick": 1,
+    "orderInTick": 8,
+    "cellId": 1358,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "revoke-permission:524:permission:offer-permission:523:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21",
+      "reason": "持有者对未来取用授权保留明确撤回能力"
+    },
+    "intentId": "intent-524-born-193-cai-wenji-12-12281",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：向蔡文姬撤回食物取用许可"
+  },
+  {
+    "id": "e-524-action-born-193-cai-wenji-12-10",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 524,
+    "orderInMonth": 10,
+    "cellId": 1358,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-524-born-193-cai-wenji-12-12281",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "revoke-permission:524:permission:offer-permission:523:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:523:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21",
+        "summary": "我撤回你对我的食物的取用许可"
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1358,
+    "toCellId": 1358,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1358
+    ],
+    "status": "completed",
+    "result": "后若水向蔡文姬表达：我撤回你对我的食物的取用许可",
+    "diff": {
+      "audience": [
+        "cai-wenji"
+      ],
+      "content": {
+        "id": "revoke-permission:524:permission:offer-permission:523:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:523:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21",
+        "summary": "我撤回你对我的食物的取用许可"
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 1,
+    "orderInTick": 9
+  },
+  {
+    "id": "e-524-decision-cai-wenji-1-11",
+    "kind": "decision",
+    "atMonth": 524,
+    "orderInMonth": 11,
+    "planningTick": 1,
+    "orderInTick": 10,
+    "cellId": 1358,
+    "who": "cai-wenji",
+    "decision": {
+      "kind": "start",
+      "optionId": "use-permission:permission:offer-permission:523:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:1:stack-born-115-cai-wenji-10-1-127",
+      "reason": "授权人、被授权人、物质、单次数量与有效期都有可追溯许可"
+    },
+    "intentId": "intent-524-cai-wenji-12282",
+    "domain": "social",
+    "usedModel": false,
+    "result": "蔡文姬决定：依据许可从后凌川处取用石"
+  },
+  {
+    "id": "e-524-action-cai-wenji-12",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 524,
+    "orderInMonth": 12,
+    "cellId": 1358,
+    "who": "cai-wenji",
+    "intentId": "intent-524-cai-wenji-12282",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 1,
+      "quantity": 1,
+      "from": {
+        "kind": "person",
+        "personId": "born-115-cai-wenji-10"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "cai-wenji"
+      },
+      "stackId": "stack-born-115-cai-wenji-10-1-127",
+      "authorizationRef": "permission:offer-permission:523:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:1"
+    },
+    "fromCellId": 1358,
+    "toCellId": 1358,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1358
+    ],
+    "status": "completed",
+    "result": "石 × 1 改变了持有者",
+    "diff": {
+      "materialId": 1,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": true,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "person",
+        "personId": "born-115-cai-wenji-10"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "cai-wenji"
+      },
+      "witnessedBy": [
+        "cai-wenji",
+        "houyi",
+        "born-115-cai-wenji-10",
+        "born-193-cai-wenji-12"
+      ],
+      "sourceEventIds": [
+        "e-153-action-born-115-cai-wenji-10-31",
+        "e-114-action-cai-wenji-45",
+        "e-389-action-cai-wenji-3",
+        "e-407-action-cai-wenji-21",
+        "e-408-action-cai-wenji-4",
+        "e-421-action-cai-wenji-18",
+        "e-426-action-cai-wenji-23",
+        "e-427-action-cai-wenji-11",
+        "e-429-action-cai-wenji-18",
+        "e-479-action-born-115-cai-wenji-10-18",
+        "e-480-action-born-115-cai-wenji-10-21",
+        "e-482-action-born-115-cai-wenji-10-16",
+        "e-483-action-born-115-cai-wenji-10-11",
+        "e-484-action-born-115-cai-wenji-10-6",
+        "e-485-action-born-115-cai-wenji-10-8",
+        "e-486-action-born-115-cai-wenji-10-10",
+        "e-487-action-born-115-cai-wenji-10-15",
+        "e-487-action-born-115-cai-wenji-10-30",
+        "e-488-action-born-115-cai-wenji-10-17",
+        "e-489-action-born-115-cai-wenji-10-31",
+        "e-490-action-born-115-cai-wenji-10-4",
+        "e-491-action-born-115-cai-wenji-10-30",
+        "e-492-action-born-115-cai-wenji-10-15",
+        "e-524-action-cai-wenji-12"
+      ],
+      "sourceLineageKeys": [
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-1-127",
+        "drop:stone-1197",
+        "drop:stone-1367",
+        "drop:stone-1785",
+        "drop:stone-1701",
+        "inventory:cai-wenji:stack-cai-wenji-1-114",
+        "drop:starter-1-2118",
+        "inventory:cai-wenji:stack-cai-wenji-1-487",
+        "inventory:cai-wenji:stack-cai-wenji-1-489",
+        "inventory:cai-wenji:stack-cai-wenji-1-491"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 11
+  },
+  {
+    "id": "e-524-action-born-115-cai-wenji-10-13",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 524,
+    "orderInMonth": 13,
+    "cellId": 1358,
+    "who": "born-115-cai-wenji-10",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "act",
+      "operation": "ingest",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "born-115-cai-wenji-10",
+          "stackId": "stack-born-115-cai-wenji-10-21-489"
+        }
+      ]
+    },
+    "fromCellId": 1358,
+    "toCellId": 1358,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1358
+    ],
+    "status": "completed",
+    "result": "摄入了食物",
+    "diff": {
+      "materialId": 21,
+      "nutrition": 48,
+      "hydration": 4,
+      "health": 0,
+      "consumedStackId": "stack-born-115-cai-wenji-10-21-489",
+      "consumedSourceEventIds": [
+        "e-310-action-born-193-cai-wenji-12-50",
+        "e-312-action-born-115-cai-wenji-10-43",
+        "e-312-action-born-193-cai-wenji-12-52",
+        "e-472-action-cai-wenji-20",
+        "e-314-action-born-193-cai-wenji-12-36",
+        "e-316-action-born-193-cai-wenji-12-44",
+        "e-316-action-born-193-cai-wenji-12-47",
+        "e-318-action-born-193-cai-wenji-12-42",
+        "e-318-action-born-115-cai-wenji-10-38",
+        "e-474-action-cai-wenji-20",
+        "e-318-action-born-193-cai-wenji-12-48",
+        "e-320-action-born-193-cai-wenji-12-43",
+        "e-317-action-born-244-potianfeng-13-39",
+        "e-321-action-born-244-potianfeng-13-33",
+        "e-322-action-born-193-cai-wenji-12-52",
+        "e-322-action-born-193-cai-wenji-12-57",
+        "e-476-action-cai-wenji-4",
+        "e-216-action-born-193-cai-wenji-12-75",
+        "e-328-action-born-193-cai-wenji-12-57",
+        "e-328-action-born-193-cai-wenji-12-63",
+        "e-334-action-born-193-cai-wenji-12-80",
+        "e-334-action-born-193-cai-wenji-12-89",
+        "e-482-action-cai-wenji-22",
+        "e-489-action-cai-wenji-30"
+      ],
+      "consumedSourceLineageKeys": [
+        "inventory:cai-wenji:stack-cai-wenji-21-392",
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-21-218",
+        "drop:drop-218-born-115-cai-wenji-10-separate-440",
+        "drop:drop-260-born-115-cai-wenji-10-separate-434",
+        "drop:drop-320-born-159-potianfeng-11-separate-444",
+        "drop:drop-328-born-193-cai-wenji-12-separate-446",
+        "drop:drop-325-born-244-potianfeng-13-separate-444",
+        "drop:drop-327-born-244-potianfeng-13-separate-444",
+        "drop:drop-331-born-244-potianfeng-13-separate-444",
+        "drop:drop-342-born-115-cai-wenji-10-separate-447",
+        "inventory:born-193-cai-wenji-12:stack-born-193-cai-wenji-12-21-206",
+        "drop:drop-206-born-193-cai-wenji-12-separate-437",
+        "drop:drop-210-born-193-cai-wenji-12-separate-438",
+        "drop:drop-212-born-193-cai-wenji-12-separate-441",
+        "drop:drop-214-born-193-cai-wenji-12-separate-441",
+        "drop:drop-216-born-193-cai-wenji-12-separate-443",
+        "drop:drop-273-born-193-cai-wenji-12-separate-432",
+        "drop:drop-308-born-193-cai-wenji-12-separate-434",
+        "drop:drop-310-born-193-cai-wenji-12-separate-435",
+        "drop:drop-316-born-193-cai-wenji-12-separate-439",
+        "drop:drop-317-born-244-potianfeng-13-separate-443",
+        "drop:drop-334-born-193-cai-wenji-12-separate-443"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 12
+  },
+  {
+    "id": "e-524-decision-freyja-1-14",
+    "kind": "decision",
+    "atMonth": 524,
+    "orderInMonth": 14,
+    "planningTick": 1,
+    "orderInTick": 13,
+    "cellId": 4218,
+    "who": "freyja",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:524:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界"
+    },
+    "intentId": "intent-524-freyja-12283",
+    "domain": "social",
+    "usedModel": false,
+    "result": "芙蕾雅决定：允许阿佛洛狄忒在需要时取用自己的公共谷仓"
+  },
+  {
+    "id": "e-524-action-freyja-15",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 524,
+    "orderInMonth": 15,
+    "cellId": 4218,
+    "who": "freyja",
+    "intentId": "intent-524-freyja-12283",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:524:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份公共谷仓",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "freyja",
+          "partnerId": "aphrodite",
+          "collectiveId": "collective:offer-collective:66:aphrodite:freyja",
+          "grantorId": "freyja",
+          "granteeId": "aphrodite",
+          "materialId": 56,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 548,
+          "expiresAtMonth": 530
+        }
+      },
+      "audience": [
+        "aphrodite"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 4218,
+    "toCellId": 4218,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4218
+    ],
+    "status": "completed",
+    "result": "芙蕾雅向阿佛洛狄忒表达：你可以在需要时每次取用我的一份公共谷仓",
+    "diff": {
+      "audience": [
+        "aphrodite"
+      ],
+      "content": {
+        "id": "offer-permission:524:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份公共谷仓",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "freyja",
+          "partnerId": "aphrodite",
+          "collectiveId": "collective:offer-collective:66:aphrodite:freyja",
+          "grantorId": "freyja",
+          "granteeId": "aphrodite",
+          "materialId": 56,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 548,
+          "expiresAtMonth": 530
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 14
+  },
+  {
+    "id": "e-524-decision-born-159-potianfeng-11-1-16",
+    "kind": "decision",
+    "atMonth": 524,
+    "orderInMonth": 16,
+    "planningTick": 1,
+    "orderInTick": 15,
+    "cellId": 689,
+    "who": "born-159-potianfeng-11",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:524:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:41",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界"
+    },
+    "intentId": "intent-524-born-159-potianfeng-11-12284",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙明哲决定：允许破天锋在需要时取用自己的木制生产工具"
+  },
+  {
+    "id": "e-524-action-born-159-potianfeng-11-17",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 524,
+    "orderInMonth": 17,
+    "cellId": 689,
+    "who": "born-159-potianfeng-11",
+    "intentId": "intent-524-born-159-potianfeng-11-12284",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:524:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:41",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份木制生产工具",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "born-159-potianfeng-11",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "born-159-potianfeng-11",
+          "granteeId": "potianfeng",
+          "materialId": 41,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 548,
+          "expiresAtMonth": 530
+        }
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙明哲向破天锋表达：你可以在需要时每次取用我的一份木制生产工具",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "offer-permission:524:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:41",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份木制生产工具",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "born-159-potianfeng-11",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "born-159-potianfeng-11",
+          "granteeId": "potianfeng",
+          "materialId": 41,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 548,
+          "expiresAtMonth": 530
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 16
+  },
+  {
+    "id": "e-524-decision-potianfeng-1-18",
+    "kind": "decision",
+    "atMonth": 524,
+    "orderInMonth": 18,
+    "planningTick": 1,
+    "orderInTick": 17,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:524:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:41",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-524-potianfeng-12285",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：接受孙明哲的物质取用许可"
+  },
+  {
+    "id": "e-524-action-potianfeng-19",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 524,
+    "orderInMonth": 19,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-524-potianfeng-12285",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:524:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:41:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:524:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:41"
+      },
+      "audience": [
+        "born-159-potianfeng-11"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "破天锋向孙明哲表达：accept",
+    "diff": {
+      "audience": [
+        "born-159-potianfeng-11"
+      ],
+      "content": {
+        "id": "accept:offer-permission:524:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:41:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:524:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:41"
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 18
+  },
+  {
+    "id": "e-524-decision-born-22-potianfeng-8-1-20",
+    "kind": "decision",
+    "atMonth": 524,
+    "orderInMonth": 20,
+    "planningTick": 1,
+    "orderInTick": 19,
+    "cellId": 689,
+    "who": "born-22-potianfeng-8",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:524:collective:offer-collective:3:potianfeng:rei-ayanami:born-22-potianfeng-8:potianfeng:56",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界"
+    },
+    "intentId": "intent-524-born-22-potianfeng-8-12286",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙朝宗决定：允许破天锋在需要时取用自己的公共谷仓"
+  },
+  {
+    "id": "e-524-action-born-22-potianfeng-8-21",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 524,
+    "orderInMonth": 21,
+    "cellId": 689,
+    "who": "born-22-potianfeng-8",
+    "intentId": "intent-524-born-22-potianfeng-8-12286",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:524:collective:offer-collective:3:potianfeng:rei-ayanami:born-22-potianfeng-8:potianfeng:56",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份公共谷仓",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "born-22-potianfeng-8",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "born-22-potianfeng-8",
+          "granteeId": "potianfeng",
+          "materialId": 56,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 548,
+          "expiresAtMonth": 530
+        }
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙朝宗向破天锋表达：你可以在需要时每次取用我的一份公共谷仓",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "offer-permission:524:collective:offer-collective:3:potianfeng:rei-ayanami:born-22-potianfeng-8:potianfeng:56",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份公共谷仓",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "born-22-potianfeng-8",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "born-22-potianfeng-8",
+          "granteeId": "potianfeng",
+          "materialId": 56,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 548,
+          "expiresAtMonth": 530
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 20
+  },
+  {
+    "id": "e-524-decision-born-16-cai-wenji-7-1-22",
+    "kind": "decision",
+    "atMonth": 524,
+    "orderInMonth": 22,
+    "planningTick": 1,
+    "orderInTick": 21,
+    "cellId": 3122,
+    "who": "born-16-cai-wenji-7",
+    "decision": {
+      "kind": "start",
+      "optionId": "try-inventory-combine:stack-born-16-cai-wenji-7-21-57:stack-born-16-cai-wenji-7-46-451",
+      "reason": "背包中的两种物质可以尝试局部结合，但结果未知"
+    },
+    "intentId": "intent-524-born-16-cai-wenji-7-12287",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "孙疏影决定：尝试结合食物与铜"
+  },
+  {
+    "id": "e-524-action-born-16-cai-wenji-7-23",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 524,
+    "orderInMonth": 23,
+    "cellId": 3122,
+    "who": "born-16-cai-wenji-7",
+    "intentId": "intent-524-born-16-cai-wenji-7-12287",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "combine",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "born-16-cai-wenji-7",
+          "stackId": "stack-born-16-cai-wenji-7-21-57"
+        },
+        {
+          "kind": "inventory-stack",
+          "personId": "born-16-cai-wenji-7",
+          "stackId": "stack-born-16-cai-wenji-7-46-451"
+        }
+      ]
+    },
+    "fromCellId": 3122,
+    "toCellId": 3122,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3122
+    ],
+    "status": "blocked",
+    "result": "这些随身物质当前没有可发生的结合规则",
+    "diff": {
+      "inputMaterialIds": [
+        21,
+        46
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 22
+  },
+  {
+    "id": "e-524-decision-rei-ayanami-1-24",
+    "kind": "decision",
+    "atMonth": 524,
+    "orderInMonth": 24,
+    "planningTick": 1,
+    "orderInTick": 23,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "revoke-permission:524:permission:offer-permission:523:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+      "reason": "持有者对未来取用授权保留明确撤回能力"
+    },
+    "intentId": "intent-524-rei-ayanami-12288",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：向破天锋撤回木制生产工具取用许可"
+  },
+  {
+    "id": "e-524-action-rei-ayanami-25",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 524,
+    "orderInMonth": 25,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-524-rei-ayanami-12288",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "revoke-permission:524:permission:offer-permission:523:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:523:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+        "summary": "我撤回你对我的木制生产工具的取用许可"
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "绫波丽向破天锋表达：我撤回你对我的木制生产工具的取用许可",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "revoke-permission:524:permission:offer-permission:523:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:523:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+        "summary": "我撤回你对我的木制生产工具的取用许可"
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 24
+  },
+  {
+    "id": "e-524-decision-aphrodite-2-26",
+    "kind": "decision",
+    "atMonth": 524,
+    "orderInMonth": 26,
+    "planningTick": 2,
+    "orderInTick": 0,
+    "cellId": 4218,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:524:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-524-aphrodite-12289",
+    "domain": "social",
+    "usedModel": false,
+    "result": "阿佛洛狄忒决定：接受芙蕾雅的物质取用许可"
+  },
+  {
+    "id": "e-524-action-aphrodite-27",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 524,
+    "orderInMonth": 27,
+    "cellId": 4218,
+    "who": "aphrodite",
+    "intentId": "intent-524-aphrodite-12289",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:524:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56:aphrodite",
+        "kind": "accept",
+        "referenceId": "offer-permission:524:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56"
+      },
+      "audience": [
+        "freyja"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 4218,
+    "toCellId": 4218,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4218
+    ],
+    "status": "completed",
+    "result": "阿佛洛狄忒向芙蕾雅表达：accept",
+    "diff": {
+      "audience": [
+        "freyja"
+      ],
+      "content": {
+        "id": "accept:offer-permission:524:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56:aphrodite",
+        "kind": "accept",
+        "referenceId": "offer-permission:524:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56"
+      }
+    },
+    "planningTick": 2,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-524-decision-potianfeng-2-28",
+    "kind": "decision",
+    "atMonth": 524,
+    "orderInMonth": 28,
+    "planningTick": 2,
+    "orderInTick": 2,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:524:collective:offer-collective:3:potianfeng:rei-ayanami:born-22-potianfeng-8:potianfeng:56",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-524-potianfeng-12290",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：接受孙朝宗的物质取用许可"
+  },
+  {
+    "id": "e-524-action-potianfeng-29",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 524,
+    "orderInMonth": 29,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-524-potianfeng-12290",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:524:collective:offer-collective:3:potianfeng:rei-ayanami:born-22-potianfeng-8:potianfeng:56:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:524:collective:offer-collective:3:potianfeng:rei-ayanami:born-22-potianfeng-8:potianfeng:56"
+      },
+      "audience": [
+        "born-22-potianfeng-8"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "破天锋向孙朝宗表达：accept",
+    "diff": {
+      "audience": [
+        "born-22-potianfeng-8"
+      ],
+      "content": {
+        "id": "accept:offer-permission:524:collective:offer-collective:3:potianfeng:rei-ayanami:born-22-potianfeng-8:potianfeng:56:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:524:collective:offer-collective:3:potianfeng:rei-ayanami:born-22-potianfeng-8:potianfeng:56"
+      }
+    },
+    "planningTick": 2,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-524-decision-born-115-cai-wenji-10-2-30",
+    "kind": "decision",
+    "atMonth": 524,
+    "orderInMonth": 30,
+    "planningTick": 2,
+    "orderInTick": 4,
+    "cellId": 1358,
+    "who": "born-115-cai-wenji-10",
+    "decision": {
+      "kind": "start",
+      "optionId": "revoke-permission:524:permission:offer-permission:523:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:1",
+      "reason": "持有者对未来取用授权保留明确撤回能力"
+    },
+    "intentId": "intent-524-born-115-cai-wenji-10-12291",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后凌川决定：向蔡文姬撤回石取用许可"
+  },
+  {
+    "id": "e-524-action-born-115-cai-wenji-10-31",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 524,
+    "orderInMonth": 31,
+    "cellId": 1358,
+    "who": "born-115-cai-wenji-10",
+    "intentId": "intent-524-born-115-cai-wenji-10-12291",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "revoke-permission:524:permission:offer-permission:523:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:1",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:523:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:1",
+        "summary": "我撤回你对我的石的取用许可"
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1358,
+    "toCellId": 1358,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1358
+    ],
+    "status": "completed",
+    "result": "后凌川向蔡文姬表达：我撤回你对我的石的取用许可",
+    "diff": {
+      "audience": [
+        "cai-wenji"
+      ],
+      "content": {
+        "id": "revoke-permission:524:permission:offer-permission:523:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:1",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:523:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:1",
+        "summary": "我撤回你对我的石的取用许可"
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 2,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-524-environment-condition-0",
+    "kind": "environment",
+    "atMonth": 524,
+    "orderInMonth": 32,
+    "cellId": 1358,
+    "change": "condition",
+    "who": "houyi",
+    "result": "后羿进入衰老第一阶段",
+    "diff": {
+      "condition": "aging",
+      "stage": 1,
+      "ageMonths": 716
+    },
+    "planningTick": 0,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-524-environment-body-1",
+    "kind": "environment",
+    "atMonth": 524,
+    "orderInMonth": 33,
+    "cellId": 4133,
+    "change": "body",
+    "who": "born-63-potianfeng-9",
+    "result": "后修远结算了脱水休眠 episode 的本月身体代价",
+    "diff": {
+      "hibernationMonthlySettlement": true,
+      "hibernationConditionId": "condition-dehydrated-hibernation-born-63-potianfeng-9-259",
+      "hibernationPhase": "dormant",
+      "monthlyCostApplied": true,
+      "metabolicProfile": "dormant",
+      "hydrationCost": 0.35,
+      "nutritionCost": 0.3,
+      "healthDelta": -0.25,
+      "bodyBefore": {
+        "health": 33.75,
+        "hydration": 0,
+        "nutrition": 0
+      },
+      "bodyAfter": {
+        "health": 33.5,
+        "hydration": 0,
+        "nutrition": 0
+      }
+    },
+    "planningTick": 0,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-524-environment-body-2",
+    "kind": "environment",
+    "atMonth": 524,
+    "orderInMonth": 34,
+    "cellId": 4133,
+    "change": "body",
+    "who": "born-63-potianfeng-9",
+    "result": "后修远的身体储备发生显著变化",
+    "diff": {
+      "health": 33.5,
+      "hydration": 0,
+      "nutrition": 0,
+      "healthDelta": -0.25
+    },
+    "planningTick": 0,
+    "orderInTick": 3
+  }
+]

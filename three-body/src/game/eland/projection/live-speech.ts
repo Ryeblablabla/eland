@@ -3,6 +3,8 @@ import type { SimulationState, WorldEvent } from '../simulation';
 import type { RepresentationInput } from '../domain/action';
 import { speechActFromRepresentation } from './speech-act';
 import { languageBroadcastFromDiff } from '../domain/language-perception';
+import { outwardDeclaration } from '../domain/mental-act';
+import { worldEventById } from '../domain/event-index';
 
 type ActionEvent = Extract<WorldEvent, { kind: 'action' }>;
 type DecisionEvent = Extract<WorldEvent, { kind: 'decision' }>;
@@ -41,21 +43,24 @@ function speechActForAutonomousTurn(content: RepresentationInput): SpeechActView
 function modelDecisionFor(
   event: ActionEvent,
   decisions: DecisionEvent[],
-  usedDecisionIds: Set<string>,
+  state: SimulationState,
 ): DecisionEvent | undefined {
   const languageSourceEventId = typeof event.diff.languageSourceEventId === 'string'
     ? event.diff.languageSourceEventId
     : undefined;
-  if (!event.intentId || !languageSourceEventId) return undefined;
-  return [...decisions].reverse().find((decision) => (
-    !usedDecisionIds.has(decision.id)
-      && decision.id === languageSourceEventId
-      && decision.intentId === event.intentId
-      && decision.orderInMonth <= event.orderInMonth
-      && decision.usedModel
-      && 'mentalAct' in decision.decision
-      && Boolean(decision.decision.mentalAct?.utterance.trim())
-  ));
+  if (!languageSourceEventId) return undefined;
+  const decision = decisions.find((candidate) => candidate.id === languageSourceEventId)
+    ?? worldEventById(state, languageSourceEventId);
+  if (decision?.kind !== 'decision' || !decision.usedModel || decision.who !== event.who
+    || decision.atMonth > event.atMonth
+    || decision.atMonth === event.atMonth && decision.orderInMonth > event.orderInMonth) return undefined;
+  const declaration = outwardDeclaration(decision.decision);
+  const wave = languageBroadcastFromDiff(event.diff);
+  if (!declaration?.utterance.trim() || !decision.languageBroadcast
+    || wave?.sourceEventId !== decision.id
+    || wave.text !== decision.languageBroadcast.text
+    || wave.text.trim() !== declaration.utterance.trim()) return undefined;
+  return decision;
 }
 
 function referencedFactSources(state: SimulationState, event: ActionEvent): string[] {
@@ -123,21 +128,19 @@ export function projectLiveSpeechDrafts(
   events: WorldEvent[],
 ): SpeechLineDraft[] {
   const decisions = events.filter((event): event is DecisionEvent => event.kind === 'decision');
-  const decisionLanguageConsumedByAction = new Set(events.flatMap((event) => (
-    event.kind === 'action'
-      && event.status === 'completed'
-      && event.action.kind === 'talk'
-      && typeof event.diff.languageSourceEventId === 'string'
-      ? [event.diff.languageSourceEventId]
-      : []
-  )));
+  const decisionByActionId = new Map(events.flatMap((event) => {
+    if (event.kind !== 'action' || event.status !== 'completed' || event.action.kind !== 'talk') return [];
+    const decision = modelDecisionFor(event, decisions, state);
+    return decision ? [[event.id, decision] as const] : [];
+  }));
+  const decisionLanguageConsumedByAction = new Set([...decisionByActionId.values()].map((decision) => decision.id));
   const usedDecisionIds = new Set<string>();
   return events.flatMap((event): SpeechLineDraft[] => {
     if (event.kind === 'decision' && event.languageBroadcast) {
       if (decisionLanguageConsumedByAction.has(event.id)) return [];
       const speaker = state.people.find((person) => person.id === event.who);
-      const mentalAct = 'mentalAct' in event.decision ? event.decision.mentalAct : undefined;
-      if (!speaker || !mentalAct?.utterance.trim()) return [];
+      const declaration = outwardDeclaration(event.decision);
+      if (!speaker || !declaration?.utterance.trim()) return [];
       const perceived = event.languageBroadcast.perceivedByPersonIds.flatMap((personId) => {
         const person = state.people.find((candidate) => candidate.id === personId);
         return person ? [{ id: person.id, name: person.name }] : [];
@@ -146,7 +149,7 @@ export function projectLiveSpeechDrafts(
         id: `speech:${state.branchId}:${event.id}`,
         authority: 'projection-only',
         sourceEventId: event.id,
-        sourceFactIds: [...mentalAct.sourceEventIds],
+        sourceFactIds: [...declaration.sourceEventIds],
         month: event.atMonth,
         planningTick: event.planningTick ?? 0,
         speakerId: speaker.id,
@@ -155,7 +158,7 @@ export function projectLiveSpeechDrafts(
         perceivedByPersonNames: perceived.map((person) => person.name),
         communicationKind: 'talk',
         speechAct: { version: 'speech-act-v1', kind: 'talk' },
-        modelText: cleanModelText(mentalAct.utterance),
+        modelText: cleanModelText(declaration.utterance),
       }];
     }
     if (event.kind !== 'action'
@@ -169,12 +172,11 @@ export function projectLiveSpeechDrafts(
       return person ? [{ id: person.id, name: person.name }] : [];
     });
 
-    const decision = modelDecisionFor(event, decisions, usedDecisionIds);
+    const decision = decisionByActionId.get(event.id);
+    if (decision && usedDecisionIds.has(decision.id)) return [];
     if (decision) usedDecisionIds.add(decision.id);
-    const decisionText = decision
-      && 'mentalAct' in decision.decision
-      ? decision.decision.mentalAct?.utterance
-      : undefined;
+    const declaration = decision ? outwardDeclaration(decision.decision) : undefined;
+    const decisionText = declaration?.utterance;
     const conversationSources = event.action.speakerMeaning.kind === 'claim'
       ? event.action.speakerMeaning.conversation?.sourceFactIds ?? []
       : [];
@@ -189,6 +191,7 @@ export function projectLiveSpeechDrafts(
       authority: 'projection-only',
       sourceEventId: event.id,
       sourceFactIds: [...new Set([
+        ...(declaration?.sourceEventIds ?? []),
         ...referencedFactSources(state, event),
         ...expressedFactSources,
         ...conversationSources,

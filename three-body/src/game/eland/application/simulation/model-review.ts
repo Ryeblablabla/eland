@@ -21,10 +21,11 @@ import {
 import { characterAgendaStateOf } from '../../domain/character-agenda';
 import { compileOpenConversationOption } from '../conversation-options';
 import { agendaMemorySignals } from '../../domain/agent-memory';
+import { worldEventById } from '../../domain/event-index';
 
 export type DecisionBudgetExemption = 'bootstrap' | 'emergency' | 'required-response' | 'fulfillment' | 'agenda-revision';
 
-function personCanDecide(state: SimulationState, context: DecisionContext, atMonth: number): boolean {
+export function personCanDecide(state: Pick<SimulationState, 'clock'>, context: DecisionContext, atMonth: number): boolean {
   const person = context.person;
   const founderBootstrap = state.clock.elapsedMonths === 0 && atMonth === 1 && person.generation === 0;
   return (founderBootstrap || lifePlanningStage(person, atMonth) !== 'dependent-child')
@@ -202,26 +203,47 @@ export function validateModelDecision(
   proposed: Decision,
   localDecision?: Decision,
 ): Decision | null {
+  const sourceId = proposed.authoredAttempt?.intentionSourceDecisionEventId;
+  if (sourceId) {
+    const origin = context.currentMonthEvents?.find((event) => event.id === sourceId)
+      ?? worldEventById(context.state, sourceId);
+    if (origin?.kind !== 'decision' || !origin.usedModel || origin.who !== context.person.id || !origin.decision.mentalAct) return null;
+  }
+  const authored = {
+    ...(proposed.declaration ? { declaration: structuredClone(proposed.declaration) } : {}),
+    ...(proposed.authoredAttempt ? { authoredAttempt: structuredClone(proposed.authoredAttempt) } : {}),
+  };
   // Social obligations remain facts with deadlines and consequences. They
   // cannot decide whether a person may think, leave, ignore, or attempt an
   // unrelated action; the chosen action is checked against world facts below.
   if (proposed.kind === 'idle') {
+    if (proposed.declaration && !proposed.authoredAttempt && (proposed.attention !== 'keep-current' || proposed.mentalAct
+      || proposed.characterAgendaUpdate || proposed.nativeOperation || proposed.executionProbe || proposed.compilationFailure)) return null;
+    if (proposed.compilationFailure && ((!proposed.mentalAct && !proposed.authoredAttempt) || proposed.nativeOperation || proposed.executionProbe)) return null;
     return {
       kind: 'idle',
       reason: proposed.reason,
+      ...authored,
+      ...(proposed.attention ? { attention: proposed.attention } : {}),
+      ...(proposed.declaration ? { declaration: structuredClone(proposed.declaration) } : {}),
       ...(proposed.characterAgendaUpdate
         ? { characterAgendaUpdate: structuredClone(proposed.characterAgendaUpdate) }
         : {}),
       ...(proposed.executionProbe
         ? { executionProbe: structuredClone(proposed.executionProbe) }
         : {}),
+      ...(proposed.nativeOperation
+        ? { nativeOperation: structuredClone(proposed.nativeOperation) }
+        : {}),
       ...(proposed.mentalAct ? { mentalAct: structuredClone(proposed.mentalAct) } : {}),
+      ...(proposed.compilationFailure ? { compilationFailure: structuredClone(proposed.compilationFailure) } : {}),
     };
   }
   if (proposed.kind === 'suspend') {
     if (!context.activeIntent || proposed.intentId !== context.activeIntent.id) return null;
     return {
       kind: 'suspend',
+      ...authored,
       intentId: proposed.intentId,
       reason: proposed.reason,
       ...(proposed.mentalAct ? { mentalAct: structuredClone(proposed.mentalAct) } : {}),
@@ -235,6 +257,7 @@ export function validateModelDecision(
       || candidate.waitingFor === 'world-change') return null;
     return {
       kind: 'resume',
+      ...authored,
       intentId: candidate.id,
       reason: proposed.reason,
       ...(proposed.mentalAct ? { mentalAct: structuredClone(proposed.mentalAct) } : {}),
@@ -249,6 +272,7 @@ export function validateModelDecision(
       || (candidate.status !== 'active' && candidate.status !== 'suspended')) return null;
     return {
       kind: 'abandon',
+      ...authored,
       intentId: candidate.id,
       reason: proposed.reason,
       ...(proposed.mentalAct ? { mentalAct: structuredClone(proposed.mentalAct) } : {}),
@@ -275,6 +299,7 @@ export function validateModelDecision(
   if (!selected.openConversationGrounding && proposedGrounding !== undefined) return null;
 
   const shared = {
+    ...authored,
     optionId: selected.id,
     ...(proposed.followUpOptionId ? { followUpOptionId: proposed.followUpOptionId } : {}),
     reason: proposed.reason,

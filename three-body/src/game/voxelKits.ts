@@ -144,79 +144,93 @@ type KitBuilder = (k: Kit, r: number) => void;
 /* ------------------------------------------------------------------ */
 
 function kitOak(k: Kit, r: number): void {
-  for (let y = 0; y <= 2; y++) k.v('wood', 0, y, 0, jit(0x6e4f33, r));
+  const variationSeed = Math.floor(r * 0x1000000);
+  const young = r < 0.18;
+  const lean = r > 0.78 ? (r > 0.89 ? 1 : -1) : 0;
+  for (let y = 0; y <= 2; y++) k.v('wood', y === 2 ? lean : 0, y, 0, jit(0x6e4f33, r));
   for (let y = 2; y <= 5; y++) for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) {
     const d = Math.sqrt(x * x + (y - 3.6) * (y - 3.6) * 1.7 + z * z);
-    if (d > 2.4 || hash01(x * 31 + y * 7 + z * 13, 5) < 0.15) continue;
-    k.v('leaf', x, y, z, jit(0x3f8f3a, hash01(x + z * 9 + y, 1)));
+    if (d > (young ? 2.05 : 2.4) || hash01(x * 31 + y * 7 + z * 13 + variationSeed, 5) < 0.15) continue;
+    k.v('leaf', x + lean, y - (young ? 1 : 0), z, jit(0x3f8f3a, hash01(x + z * 9 + y + variationSeed, 1)));
   }
 }
 
 function kitSpruce(k: Kit, r: number): void {
-  k.v('wood', 0, 0, 0, jit(0x5f422a, r));
-  for (let y = 1; y <= 6; y++) {
-    const rr = 2.6 - (y - 1) * 0.42;
-    for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) {
-      if (Math.hypot(x, z) > rr + 0.2) continue;
-      k.v('leaf', x, y, z, jit(0x2a5a32, hash01(x * 7 + z * 3 + y, 2)));
-    }
-  }
-  k.v('leaf', 0, 7, 0, 0x2a5a32);
-}
-
-function kitSnowSpruce(k: Kit, r: number): void {
+  const variationSeed = Math.floor(r * 0x1000000);
   k.v('wood', 0, 0, 0, jit(0x5f422a, r));
   for (let y = 1; y <= 6; y++) {
     const rr = 2.6 - (y - 1) * 0.42;
     for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) {
       const d = Math.hypot(x, z);
       if (d > rr + 0.2) continue;
-      if (d > rr - 0.8) k.v('plaster', x, y, z, jit(0xeef2f6, hash01(x + z, 3))); // 叶缘挂雪
-      else k.v('leaf', x, y, z, jit(0x2a4a34, hash01(x * 7 + z * 3 + y, 2)));
+      const grain = hash01(x * 7 + z * 3 + y + variationSeed, 2);
+      if (d > rr - 0.35 && grain < 0.12) continue;
+      k.v('leaf', x, y, z, jit(0x2a5a32, grain));
+    }
+  }
+  k.v('leaf', 0, 7, 0, 0x2a5a32);
+}
+
+function kitSnowSpruce(k: Kit, r: number): void {
+  const variationSeed = Math.floor(r * 0x1000000);
+  k.v('wood', 0, 0, 0, jit(0x5f422a, r));
+  for (let y = 1; y <= 6; y++) {
+    const rr = 2.6 - (y - 1) * 0.42;
+    for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) {
+      const d = Math.hypot(x, z);
+      if (d > rr + 0.2) continue;
+      const grain = hash01(x * 7 + z * 3 + y + variationSeed, 2);
+      if (d > rr - 0.35 && grain < 0.12) continue;
+      if (d > rr - 0.8) k.v('plaster', x, y, z, jit(0xeef2f6, grain)); // 叶缘挂雪
+      else k.v('leaf', x, y, z, jit(0x2a4a34, grain));
     }
   }
   k.v('plaster', 0, 7, 0, 0xeef2f6);
 }
 
 function kitBirch(k: Kit, r: number): void {
+  const variationSeed = Math.floor(r * 0x1000000);
   for (let y = 0; y <= 3; y++)
-    k.v('plaster', 0, y, 0, hash01(y, 8) < 0.2 ? 0x2c2420 : jit(0xe8e4da, r));
+    k.v('plaster', 0, y, 0, hash01(y + variationSeed, 8) < 0.2 ? 0x2c2420 : jit(0xe8e4da, r));
   for (let y = 4; y <= 6; y++) for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) {
     const d = Math.sqrt(x * x + (y - 5) * (y - 5) * 1.5 + z * z);
-    if (d > 1.8 || hash01(x * 11 + z * 5 + y, 6) < 0.35) continue;
-    k.v('leaf', x, y, z, jit(0x7fb069, hash01(x + y + z, 4)));
+    if (d > 1.8 || hash01(x * 11 + z * 5 + y + variationSeed, 6) < 0.35) continue;
+    k.v('leaf', x, y, z, jit(0x7fb069, hash01(x + y + z + variationSeed, 4)));
   }
 }
 
 function kitSakura(k: Kit, r: number): void {
+  const variationSeed = Math.floor(r * 0x1000000);
   for (let y = 0; y <= 2; y++) k.v('wood', 0, y, 0, jit(0x5f422a, r));
   for (let y = 2; y <= 5; y++) for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) {
     const d = Math.sqrt(x * x + (y - 3.6) * (y - 3.6) * 1.6 + z * z);
-    if (d > 2.3 || hash01(x * 13 + y * 3 + z * 7, 7) < 0.12) continue;
-    k.v('leaf', x, y, z, jit(0xf0a8c0, hash01(x + z * 3 + y, 9)));
+    if (d > 2.3 || hash01(x * 13 + y * 3 + z * 7 + variationSeed, 7) < 0.12) continue;
+    k.v('leaf', x, y, z, jit(0xf0a8c0, hash01(x + z * 3 + y + variationSeed, 9)));
   }
   for (let i = 0; i < 4; i++) // 落英
     k.v('leaf', Math.round((r - 0.5) * 4) + i - 2, 0, Math.round((hash01(i, 11) - 0.5) * 4), 0xf0b8cc);
 }
 
 function kitPalm(k: Kit, r: number): void {
-  for (let y = 0; y <= 3; y++) k.v('wood', y >= 2 ? 1 : 0, y, 0, jit(0xb0925a, r));
+  const lean = r < 0.5 ? 1 : -1;
+  for (let y = 0; y <= 3; y++) k.v('wood', y >= 2 ? lean : 0, y, 0, jit(0xb0925a, r));
   for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-    k.v('leaf', 1 + dx, 4, dz, jit(0x3f9a4a, r));
-    k.v('leaf', 1 + dx * 2, 3, dz * 2, jit(0x3f9a4a, hash01(dx + dz, 2)));
-    k.v('leaf', 1 + dx * 3, 2, dz * 3, 0x35883e);
+    k.v('leaf', lean + dx, 4, dz, jit(0x3f9a4a, r));
+    k.v('leaf', lean + dx * 2, 3, dz * 2, jit(0x3f9a4a, hash01(dx + dz, 2)));
+    k.v('leaf', lean + dx * 3, 2, dz * 3, 0x35883e);
   }
-  k.v('leaf', 1, 4, 0, 0x3f9a4a);
+  k.v('leaf', lean, 4, 0, 0x3f9a4a);
 }
 
 function kitAcacia(k: Kit, r: number): void {
+  const variationSeed = Math.floor(r * 0x1000000);
   for (let y = 0; y <= 2; y++) k.v('wood', y >= 2 ? 1 : 0, y, 0, jit(0x7a5a3a, r));
   for (let x = -2; x <= 3; x++) for (let z = -2; z <= 2; z++) {
-    if (Math.hypot(x - 0.5, z) > 2.6 || hash01(x * 5 + z, 3) < 0.12) continue;
-    k.v('leaf', x, 3, z, jit(0x9aa83f, hash01(x + z, 6)));
+    if (Math.hypot(x - 0.5, z) > 2.6 || hash01(x * 5 + z + variationSeed, 3) < 0.12) continue;
+    k.v('leaf', x, 3, z, jit(0x9aa83f, hash01(x + z + variationSeed, 6)));
   }
   for (let x = -1; x <= 2; x++) for (let z = -1; z <= 1; z++) {
-    if (hash01(x + z * 3, 8) < 0.4) continue;
+    if (hash01(x + z * 3 + variationSeed, 8) < 0.4) continue;
     k.v('leaf', x, 4, z, 0xa8b84a);
   }
 }
@@ -240,29 +254,50 @@ const TREE_KITS: Record<TreeSpeciesKey, KitBuilder> = {
 /* 地表植被 / 纪元状态                                                  */
 /* ------------------------------------------------------------------ */
 
-function kitBush(k: Kit, berry: boolean, wilt = false): void {
-  const baseColor = wilt ? (berry ? 0x59623a : 0x657044) : (berry ? 0x376b33 : 0x3f8f3a);
-  const tipColor = wilt ? 0x7b7848 : (berry ? 0x3d7838 : 0x4b9a43);
-  for (let y = 0; y <= 1; y++) for (let x = -1; x <= 1; x++) for (let z = -1; z <= 1; z++) {
-    if (Math.hypot(x, z) > 1.6 || hash01(x * 3 + z + y, 4) < 0.15) continue;
-    k.v('leaf', x, y, z, jit(baseColor, hash01(x + z, 1)));
-  }
-  // 1/8 格叶尖打破原 1/4 格的方整轮廓，但不改变灌木主体占地。
-  const tips = [[-3, 1, 0], [3, 1, 0], [0, 1, -3], [0, 1, 3], [-2, 4, 1], [2, 4, -1]] as const;
-  for (const [x, y, z] of tips)
-    k.m('leaf', x, y, z, 1, 1, 1, jit(tipColor, hash01(x * 11 + y + z, 21)));
-  if (berry) {
-    for (const [x, y, z] of [[-2, 3, -2], [1, 4, -2], [3, 2, 1], [-1, 4, 2]] as const)
-      k.m('accent', x, y, z, 1, 1, 1, jit(0xc0392b, hash01(x * 13 + y * 7 + z, 22)));
-  }
+function kitBush(k: Kit, berry: boolean, wilt = false, r = 0.5): void {
+  // Fruiting and non-fruiting shrub states share one identity; only fruit markers change.
+  const seed = Math.floor(r * 0x1000000);
+  const baseColor = wilt ? 0x626b40 : 0x3c7637;
+  const tipColor = wilt ? 0x7b7848 : 0x4b873d;
+  const corners = [[-2, -2], [2, -2], [2, 2], [-2, 2]] as const;
+  const variant = Math.floor(hash01(seed, 201) * 4);
+  const cross = [[0, 0], [-2, 0], [2, 0], [0, -2], [0, 2]] as const;
+  const lower = [...cross, corners[variant], corners[(variant + 2) % 4]];
+  const upper = [...cross, corners[variant], corners[(variant + 1) % 4]];
+  for (const [x, z] of lower)
+    k.m('leaf', x, 0, z, 2, 2, 2, jit(baseColor, hash01(seed + x * 11 + z * 7, 202)));
+  for (const [x, z] of upper)
+    k.m('leaf', x, 2, z, 2, 2, 2, jit(baseColor, hash01(seed + x * 13 + z * 5, 203)));
+  k.m('leaf', 0, 4, 0, 2, 1, 2, jit(tipColor, r));
+  const [cx, cz] = corners[variant];
+  k.m('leaf', cx, 4, cz, 1, 1, 1, jit(tipColor, hash01(seed, 204)));
+  k.m('leaf', Math.sign(cx) * 3, 1, 0, 1, 1, 1, tipColor);
+  k.m('leaf', 0, 1, Math.sign(cz) * 3, 1, 1, 1, tipColor);
+  if (!berry) return;
+  // Four markers mean "fruiting", not four harvest units. Each touches a guaranteed leaf face.
+  const mirror = hash01(seed, 205) < 0.5 ? 1 : -1;
+  const fruits = [[-2, 4, 0.4], [0.4, 4, -2], [3.12, 2.6, -0.4], [-0.4, 2.8, 3.12]] as const;
+  fruits.forEach(([x, y, z], i) => k.m('accent', x * mirror, y, z * mirror,
+    0.65, 0.65, 0.65, jit(wilt ? 0x9b4935 : 0xc13f32, hash01(seed + i, 206)), 'berry-fruit'));
 }
 
 function kitWheat(k: Kit, r: number, wilt = false): void {
-  for (let x = -1; x <= 1; x++) for (let z = -1; z <= 1; z++) {
-    if (hash01(x * 3 + z, 2) < 0.1) continue;
-    k.v('thatch', x, 0, z, jit(wilt ? 0x9d8240 : 0xc9a03a, r));
-    k.v('thatch', x, 1, z, jit(wilt ? 0xae934b : 0xd8b13a, hash01(x + z, 3)));
-  }
+  const seed = Math.floor(r * 0x1000000);
+  // Six stalks are a planted-patch symbol, not a yield counter. The old height/footprint budget stays fixed.
+  const stalks = [[-2, -2], [0, -2], [2, -2], [-2, 2], [0, 2], [2, 2]] as const;
+  stalks.forEach(([x, z], index) => {
+    const top = 3.5 + hash01(seed + index, 211) * 0.5;
+    const earHeight = 1.25;
+    k.m('thatch', x, 0, z, 0.65, top - earHeight + 0.12, 0.65,
+      jit(wilt ? 0x938044 : 0xa5954f, hash01(seed + index, 212)), 'crop-stem');
+    k.m('thatch', x, top - earHeight, z, 1.1, earHeight, 0.85,
+      jit(wilt ? 0xb19751 : 0xd6b552, hash01(seed + index, 213)), 'crop-ear');
+    if (index % 2 === 0) {
+      const side = x > 0 ? -1 : 1;
+      k.m('leaf', x + side * 0.52, 1.15, z, 1.1, 0.38, 0.45,
+        jit(wilt ? 0x8c8049 : 0x8a984f, hash01(seed + index, 214)), 'crop-leaf');
+    }
+  });
 }
 
 function kitSprout(k: Kit, r: number, wilt = false): void {
@@ -483,15 +518,16 @@ function kitTablet(k: Kit, r: number): void {
   }
 }
 
-function kitContainer(k: Kit, r: number, fillRatio = 0): void {
+function kitContainer(k: Kit, r: number, fillRatio = 0, fill?: { b: DecorBucket; c: number }): void {
   k.m('wood', 0, 0, 0, 7, 1, 7, jit(0x82552f, r));
   for (const [x, z, sx, sz] of [[-3, 0, 1, 6], [3, 0, 1, 6], [0, -3, 6, 1], [0, 3, 6, 1]] as const)
     k.m('wood', x, 1, z, sx, 4, sz, jit(0x94643b, hash01(x + z, 109)));
   if (fillRatio > 0) {
-    const fillHeight = Math.max(0.5, Math.min(2.8, fillRatio * 2.8));
-    k.m('thatch', 0, 1, 0, 5, fillHeight, 5, jit(0xb79b62, r));
-    k.m('wood', 0, 5.1, -2.6, 6, 0.7, 2, 0x604029);
-  } else k.m('organicDark', 0, 4.6, 0, 6, 0.7, 6, 0x604029);
+    const fillHeight = Math.max(0.35, Math.min(3.4, fillRatio * 3.4));
+    k.m(fill?.b ?? 'plaster', 0, 1, 0, 5, fillHeight, 5, jit(fill?.c ?? 0xa59b86, r), 'container-fill');
+  }
+  // Keep the opening visible at every fill level; the existing base is the empty inner floor.
+  k.m('wood', 0, 5.1, -2.6, 6, 0.7, 2, 0x604029);
 }
 
 function kitCookedFood(k: Kit, r: number): void {
@@ -675,6 +711,8 @@ function kitProductionTools(k: Kit, r: number, kind: ProductionToolKind): void {
 }
 
 interface PileVisual {
+  quantityAffectsScale?: boolean;
+  emptyContainer?: boolean;
   materialId: number;
   quantity: number;
   build: KitBuilder;
@@ -722,7 +760,8 @@ function placePileInSlot(
   centerX: number, groundY: number, centerZ: number,
 ): void {
   let best: { stamp: DecorInstance[]; scale: number; minX: number; maxX: number; minY: number; minZ: number; maxZ: number } | null = null;
-  const quantityScale = Math.min(1, 0.72 + Math.log2(Math.max(1, visual.quantity) + 1) * 0.08);
+  const quantityScale = visual.quantityAffectsScale === false ? 1
+    : Math.min(1, 0.72 + Math.log2(Math.max(1, visual.quantity) + 1) * 0.08);
   for (let rot = 0; rot < 4; rot++) {
     const stamp: DecorInstance[] = [];
     visual.build(new Kit(stamp, 0, 0, 0, 1, rot), visual.r);
@@ -732,11 +771,12 @@ function placePileInSlot(
     const minY = Math.min(...stamp.map((inst) => inst.y - inst.sy / 2));
     const minZ = Math.min(...stamp.map((inst) => inst.z - inst.sz / 2));
     const maxZ = Math.max(...stamp.map((inst) => inst.z + inst.sz / 2));
+    // Fit first, then apply stock size; otherwise a small slot erases all quantity differences.
     const scale = Math.min(
-      quantityScale,
+      1,
       slot.width / Math.max(MICRO, maxX - minX),
       slot.depth / Math.max(MICRO, maxZ - minZ),
-    );
+    ) * quantityScale;
     if (!best || scale > best.scale) best = { stamp, scale, minX, maxX, minY, minZ, maxZ };
   }
   if (!best) return;
@@ -1818,12 +1858,73 @@ function structureBounds(cellIds: number[], worldWidth: number): StructureBounds
   })[0];
 }
 
+interface StructureGroundPart {
+  bounds: StructureBounds;
+  groundZ: number;
+}
+
+/** Match terrainApi's per-cell floor heights; split only structures spanning different levels. */
+function structureGroundParts(
+  structure: SocietyState['structures'][number],
+  world: PixelWorldView,
+  constructionCells: ReadonlySet<number>,
+): StructureGroundPart[] {
+  const cells = [...new Set(structure.occupiedCells)];
+  if (!cells.length) return [];
+  const groundByCell = new Map<number, number>();
+  if (structure.complete && structure.interiorPositions.length) {
+    const fallback = Math.min(...structure.interiorPositions.map((position) => position.z));
+    const interiorBase = new Map<number, number>();
+    for (const position of structure.interiorPositions) {
+      const current = interiorBase.get(position.cellId);
+      if (current === undefined || position.z < current) interiorBase.set(position.cellId, position.z);
+    }
+    for (const cellId of cells) groundByCell.set(cellId, interiorBase.get(cellId) ?? fallback);
+  } else {
+    for (const cellId of cells) groundByCell.set(cellId,
+      world.elevation[cellId] - featureDepth(world, cellId, constructionCells) + 1);
+  }
+  const groundZ = groundByCell.get(cells[0])!;
+  if (cells.every((cellId) => groundByCell.get(cellId) === groundZ)) {
+    // Preserve the existing one-cell, rectangular and sparse same-height stamp exactly.
+    return [{ bounds: structureBounds(structure.occupiedCells, world.width), groundZ }];
+  }
+
+  const remaining = new Set(cells);
+  const parts: StructureGroundPart[] = [];
+  for (const cellId of cells.sort((a, b) => a - b)) {
+    if (!remaining.has(cellId)) continue;
+    const minX = cellId % world.width, minY = Math.floor(cellId / world.width);
+    const level = groundByCell.get(cellId)!;
+    const available = (x: number, y: number) => {
+      const id = y * world.width + x;
+      return remaining.has(id) && groundByCell.get(id) === level;
+    };
+    let maxX = minX;
+    while (maxX + 1 < world.width && available(maxX + 1, minY)) maxX += 1;
+    let maxY = minY;
+    while (maxY + 1 < world.height) {
+      let fullRow = true;
+      for (let x = minX; x <= maxX; x += 1) {
+        if (!available(x, maxY + 1)) { fullRow = false; break; }
+      }
+      if (!fullRow) break;
+      maxY += 1;
+    }
+    for (let y = minY; y <= maxY; y += 1) for (let x = minX; x <= maxX; x += 1)
+      remaining.delete(y * world.width + x);
+    parts.push({ bounds: { minX, maxX, minY, maxY }, groundZ: level });
+  }
+  return parts;
+}
+
 /** 房屋串联记录：完工住宅的占地、屋顶高与地面高，供相邻检测与连廊生成。 */
 interface HouseStampRecord {
   bounds: StructureBounds;
   topY: number;
   groundY: number;
   material: StructureMaterialKind;
+  structureId?: string;
 }
 
 /** 将房屋印章居中拟合进权威占地；已完工建筑可用少量挑檐扩展视觉轮廓，不额外生成地基。
@@ -1891,6 +1992,8 @@ function emitHouseLink(
   const spanCenter = spanStart + spanLen / 2;
   const groundY = Math.min(A.groundY, B.groundY);
   const eaveY = Math.min(A.topY, B.topY) - 0.42;
+  const postHeight = Math.min(2.1, eaveY - 0.12 - groundY);
+  if (postHeight <= 0) return;
   const stoneBoth = A.material === 'stone' && B.material === 'stone';
   const wallBucket: DecorBucket = stoneBoth ? 'stone' : 'wood';
   const wallColor = stoneBoth ? 0x777872 : 0x6b4a2e;
@@ -1912,10 +2015,10 @@ function emitHouseLink(
     out.push({
       b: 'wood',
       x: along ? seamPos : end,
-      y: groundY + 1.05,
+      y: groundY + postHeight / 2,
       z: along ? end : seamPos,
       sx: 0.22,
-      sy: 2.1,
+      sy: postHeight,
       sz: 0.22,
       c: postColor,
     });
@@ -1944,6 +2047,8 @@ function collectHouseLinks(
     for (let b = a + 1; b < houses.length; b++) {
       const A = houses[a];
       const B = houses[b];
+      if (Math.abs(A.groundY - B.groundY) > 1e-6) continue;
+      if (A.structureId !== undefined && A.structureId === B.structureId) continue;
       // 纵向接缝：一家在左一家在右
       if (A.bounds.maxX + 1 === B.bounds.minX || B.bounds.maxX + 1 === A.bounds.minX) {
         const left = A.bounds.maxX < B.bounds.minX ? A : B;
@@ -2320,8 +2425,14 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
     const swayStrength = weatherSwayStrength(society.weather);
     const markWind = (start: number) => {
       if (swayStrength < 0.24) return;
+      const windOrigin = { x: wx, y: gt, z: wz };
       for (let index = start; index < out.length; index++) {
-        if (out[index].b === 'leaf' || out[index].b === 'wood') out[index].animation = 'wind';
+        if (out[index].b === 'leaf' || out[index].b === 'wood'
+          || out[index].part === 'berry-fruit'
+          || out[index].part === 'crop-stem' || out[index].part === 'crop-ear') {
+          out[index].animation = 'wind';
+          out[index].windOrigin = windOrigin;
+        }
       }
     };
     // 同种天然素材的尺度抖动：树高、灌木大小按格子确定性变化，配合既有 90° 旋转去除克隆感。
@@ -2354,8 +2465,8 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
         kit(scorched ? kitDead : treeKit);
         break;
       }
-      case 'berry_bush': smallKit((k) => kitBush(k, true, drought)); break;
-      case 'shrub': smallKit((k) => kitBush(k, false, drought)); break;
+      case 'berry_bush': smallKit((k, random) => kitBush(k, true, drought, random)); break;
+      case 'shrub': smallKit((k, random) => kitBush(k, false, drought, random)); break;
       case 'crop_mature': smallKit((k, random) => kitWheat(k, random, drought)); break;
       case 'crop_sprout': smallKit((k, random) => kitSprout(k, random, drought)); break;
       case 'ash': smallKit(kitScorch); break;
@@ -2484,13 +2595,21 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
     }
   }
 
-  // 泥土小径直接绑定权威 PackedSoil 地表；trail 区域仅用于兼容旧投影和历史存档。
+  // 明确的道路地表材质优先；只有旧 trail 投影没有道路材质时才按文明阶段补外观。
+  const materialPathBuilders: Partial<Record<string, typeof appendDirtPathCell>> = {
+    packed_soil: appendDirtPathCell,
+    stone_road: appendStonePathCell,
+    ancient_road: appendAncientPathCell,
+  };
   const packedSoilCells = new Set<number>();
-  for (let id = 0; id < COUNT; id++) if (w.palette[w.surface[id]]?.key === 'packed_soil') packedSoilCells.add(id);
+  const trailCells = new Set(society.regions.filter((region) => region.kind === 'trail').flatMap((region) => region.cells));
+  for (let id = 0; id < COUNT; id++) {
+    const surfaceKey = w.palette[w.surface[id]]?.key;
+    if (surfaceKey === 'packed_soil') packedSoilCells.add(id);
+    if (surfaceKey && materialPathBuilders[surfaceKey]) trailCells.add(id);
+  }
   const mergeablePackedSoilCells = new Set(Array.from(packedSoilCells)
     .filter((id) => !constructionCells.has(id)));
-  const trailCells = new Set(society.regions.filter((region) => region.kind === 'trail').flatMap((region) => region.cells));
-  packedSoilCells.forEach((id) => trailCells.add(id));
   for (const id of trailCells) {
     if (id < 0 || id >= COUNT) continue;
     const x = id % w.width, y = Math.floor(id / w.width);
@@ -2498,11 +2617,13 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
     const filledCorners = dirtPathFilledCorners(mergeablePackedSoilCells, w.width, w.height, w.elevation, id);
     const depth = featureDepth(w, id, constructionCells);
     const groundY = (w.elevation[id] - depth + 1) * CELL_H;
-    const appendPath = settlementStage === 'ancient'
+    const inferredPath = settlementStage === 'ancient'
       ? appendAncientPathCell
       : settlementStage === 'agrarian'
         ? appendStonePathCell
         : appendDirtPathCell;
+    const surfaceKey = w.palette[w.surface[id]]?.key;
+    const appendPath = (surfaceKey ? materialPathBuilders[surfaceKey] : undefined) ?? inferredPath;
     appendPath(out, x - w.width / 2 + 0.5, groundY, y - w.height / 2 + 0.5,
       connections, hash01(id ^ w.generator.seed, 5), filledCorners);
   }
@@ -2601,6 +2722,7 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
     return group;
   };
   for (const drop of society.drops) {
+    if (drop.quantity <= 0) continue;
     const group = pileGroup(drop.cellId, drop.z);
     const existing = group.byMaterial.get(drop.materialId);
     if (existing) existing.quantity += drop.quantity;
@@ -2613,17 +2735,38 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
   }
   for (const c of society.containers) {
     if (w.palette[c.materialId]?.key === 'granary') continue;
+    const dominant = (c.contents ?? []).filter((item) => item.quantity > 0)
+      .reduce<(typeof c.contents)[number] | undefined>((best, item) => !best
+        || item.quantity > best.quantity || item.quantity === best.quantity && item.materialId < best.materialId
+        ? item : best, undefined);
+    const contentMaterial = dominant ? w.palette[dominant.materialId] : undefined;
+    const key = contentMaterial?.key ?? '';
+    const bucket: DecorBucket = contentMaterial?.tags.includes('liquid') ? 'accent'
+      : contentMaterial?.tags.includes('metal') ? 'dark'
+        : key === 'stone' || key.endsWith('_ore') ? 'stone'
+          : key === 'wood' || key === 'plank' ? 'wood'
+            : contentMaterial?.tags.includes('plant') ? 'leaf' : 'plaster';
+    const fill = contentMaterial ? { b: bucket,
+      c: (contentMaterial.color[0] << 16) | (contentMaterial.color[1] << 8) | contentMaterial.color[2] } : undefined;
     pileGroup(c.cellId, c.z).containers.push({
       materialId: c.materialId,
       quantity: Math.max(1, c.usedCapacity),
-      build: (k, r) => kitContainer(k, r, Math.min(1, c.usedCapacity / Math.max(1, c.capacity))),
+      quantityAffectsScale: false,
+      emptyContainer: c.usedCapacity <= 0,
+      build: (k, r) => kitContainer(k, r, Math.min(1, c.usedCapacity / Math.max(1, c.capacity)), fill),
       r: hash01(c.cellId, 11),
     });
   }
   for (const group of pileGroups.values()) {
     const materialPiles = [...group.byMaterial.values()]
       .sort((a, b) => b.quantity - a.quantity || a.materialId - b.materialId);
-    let visuals = [...group.containers, ...materialPiles];
+    const filledContainers = group.containers.filter((container) => !container.emptyContainer)
+      .sort((a, b) => b.quantity - a.quantity || a.materialId - b.materialId);
+    const emptyContainers = group.containers.filter((container) => container.emptyContainer);
+    // Reserve visibility for the main loose resource; empty boxes cannot hide the supplies.
+    let visuals = materialPiles.length
+      ? [materialPiles[0], ...filledContainers, ...materialPiles.slice(1), ...emptyContainers]
+      : [...filledContainers, ...emptyContainers];
     if (visuals.length > 4) {
       const kept = visuals.slice(0, 3);
       const overflow = visuals.slice(3);
@@ -2652,11 +2795,8 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
     if (!st.occupiedCells.length) continue;
     const settlementStart = out.length;
     const cells = st.occupiedCells.length;
-    const bounds = structureBounds(st.occupiedCells, w.width);
+    const groundParts = structureGroundParts(st, w, constructionCells);
     if (!st.complete || !st.interiorPositions.length) {
-      const groundZ = Math.min(...st.occupiedCells.map((cellId) => (
-        w.elevation[cellId] - featureDepth(w, cellId, constructionCells) + 1
-      )));
       let stoneComponents = 0;
       let woodComponents = 0;
       for (const cellId of st.occupiedCells) {
@@ -2669,22 +2809,22 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
       }
       const material: ConstructionMaterialKind = stoneComponents > woodComponents ? 'stone' : 'wood';
       const build: KitBuilder = (kit, random) => kitConstructionSite(kit, random, material, st.componentCount);
-      placeStructureStamp(
-        out,
-        build,
-        bounds,
-        w.width,
-        w.height,
-        groundZ * CELL_H,
-        hash01(st.occupiedCells[0], 91) < 0.5 ? 0 : 2,
-        hash01(st.occupiedCells[0], 13),
-      );
+      for (const { bounds, groundZ } of groundParts) {
+        placeStructureStamp(
+          out,
+          build,
+          bounds,
+          w.width,
+          w.height,
+          groundZ * CELL_H,
+          hash01(st.occupiedCells[0], 91) < 0.5 ? 0 : 2,
+          hash01(st.occupiedCells[0], 13),
+        );
+      }
       markSettlementEraLayer(out, settlementStart);
       continue;
     }
-    // interiorPositions.z 是真实可站立空间的脚底高度，也是房屋应贴合的地面。
-    // 不再使用最高施工体素 elevation，否则房屋会被架到屋顶上，形成假底座。
-    const groundY = Math.min(...st.interiorPositions.map((position) => position.z)) * CELL_H;
+    // 每个印章使用与地形相同的室内脚底高度，不把高处占地压到全屋最低层。
     const materialKeys = (st.materialIds ?? []).map((materialId) => w.palette[materialId]?.key);
     const stoneCount = materialKeys.filter((key) => key === 'stone').length;
     const woodCount = materialKeys.filter((key) => key === 'wood' || key === 'plank').length;
@@ -2709,12 +2849,17 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
             ? (k, random) => kitHouse(k, material, profile, random)
             : (k, random) => kitHall(k, material, profile, random);
     const r = hash01(anchorCellId, 13);
-    const width = bounds.maxX - bounds.minX + 1;
-    const depth = bounds.maxY - bounds.minY + 1;
     const flip = r < 0.5 ? 0 : 2;
-    const rot = ((depth > width ? 1 : 0) + flip) % 4;
-    const placed = placeStructureStamp(out, build, bounds, w.width, w.height, groundY, rot, r, 0.16);
-    if (placed) completedHouses.push({ bounds, topY: placed.topY, groundY, material });
+    for (const { bounds, groundZ } of groundParts) {
+      const groundY = groundZ * CELL_H;
+      const width = bounds.maxX - bounds.minX + 1;
+      const depth = bounds.maxY - bounds.minY + 1;
+      const rot = ((depth > width ? 1 : 0) + flip) % 4;
+      // At a height break, keep the whole stamp inside its actual support cells.
+      const overhang = groundParts.length === 1 ? 0.16 : 0;
+      const placed = placeStructureStamp(out, build, bounds, w.width, w.height, groundY, rot, r, overhang);
+      if (placed) completedHouses.push({ bounds, topY: placed.topY, groundY, material, structureId: st.id });
+    }
     markSettlementEraLayer(out, settlementStart);
   }
   // 房屋串联：直接相邻的完工住宅生成共用檐廊，材质在装饰层连为一体。

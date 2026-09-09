@@ -7,6 +7,7 @@ import type { PersonState } from '../../domain/person';
 import { intentsOwnedBy, personById } from '../../domain/state-index';
 import { WORK_COLLAPSE_CONDITION, workAt, workById } from '../../domain/works';
 import { workOccupiedVoxels } from '../../domain/work-layout';
+import { itemMechanicalShape } from '../../domain/material-mechanics';
 import { cellX, cellY, voxelAt } from '../../world/grid';
 
 function targetDistance(state: DecisionAuthorityState, person: PersonState, target: WorldRef): number | undefined {
@@ -135,6 +136,8 @@ export function bindProducedPlanWork(state: DecisionAuthorityState, intent: Inte
   for (const check of [intent.plan.completion.step, intent.plan.completion.goal]) {
     for (const condition of check.conditions) {
       if (condition.kind === 'work-state' && condition.target.kind === 'produced-work') {
+        // This resolves the output identity of the same reviewed condition;
+        // do not replace the check or lose its independent meaningReview.
         condition.target = { kind: 'work', workId: workIds[0] };
       }
     }
@@ -205,7 +208,8 @@ function operationFor(action: PrimitiveAction): unknown {
 
 function inventoryOf(person: PersonState) {
   return person.inventory.filter((stack) => stack.quantity > 0)
-    .map((stack) => ({ id: stack.id, materialId: stack.materialId, quantity: stack.quantity }))
+    .map((stack) => ({ id: stack.id, materialId: stack.materialId, quantity: stack.quantity,
+      mechanicalShape: itemMechanicalShape(stack.mechanicalState, stack.materialId) }))
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
@@ -230,11 +234,13 @@ function targetSnapshot(state: DecisionAuthorityState, ref: WorldRef): unknown {
   }
   if (ref.kind === 'inventory-stack') {
     const stack = personById(state, ref.personId)?.inventory.find((candidate) => candidate.id === ref.stackId);
-    return { ref, materialId: stack?.materialId, quantity: stack?.quantity ?? 0 };
+    return { ref, materialId: stack?.materialId, quantity: stack?.quantity ?? 0,
+      mechanicalShape: stack ? itemMechanicalShape(stack.mechanicalState, stack.materialId) : undefined };
   }
   if (ref.kind === 'drop') {
     const drop = state.world.drops.find((candidate) => candidate.id === ref.dropId);
-    return { ref, materialId: drop?.materialId, quantity: drop?.quantity ?? 0, cellId: drop?.cellId, z: drop?.z };
+    return { ref, materialId: drop?.materialId, quantity: drop?.quantity ?? 0, cellId: drop?.cellId, z: drop?.z,
+      mechanicalShape: drop ? itemMechanicalShape(drop.mechanicalState, drop.materialId) : undefined };
   }
   if (ref.kind === 'animal') {
     const animal = state.world.animals.find((candidate) => candidate.id === ref.animalId);
@@ -279,7 +285,8 @@ export function capturePlanAttempt(state: DecisionAuthorityState, person: Person
         localMaterials: state.world.drops.filter((drop) => drop.quantity > 0
           && Math.abs(cellX(drop.cellId) - cellX(position.cellId)) <= 1
           && Math.abs(cellY(drop.cellId) - cellY(position.cellId)) <= 1)
-          .map(({ id, materialId, quantity, cellId, z }) => ({ id, materialId, quantity, cellId, z }))
+          .map(({ id, materialId, quantity, cellId, z, mechanicalState }) => ({ id, materialId, quantity, cellId, z,
+            mechanicalShape: itemMechanicalShape(mechanicalState, materialId) }))
           .sort((left, right) => left.id.localeCompare(right.id)),
         localWorks: (state.world.works ?? []).filter((work) => Math.abs(work.position.x - cellX(position.cellId)) <= 2
           && Math.abs(work.position.y - cellY(position.cellId)) <= 2)

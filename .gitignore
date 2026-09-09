@@ -38,3 +38,14 @@
 !/three-body/exports/README.md
 /three-body/scripts/.tmp-*
 /three-body/scripts/out/
+
+# Rebuildable promotion intermediates. Keep final exports, source data and tools.
+/output/**/work/
+/output/**/qa/
+/output/**/source/
+/output/**/shots/
+/output/**/tools/venv/
+/output/**/__pycache__/
+/output/promo-v2/data/read-source.mjs
+/output/promo-v2/data/export-cold.mjs
+/output/promo-v2/data/extract-memory.mjs

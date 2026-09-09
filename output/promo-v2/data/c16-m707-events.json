@@ -1,0 +1,3045 @@
+[
+  {
+    "id": "e-707-environment-weather-0",
+    "kind": "environment",
+    "atMonth": 707,
+    "orderInMonth": 0,
+    "cellId": 0,
+    "change": "weather",
+    "result": "本月天气转为晴朗",
+    "diff": {
+      "kind": "clear",
+      "intensity": 1
+    },
+    "planningTick": 0,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-707-environment-material-0",
+    "kind": "environment",
+    "atMonth": 707,
+    "orderInMonth": 1,
+    "cellId": 0,
+    "change": "material",
+    "result": "1 个格子的物质因自然过程发生变化",
+    "diff": {
+      "changes": [
+        {
+          "cellId": 4153,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        }
+      ]
+    },
+    "planningTick": 0,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-707-opportunity-potianfeng",
+    "kind": "decision-opportunity",
+    "atMonth": 707,
+    "orderInMonth": 2,
+    "planningTick": 0,
+    "orderInTick": 2,
+    "who": "potianfeng",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.16373797599226236,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "破天锋本月重新考虑下一步"
+  },
+  {
+    "id": "e-707-opportunity-rei-ayanami",
+    "kind": "decision-opportunity",
+    "atMonth": 707,
+    "orderInMonth": 3,
+    "planningTick": 0,
+    "orderInTick": 3,
+    "who": "rei-ayanami",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.1913250999059528,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "绫波丽本月重新考虑下一步"
+  },
+  {
+    "id": "e-707-opportunity-freyja",
+    "kind": "decision-opportunity",
+    "atMonth": 707,
+    "orderInMonth": 4,
+    "planningTick": 0,
+    "orderInTick": 4,
+    "who": "freyja",
+    "cellId": 4047,
+    "probability": 0.045,
+    "sample": 0.5029771118424833,
+    "triggered": true,
+    "reasons": [
+      "每月非零重新考虑概率",
+      "紧急状态需要立即重评"
+    ],
+    "result": "芙蕾雅本月重新考虑下一步"
+  },
+  {
+    "id": "e-707-opportunity-cai-wenji",
+    "kind": "decision-opportunity",
+    "atMonth": 707,
+    "orderInMonth": 5,
+    "planningTick": 0,
+    "orderInTick": 5,
+    "who": "cai-wenji",
+    "cellId": 1443,
+    "probability": 0.645,
+    "sample": 0.3983023592736572,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "蔡文姬本月重新考虑下一步"
+  },
+  {
+    "id": "e-707-opportunity-sun-wu",
+    "kind": "decision-opportunity",
+    "atMonth": 707,
+    "orderInMonth": 6,
+    "planningTick": 0,
+    "orderInTick": 6,
+    "who": "sun-wu",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.47918926854617894,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "紧急状态需要立即重评"
+    ],
+    "result": "孙武本月重新考虑下一步"
+  },
+  {
+    "id": "e-707-opportunity-houyi",
+    "kind": "decision-opportunity",
+    "atMonth": 707,
+    "orderInMonth": 7,
+    "planningTick": 0,
+    "orderInTick": 7,
+    "who": "houyi",
+    "cellId": 1443,
+    "probability": 0.645,
+    "sample": 0.9395121880806983,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "后羿本月重新考虑下一步"
+  },
+  {
+    "id": "e-707-opportunity-born-16-cai-wenji-7",
+    "kind": "decision-opportunity",
+    "atMonth": 707,
+    "orderInMonth": 8,
+    "planningTick": 0,
+    "orderInTick": 8,
+    "who": "born-16-cai-wenji-7",
+    "cellId": 3038,
+    "probability": 0.045,
+    "sample": 0.23288637353107333,
+    "triggered": false,
+    "reasons": [
+      "每月非零重新考虑概率"
+    ],
+    "result": "孙疏影本月延续已有意图"
+  },
+  {
+    "id": "e-707-opportunity-born-22-potianfeng-8",
+    "kind": "decision-opportunity",
+    "atMonth": 707,
+    "orderInMonth": 9,
+    "planningTick": 0,
+    "orderInTick": 9,
+    "who": "born-22-potianfeng-8",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.42957972013391554,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "孙朝宗本月重新考虑下一步"
+  },
+  {
+    "id": "e-707-opportunity-born-115-cai-wenji-10",
+    "kind": "decision-opportunity",
+    "atMonth": 707,
+    "orderInMonth": 10,
+    "planningTick": 0,
+    "orderInTick": 10,
+    "who": "born-115-cai-wenji-10",
+    "cellId": 1445,
+    "probability": 0.645,
+    "sample": 0.7521344071719795,
+    "triggered": false,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "后凌川本月延续已有意图"
+  },
+  {
+    "id": "e-707-opportunity-born-159-potianfeng-11",
+    "kind": "decision-opportunity",
+    "atMonth": 707,
+    "orderInMonth": 11,
+    "planningTick": 0,
+    "orderInTick": 11,
+    "who": "born-159-potianfeng-11",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.15578210330568254,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "孙明哲本月重新考虑下一步"
+  },
+  {
+    "id": "e-707-opportunity-born-193-cai-wenji-12",
+    "kind": "decision-opportunity",
+    "atMonth": 707,
+    "orderInMonth": 12,
+    "planningTick": 0,
+    "orderInTick": 12,
+    "who": "born-193-cai-wenji-12",
+    "cellId": 1528,
+    "probability": 0.045,
+    "sample": 0.6348928918596357,
+    "triggered": false,
+    "reasons": [
+      "每月非零重新考虑概率"
+    ],
+    "result": "后若水本月延续已有意图"
+  },
+  {
+    "id": "e-707-opportunity-born-244-potianfeng-13",
+    "kind": "decision-opportunity",
+    "atMonth": 707,
+    "orderInMonth": 13,
+    "planningTick": 0,
+    "orderInTick": 13,
+    "who": "born-244-potianfeng-13",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.43372566695325077,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "孙守一本月重新考虑下一步"
+  },
+  {
+    "id": "e-707-decision-potianfeng-1-14",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 14,
+    "planningTick": 1,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:707:collective:offer-collective:29:houyi:sun-wu:potianfeng:sun-wu:22",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 67%（8 次亲历）"
+    },
+    "intentId": "intent-707-potianfeng-16542",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：允许孙武在需要时取用自己的种子"
+  },
+  {
+    "id": "e-707-decision-rei-ayanami-1-15",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 15,
+    "planningTick": 1,
+    "orderInTick": 1,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "use-permission:permission:offer-permission:701:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:rei-ayanami:21:stack-potianfeng-21-399",
+      "reason": "授权人、被授权人、物质、单次数量与有效期都有可追溯许可；当前最强需要是care；本人可携带的食水缓冲不足；nutrition低于本人舒适储备"
+    },
+    "intentId": "intent-707-rei-ayanami-16543",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：依据许可从破天锋处取用食物"
+  },
+  {
+    "id": "e-707-decision-cai-wenji-1-16",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 16,
+    "planningTick": 1,
+    "orderInTick": 2,
+    "cellId": 1443,
+    "who": "cai-wenji",
+    "decision": {
+      "kind": "start",
+      "optionId": "rejoin-collective:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10",
+      "reason": "双方仍属于以“持续交换物质并互相履约”为目的的持续共同体；当前最强需要是belonging；当前可见关系与本人社会接近倾向形成了真实互动机会；当前项目或观察留下了具体未知点"
+    },
+    "intentId": "intent-707-cai-wenji-16544",
+    "domain": "social",
+    "usedModel": false,
+    "result": "蔡文姬决定：重新与共同体成员后凌川会合"
+  },
+  {
+    "id": "e-707-decision-sun-wu-1-17",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 17,
+    "planningTick": 1,
+    "orderInTick": 3,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "use-permission:permission:offer-permission:700:collective:offer-collective:3:potianfeng:rei-ayanami:born-244-potianfeng-13:sun-wu:21:stack-born-244-potianfeng-13-21-270",
+      "reason": "授权人、被授权人、物质、单次数量与有效期都有可追溯许可；当前最强需要是care；本人可携带的食水缓冲不足；本人尚无相似行动经验，使用保守先验"
+    },
+    "intentId": "intent-707-sun-wu-16545",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：依据许可从孙守一处取用食物"
+  },
+  {
+    "id": "e-707-decision-houyi-1-18",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 18,
+    "planningTick": 1,
+    "orderInTick": 4,
+    "cellId": 1443,
+    "who": "houyi",
+    "decision": {
+      "kind": "start",
+      "optionId": "rejoin-collective:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10",
+      "reason": "双方仍属于以“持续交换物质并互相履约”为目的的持续共同体；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；当前项目或观察留下了具体未知点"
+    },
+    "intentId": "intent-707-houyi-16546",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后羿决定：重新与共同体成员后凌川会合"
+  },
+  {
+    "id": "e-707-decision-born-22-potianfeng-8-1-19",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 19,
+    "planningTick": 1,
+    "orderInTick": 5,
+    "cellId": 689,
+    "who": "born-22-potianfeng-8",
+    "decision": {
+      "kind": "start",
+      "optionId": "collect:drop-681-rei-ayanami-separate-459",
+      "reason": "看见地上的食物；当前最强需要是care；本人可携带的食水缓冲不足；nutrition低于本人舒适储备"
+    },
+    "intentId": "intent-707-born-22-potianfeng-8-16547",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "孙朝宗决定：取得食物"
+  },
+  {
+    "id": "e-707-decision-born-159-potianfeng-11-1-20",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 20,
+    "planningTick": 1,
+    "orderInTick": 6,
+    "cellId": 689,
+    "who": "born-159-potianfeng-11",
+    "decision": {
+      "kind": "start",
+      "optionId": "predict-era:707:born-159-potianfeng-11:0",
+      "reason": "对天象、气温和过去纪元节律的观察可以形成一项有误差的预测；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 60%（1 次亲历）"
+    },
+    "intentId": "intent-707-born-159-potianfeng-11-16548",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "孙明哲决定：预言第 709 月前后将进入乱纪元"
+  },
+  {
+    "id": "e-707-decision-born-244-potianfeng-13-1-21",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 21,
+    "planningTick": 1,
+    "orderInTick": 7,
+    "cellId": 689,
+    "who": "born-244-potianfeng-13",
+    "decision": {
+      "kind": "start",
+      "optionId": "conversation:care:707:born-244-potianfeng-13:rei-ayanami",
+      "reason": "绫波丽眼下有真实的身体不适，关心可以从正在发生的处境开始；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人尚无相似行动经验，使用保守先验"
+    },
+    "intentId": "intent-707-born-244-potianfeng-13-16549",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙守一决定：与绫波丽谈身体与照护：向绫波丽表达对其身体越来越容易疲惫的关心，并邀请对方共同寻找缓解办法"
+  },
+  {
+    "id": "e-707-action-houyi-22",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 707,
+    "orderInMonth": 22,
+    "cellId": 1444,
+    "who": "houyi",
+    "intentId": "intent-707-houyi-16546",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1445,
+      "toZ": 5
+    },
+    "fromCellId": 1443,
+    "toCellId": 1444,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443,
+      1444
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 0.9569377990430623,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 8
+  },
+  {
+    "id": "e-707-action-potianfeng-23",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 707,
+    "orderInMonth": 23,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-707-potianfeng-16542",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:707:collective:offer-collective:29:houyi:sun-wu:potianfeng:sun-wu:22",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份种子",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "potianfeng",
+          "partnerId": "sun-wu",
+          "collectiveId": "collective:offer-collective:29:houyi:sun-wu",
+          "grantorId": "potianfeng",
+          "granteeId": "sun-wu",
+          "materialId": 22,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 731,
+          "expiresAtMonth": 713
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "破天锋向孙武表达：你可以在需要时每次取用我的一份种子",
+    "diff": {
+      "audience": [
+        "sun-wu"
+      ],
+      "content": {
+        "id": "offer-permission:707:collective:offer-collective:29:houyi:sun-wu:potianfeng:sun-wu:22",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份种子",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "potianfeng",
+          "partnerId": "sun-wu",
+          "collectiveId": "collective:offer-collective:29:houyi:sun-wu",
+          "grantorId": "potianfeng",
+          "granteeId": "sun-wu",
+          "materialId": 22,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 731,
+          "expiresAtMonth": 713
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 9
+  },
+  {
+    "id": "e-707-action-cai-wenji-24",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 707,
+    "orderInMonth": 24,
+    "cellId": 1444,
+    "who": "cai-wenji",
+    "intentId": "intent-707-cai-wenji-16544",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1445,
+      "toZ": 5
+    },
+    "fromCellId": 1443,
+    "toCellId": 1444,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443,
+      1444
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.652892561983471,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 10
+  },
+  {
+    "id": "e-707-action-sun-wu-25",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 707,
+    "orderInMonth": 25,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-707-sun-wu-16545",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 21,
+      "quantity": 1,
+      "from": {
+        "kind": "person",
+        "personId": "born-244-potianfeng-13"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "sun-wu"
+      },
+      "stackId": "stack-born-244-potianfeng-13-21-270",
+      "authorizationRef": "permission:offer-permission:700:collective:offer-collective:3:potianfeng:rei-ayanami:born-244-potianfeng-13:sun-wu:21"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "食物 × 1 改变了持有者",
+    "diff": {
+      "materialId": 21,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": true,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "person",
+        "personId": "born-244-potianfeng-13"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "sun-wu"
+      },
+      "witnessedBy": [
+        "potianfeng",
+        "rei-ayanami",
+        "sun-wu",
+        "born-22-potianfeng-8",
+        "born-159-potianfeng-11",
+        "born-244-potianfeng-13"
+      ],
+      "sourceEventIds": [
+        "e-331-action-born-244-potianfeng-13-67",
+        "e-331-action-born-244-potianfeng-13-75",
+        "e-334-action-born-193-cai-wenji-12-80",
+        "e-337-action-born-244-potianfeng-13-40",
+        "e-336-action-born-115-cai-wenji-10-57",
+        "e-337-action-born-244-potianfeng-13-47",
+        "e-339-action-born-244-potianfeng-13-44",
+        "e-345-action-born-115-cai-wenji-10-93",
+        "e-346-action-born-244-potianfeng-13-48",
+        "e-348-action-born-244-potianfeng-13-38",
+        "e-352-action-born-244-potianfeng-13-33",
+        "e-352-action-born-244-potianfeng-13-48",
+        "e-355-action-born-244-potianfeng-13-25",
+        "e-357-action-born-115-cai-wenji-10-93",
+        "e-358-action-born-244-potianfeng-13-41",
+        "e-360-action-born-244-potianfeng-13-37",
+        "e-361-action-born-244-potianfeng-13-31",
+        "e-361-action-born-244-potianfeng-13-51",
+        "e-364-action-born-244-potianfeng-13-33",
+        "e-410-action-born-244-potianfeng-13-35",
+        "e-410-action-born-244-potianfeng-13-36",
+        "e-373-action-born-115-cai-wenji-10-38",
+        "e-543-action-born-244-potianfeng-13-44",
+        "e-707-action-sun-wu-25"
+      ],
+      "sourceLineageKeys": [
+        "inventory:born-244-potianfeng-13:stack-born-244-potianfeng-13-21-270",
+        "inventory:born-159-potianfeng-11:stack-born-159-potianfeng-11-21-173",
+        "drop:drop-173-born-159-potianfeng-11-separate-433",
+        "drop:drop-177-born-159-potianfeng-11-separate-433",
+        "drop:drop-179-born-159-potianfeng-11-separate-433",
+        "drop:drop-183-born-159-potianfeng-11-separate-436",
+        "drop:drop-188-born-159-potianfeng-11-separate-436",
+        "drop:drop-202-born-159-potianfeng-11-separate-435",
+        "drop:drop-219-born-159-potianfeng-11-separate-439",
+        "drop:drop-221-born-159-potianfeng-11-separate-441",
+        "drop:drop-225-born-159-potianfeng-11-separate-434",
+        "drop:drop-252-born-159-potianfeng-11-separate-433",
+        "drop:drop-254-born-159-potianfeng-11-separate-434",
+        "drop:drop-285-born-159-potianfeng-11-separate-430",
+        "drop:drop-287-born-244-potianfeng-13-separate-430",
+        "drop:drop-310-born-193-cai-wenji-12-separate-435",
+        "drop:drop-317-born-244-potianfeng-13-separate-443",
+        "drop:drop-308-born-193-cai-wenji-12-separate-434",
+        "drop:drop-325-born-244-potianfeng-13-separate-444",
+        "drop:drop-327-born-244-potianfeng-13-separate-444",
+        "drop:drop-331-born-244-potianfeng-13-separate-444",
+        "drop:drop-334-born-193-cai-wenji-12-separate-443",
+        "drop:drop-336-born-115-cai-wenji-10-separate-445",
+        "drop:drop-345-born-115-cai-wenji-10-separate-451",
+        "drop:drop-352-born-244-potianfeng-13-separate-451",
+        "drop:drop-357-born-115-cai-wenji-10-separate-451",
+        "drop:drop-361-born-244-potianfeng-13-separate-451",
+        "drop:drop-410-born-244-potianfeng-13-separate-447",
+        "drop:drop-373-born-115-cai-wenji-10-separate-450"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 11
+  },
+  {
+    "id": "e-707-action-born-244-potianfeng-13-26",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 707,
+    "orderInMonth": 26,
+    "cellId": 689,
+    "who": "born-244-potianfeng-13",
+    "intentId": "intent-707-born-244-potianfeng-13-16549",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "conversation:care:707:born-244-potianfeng-13:rei-ayanami",
+        "kind": "claim",
+        "summary": "向绫波丽表达对其身体越来越容易疲惫的关心，并邀请对方共同寻找缓解办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "opening",
+          "speakerId": "born-244-potianfeng-13",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ]
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙守一向绫波丽表达：向绫波丽表达对其身体越来越容易疲惫的关心，并邀请对方共同寻找缓解办法",
+    "diff": {
+      "audience": [
+        "rei-ayanami"
+      ],
+      "content": {
+        "id": "conversation:care:707:born-244-potianfeng-13:rei-ayanami",
+        "kind": "claim",
+        "summary": "向绫波丽表达对其身体越来越容易疲惫的关心，并邀请对方共同寻找缓解办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "opening",
+          "speakerId": "born-244-potianfeng-13",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ]
+        }
+      },
+      "groundedConversationBasisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+      "groundedConversationTopic": "care",
+      "groundedConversationTurn": "opening",
+      "groundedConversationSourceFactIds": [
+        "e-492-environment-condition-0",
+        "e-683-environment-condition-0"
+      ],
+      "relationTrustDelta": 1,
+      "relationBondDelta": 2
+    },
+    "planningTick": 1,
+    "orderInTick": 12
+  },
+  {
+    "id": "e-707-action-freyja-27",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 707,
+    "orderInMonth": 27,
+    "cellId": 4047,
+    "who": "freyja",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "act",
+      "operation": "ingest",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "freyja",
+          "stackId": "stack-freyja-21-672"
+        }
+      ]
+    },
+    "fromCellId": 4047,
+    "toCellId": 4047,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4047
+    ],
+    "status": "completed",
+    "result": "摄入了食物",
+    "diff": {
+      "materialId": 21,
+      "nutrition": 48,
+      "hydration": 4,
+      "health": 0,
+      "consumedStackId": "stack-freyja-21-672",
+      "consumedSourceEventIds": [
+        "e-640-action-aphrodite-24",
+        "e-672-action-freyja-12",
+        "e-673-action-freyja-38",
+        "e-673-action-freyja-39",
+        "e-696-action-freyja-55",
+        "e-696-action-freyja-60",
+        "e-703-action-freyja-70",
+        "e-703-action-freyja-75",
+        "e-706-action-freyja-27"
+      ],
+      "consumedSourceLineageKeys": [
+        "drop:drop-640-aphrodite-separate-454",
+        "drop:drop-673-freyja-separate-459",
+        "drop:drop-696-freyja-separate-461",
+        "drop:drop-703-freyja-separate-463"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 13
+  },
+  {
+    "id": "e-707-action-born-22-potianfeng-8-28",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 707,
+    "orderInMonth": 28,
+    "cellId": 605,
+    "who": "born-22-potianfeng-8",
+    "intentId": "intent-707-born-22-potianfeng-8-16547",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 606,
+      "toZ": 5
+    },
+    "fromCellId": 689,
+    "toCellId": 605,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689,
+      605
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.1052631578947367,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 14
+  },
+  {
+    "id": "e-707-action-born-16-cai-wenji-7-29",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 707,
+    "orderInMonth": 29,
+    "cellId": 2954,
+    "who": "born-16-cai-wenji-7",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 2786,
+      "toZ": 5
+    },
+    "fromCellId": 3038,
+    "toCellId": 2954,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3038,
+      2954
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 15
+  },
+  {
+    "id": "e-707-action-born-193-cai-wenji-12-30",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 707,
+    "orderInMonth": 30,
+    "cellId": 1444,
+    "who": "born-193-cai-wenji-12",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 1443,
+      "toZ": 5
+    },
+    "fromCellId": 1528,
+    "toCellId": 1444,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1528,
+      1444
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 16
+  },
+  {
+    "id": "e-707-action-born-159-potianfeng-11-31",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 707,
+    "orderInMonth": 31,
+    "cellId": 689,
+    "who": "born-159-potianfeng-11",
+    "intentId": "intent-707-born-159-potianfeng-11-16548",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "predict-era:707:born-159-potianfeng-11:0",
+        "kind": "prediction",
+        "summary": "预言第 709 月前后将进入乱纪元",
+        "prediction": {
+          "targetEpoch": "chaotic",
+          "predictedStartMonth": 709,
+          "toleranceMonths": 3,
+          "expiresAtMonth": 712
+        }
+      },
+      "audience": [
+        "potianfeng",
+        "rei-ayanami",
+        "sun-wu",
+        "born-22-potianfeng-8"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙明哲向破天锋、绫波丽、孙武、孙朝宗表达：预言第 709 月前后将进入乱纪元",
+    "diff": {
+      "audience": [
+        "potianfeng",
+        "rei-ayanami",
+        "sun-wu",
+        "born-22-potianfeng-8"
+      ],
+      "content": {
+        "id": "predict-era:707:born-159-potianfeng-11:0",
+        "kind": "prediction",
+        "summary": "预言第 709 月前后将进入乱纪元",
+        "prediction": {
+          "targetEpoch": "chaotic",
+          "predictedStartMonth": 709,
+          "toleranceMonths": 3,
+          "expiresAtMonth": 712
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 17
+  },
+  {
+    "id": "e-707-action-rei-ayanami-32",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 707,
+    "orderInMonth": 32,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-707-rei-ayanami-16543",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 21,
+      "quantity": 1,
+      "from": {
+        "kind": "person",
+        "personId": "potianfeng"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "stackId": "stack-potianfeng-21-399",
+      "authorizationRef": "permission:offer-permission:701:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:rei-ayanami:21"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "食物 × 1 改变了持有者",
+    "diff": {
+      "materialId": 21,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": true,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "person",
+        "personId": "potianfeng"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "witnessedBy": [
+        "potianfeng",
+        "rei-ayanami",
+        "sun-wu",
+        "born-159-potianfeng-11",
+        "born-244-potianfeng-13"
+      ],
+      "sourceEventIds": [
+        "e-373-action-born-115-cai-wenji-10-38",
+        "e-543-action-born-244-potianfeng-13-44",
+        "e-683-action-potianfeng-7",
+        "e-327-action-born-244-potianfeng-13-49",
+        "e-331-action-born-244-potianfeng-13-75",
+        "e-334-action-born-193-cai-wenji-12-80",
+        "e-345-action-born-115-cai-wenji-10-93",
+        "e-346-action-born-244-potianfeng-13-48",
+        "e-348-action-born-244-potianfeng-13-38",
+        "e-352-action-born-244-potianfeng-13-33",
+        "e-684-action-potianfeng-10",
+        "e-352-action-born-244-potianfeng-13-48",
+        "e-355-action-born-244-potianfeng-13-25",
+        "e-357-action-born-115-cai-wenji-10-93",
+        "e-358-action-born-244-potianfeng-13-41",
+        "e-360-action-born-244-potianfeng-13-37",
+        "e-361-action-born-244-potianfeng-13-31",
+        "e-689-action-potianfeng-11",
+        "e-337-action-born-244-potianfeng-13-40",
+        "e-336-action-born-115-cai-wenji-10-57",
+        "e-361-action-born-244-potianfeng-13-51",
+        "e-364-action-born-244-potianfeng-13-33",
+        "e-694-action-born-244-potianfeng-13-66",
+        "e-707-action-rei-ayanami-32"
+      ],
+      "sourceLineageKeys": [
+        "drop:drop-219-born-159-potianfeng-11-separate-439",
+        "drop:drop-225-born-159-potianfeng-11-separate-434",
+        "drop:drop-252-born-159-potianfeng-11-separate-433",
+        "drop:drop-254-born-159-potianfeng-11-separate-434",
+        "drop:drop-320-born-159-potianfeng-11-separate-444",
+        "inventory:sun-wu:stack-sun-wu-21-380",
+        "inventory:rei-ayanami:stack-rei-ayanami-ration",
+        "drop:drop-14-rei-ayanami-separate-352",
+        "drop:drop-42-rei-ayanami-separate-396",
+        "drop:drop-76-rei-ayanami-separate-412",
+        "drop:drop-138-rei-ayanami-separate-427",
+        "drop:drop-210-rei-ayanami-separate-439",
+        "inventory:born-244-potianfeng-13:stack-born-244-potianfeng-13-21-270",
+        "drop:drop-285-born-159-potianfeng-11-separate-430",
+        "drop:drop-287-born-244-potianfeng-13-separate-430",
+        "drop:drop-310-born-193-cai-wenji-12-separate-435",
+        "drop:drop-317-born-244-potianfeng-13-separate-443",
+        "drop:drop-308-born-193-cai-wenji-12-separate-434",
+        "drop:drop-325-born-244-potianfeng-13-separate-444",
+        "drop:drop-327-born-244-potianfeng-13-separate-444",
+        "drop:drop-331-born-244-potianfeng-13-separate-444",
+        "drop:drop-334-born-193-cai-wenji-12-separate-443",
+        "inventory:born-159-potianfeng-11:stack-born-159-potianfeng-11-21-173",
+        "drop:drop-173-born-159-potianfeng-11-separate-433",
+        "drop:drop-336-born-115-cai-wenji-10-separate-445",
+        "drop:drop-345-born-115-cai-wenji-10-separate-451",
+        "drop:drop-352-born-244-potianfeng-13-separate-451",
+        "drop:drop-177-born-159-potianfeng-11-separate-433",
+        "drop:drop-221-born-159-potianfeng-11-separate-441",
+        "drop:drop-357-born-115-cai-wenji-10-separate-451",
+        "drop:drop-361-born-244-potianfeng-13-separate-451",
+        "drop:drop-410-born-244-potianfeng-13-separate-447"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 18
+  },
+  {
+    "id": "e-707-action-born-115-cai-wenji-10-33",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 707,
+    "orderInMonth": 33,
+    "cellId": 1445,
+    "who": "born-115-cai-wenji-10",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "act",
+      "operation": "ingest",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "born-115-cai-wenji-10",
+          "stackId": "stack-born-115-cai-wenji-10-21-699"
+        }
+      ]
+    },
+    "fromCellId": 1445,
+    "toCellId": 1445,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1445
+    ],
+    "status": "completed",
+    "result": "摄入了食物",
+    "diff": {
+      "materialId": 21,
+      "nutrition": 48,
+      "hydration": 4,
+      "health": 0,
+      "consumedStackId": "stack-born-115-cai-wenji-10-21-699",
+      "consumedSourceEventIds": [
+        "e-627-action-born-193-cai-wenji-12-2",
+        "e-322-action-born-193-cai-wenji-12-52",
+        "e-670-action-born-193-cai-wenji-12-11",
+        "e-628-action-cai-wenji-10",
+        "e-622-action-cai-wenji-6",
+        "e-619-action-cai-wenji-20",
+        "e-671-action-born-193-cai-wenji-12-10",
+        "e-622-action-born-193-cai-wenji-12-10",
+        "e-623-action-cai-wenji-13",
+        "e-334-action-born-193-cai-wenji-12-89",
+        "e-673-action-cai-wenji-9",
+        "e-674-action-born-193-cai-wenji-12-26",
+        "e-656-action-cai-wenji-23",
+        "e-658-action-cai-wenji-26",
+        "e-645-action-cai-wenji-9",
+        "e-675-action-born-193-cai-wenji-12-2",
+        "e-699-action-born-115-cai-wenji-10-23",
+        "e-702-action-born-115-cai-wenji-10-29",
+        "e-618-action-born-193-cai-wenji-12-3",
+        "e-618-action-cai-wenji-5",
+        "e-705-action-born-115-cai-wenji-10-31",
+        "e-371-action-born-115-cai-wenji-10-58",
+        "e-372-action-born-115-cai-wenji-10-46",
+        "e-706-action-born-115-cai-wenji-10-51"
+      ],
+      "consumedSourceLineageKeys": [
+        "inventory:born-193-cai-wenji-12:stack-born-193-cai-wenji-12-21-206",
+        "drop:drop-206-born-193-cai-wenji-12-separate-437",
+        "drop:drop-210-born-193-cai-wenji-12-separate-438",
+        "drop:drop-212-born-193-cai-wenji-12-separate-441",
+        "drop:drop-214-born-193-cai-wenji-12-separate-441",
+        "drop:drop-216-born-193-cai-wenji-12-separate-443",
+        "drop:drop-273-born-193-cai-wenji-12-separate-432",
+        "drop:drop-308-born-193-cai-wenji-12-separate-434",
+        "drop:drop-310-born-193-cai-wenji-12-separate-435",
+        "drop:drop-316-born-193-cai-wenji-12-separate-439",
+        "drop:drop-317-born-244-potianfeng-13-separate-443",
+        "drop:drop-328-born-193-cai-wenji-12-separate-446",
+        "drop:drop-334-born-193-cai-wenji-12-separate-443",
+        "inventory:cai-wenji:stack-cai-wenji-21-392",
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-21-218",
+        "drop:drop-218-born-115-cai-wenji-10-separate-440",
+        "drop:drop-260-born-115-cai-wenji-10-separate-434",
+        "drop:drop-320-born-159-potianfeng-11-separate-444",
+        "drop:drop-325-born-244-potianfeng-13-separate-444",
+        "drop:drop-327-born-244-potianfeng-13-separate-444",
+        "drop:drop-331-born-244-potianfeng-13-separate-444",
+        "drop:drop-342-born-115-cai-wenji-10-separate-447",
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-21-557",
+        "drop:drop-373-born-115-cai-wenji-10-separate-450",
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-21-600",
+        "drop:drop-345-born-115-cai-wenji-10-separate-449",
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-21-631",
+        "drop:drop-371-born-115-cai-wenji-10-separate-449"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 19
+  },
+  {
+    "id": "e-707-action-born-16-cai-wenji-7-34",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 707,
+    "orderInMonth": 34,
+    "cellId": 2870,
+    "who": "born-16-cai-wenji-7",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 2786,
+      "toZ": 5
+    },
+    "fromCellId": 2954,
+    "toCellId": 2870,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2954,
+      2870
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.6363636363636362,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-707-decision-rei-ayanami-2-35",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 35,
+    "planningTick": 2,
+    "orderInTick": 1,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 18%（13 次亲历）"
+    },
+    "intentId": "intent-707-rei-ayanami-16550",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：回应孙守一关于身体与照护的话：接受对方的关心，并愿意共同寻找缓解身体不适的办法"
+  },
+  {
+    "id": "e-707-action-rei-ayanami-36",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 707,
+    "orderInMonth": 36,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-707-rei-ayanami-16550",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+        "kind": "claim",
+        "summary": "接受对方的关心，并愿意共同寻找缓解身体不适的办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "response",
+          "speakerId": "rei-ayanami",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ],
+          "referenceEventId": "e-707-action-born-244-potianfeng-13-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "绫波丽向孙守一表达：接受对方的关心，并愿意共同寻找缓解身体不适的办法",
+    "diff": {
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "content": {
+        "id": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+        "kind": "claim",
+        "summary": "接受对方的关心，并愿意共同寻找缓解身体不适的办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "response",
+          "speakerId": "rei-ayanami",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ],
+          "referenceEventId": "e-707-action-born-244-potianfeng-13-26",
+          "stance": "supportive"
+        }
+      },
+      "groundedConversationBasisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+      "groundedConversationTopic": "care",
+      "groundedConversationTurn": "response",
+      "groundedConversationSourceFactIds": [
+        "e-492-environment-condition-0",
+        "e-683-environment-condition-0"
+      ],
+      "groundedConversationReferenceEventId": "e-707-action-born-244-potianfeng-13-26",
+      "groundedConversationStance": "supportive",
+      "relationTrustDelta": 1,
+      "relationBondDelta": 2
+    },
+    "planningTick": 2,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-707-decision-sun-wu-2-37",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 37,
+    "planningTick": 2,
+    "orderInTick": 3,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:707:collective:offer-collective:29:houyi:sun-wu:potianfeng:sun-wu:22",
+      "reason": "对方刚刚提出了一项需要回应的社会请求；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；一项具体提议、权限或共同体关系正在等待本人表态"
+    },
+    "intentId": "intent-707-sun-wu-16551",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：接受破天锋的物质取用许可"
+  },
+  {
+    "id": "e-707-action-sun-wu-38",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 707,
+    "orderInMonth": 38,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-707-sun-wu-16551",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:707:collective:offer-collective:29:houyi:sun-wu:potianfeng:sun-wu:22:sun-wu",
+        "kind": "accept",
+        "referenceId": "offer-permission:707:collective:offer-collective:29:houyi:sun-wu:potianfeng:sun-wu:22"
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙武向破天锋表达：accept",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "accept:offer-permission:707:collective:offer-collective:29:houyi:sun-wu:potianfeng:sun-wu:22:sun-wu",
+        "kind": "accept",
+        "referenceId": "offer-permission:707:collective:offer-collective:29:houyi:sun-wu:potianfeng:sun-wu:22"
+      }
+    },
+    "planningTick": 2,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-707-action-born-22-potianfeng-8-39",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 707,
+    "orderInMonth": 39,
+    "cellId": 606,
+    "who": "born-22-potianfeng-8",
+    "intentId": "intent-707-born-22-potianfeng-8-16547",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 606,
+      "toZ": 5
+    },
+    "fromCellId": 605,
+    "toCellId": 606,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      605,
+      606
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 7 的高度 5",
+    "diff": {
+      "spentWork": 1.0526315789473684,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-707-decision-born-115-cai-wenji-10-2-40",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 40,
+    "planningTick": 2,
+    "orderInTick": 6,
+    "cellId": 1445,
+    "who": "born-115-cai-wenji-10",
+    "decision": {
+      "kind": "start",
+      "optionId": "rejoin-collective:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji",
+      "reason": "双方仍属于以“持续交换物质并互相履约”为目的的持续共同体；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；当前项目或观察留下了具体未知点"
+    },
+    "intentId": "intent-707-born-115-cai-wenji-10-16552",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后凌川决定：重新与共同体成员蔡文姬会合"
+  },
+  {
+    "id": "e-707-action-born-115-cai-wenji-10-41",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 707,
+    "orderInMonth": 41,
+    "cellId": 1444,
+    "who": "born-115-cai-wenji-10",
+    "intentId": "intent-707-born-115-cai-wenji-10-16552",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1444,
+      "toZ": 5
+    },
+    "fromCellId": 1445,
+    "toCellId": 1444,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1445,
+      1444
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 16, 17 的高度 5",
+    "diff": {
+      "spentWork": 0.9090909090909091,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 7
+  },
+  {
+    "id": "e-707-action-born-193-cai-wenji-12-42",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 707,
+    "orderInMonth": 42,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 1443,
+      "toZ": 5
+    },
+    "fromCellId": 1444,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1444,
+      1443
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 15, 17 的高度 5",
+    "diff": {
+      "spentWork": 3,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 8
+  },
+  {
+    "id": "e-707-decision-freyja-3-43",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 43,
+    "planningTick": 3,
+    "orderInTick": 0,
+    "cellId": 4047,
+    "who": "freyja",
+    "decision": {
+      "kind": "start",
+      "optionId": "project:project-676-freyja-alloy-capability:approach-metallurgy-site-project-676-freyja-alloy-capability-4050-5",
+      "reason": "冶炼材料、贡献者和高温设施需要汇合到同一处固定地点，项目不会追逐移动中的持料者；当前最强需要是homeostasis；一个由局部事实触发的alloy-capability正在等待投入；本人对相似行动的成功预期为 59%（3 次亲历）"
+    },
+    "intentId": "intent-707-freyja-16553",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "芙蕾雅决定：前往固定冶炼工地继续在固定窑炉汇合锡矿与木炭，配成可冶炼的锡料"
+  },
+  {
+    "id": "e-707-action-freyja-44",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 707,
+    "orderInMonth": 44,
+    "cellId": 3963,
+    "who": "freyja",
+    "intentId": "intent-707-freyja-16553",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 4050,
+      "toZ": 5
+    },
+    "fromCellId": 4047,
+    "toCellId": 3963,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4047,
+      3963
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.305785123966942,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-707-action-born-22-potianfeng-8-45",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 707,
+    "orderInMonth": 45,
+    "cellId": 606,
+    "who": "born-22-potianfeng-8",
+    "intentId": "intent-707-born-22-potianfeng-8-16547",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 21,
+      "quantity": 1,
+      "from": {
+        "kind": "ground",
+        "cellId": 606,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-22-potianfeng-8"
+      },
+      "dropId": "drop-681-rei-ayanami-separate-459"
+    },
+    "fromCellId": 606,
+    "toCellId": 606,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      606
+    ],
+    "status": "completed",
+    "result": "食物 × 1 改变了持有者",
+    "diff": {
+      "materialId": 21,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 606,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-22-potianfeng-8"
+      },
+      "witnessedBy": [
+        "born-22-potianfeng-8"
+      ],
+      "sourceEventIds": [
+        "e-681-action-rei-ayanami-24",
+        "e-707-action-born-22-potianfeng-8-45"
+      ],
+      "sourceLineageKeys": [
+        "drop:drop-681-rei-ayanami-separate-459"
+      ]
+    },
+    "planningTick": 3,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-707-action-born-193-cai-wenji-12-46",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 707,
+    "orderInMonth": 46,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "act",
+      "operation": "ingest",
+      "targets": [
+        {
+          "kind": "voxel",
+          "position": {
+            "x": 14,
+            "y": 17,
+            "z": 4
+          }
+        }
+      ]
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "completed",
+    "result": "从地表摄入了水",
+    "diff": {
+      "materialId": 7,
+      "hydration": 58
+    },
+    "planningTick": 3,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-707-action-born-16-cai-wenji-7-47",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 707,
+    "orderInMonth": 47,
+    "cellId": 2786,
+    "who": "born-16-cai-wenji-7",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 2786,
+      "toZ": 5
+    },
+    "fromCellId": 2870,
+    "toCellId": 2786,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2870,
+      2786
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 14, 33 的高度 5",
+    "diff": {
+      "spentWork": 5.454545454545454,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-707-decision-rei-ayanami-3-48",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 48,
+    "planningTick": 3,
+    "orderInTick": 5,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 22%（14 次亲历）"
+    },
+    "intentId": "intent-707-rei-ayanami-16554",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：回应孙守一关于身体与照护的话：接受对方的关心，并愿意共同寻找缓解身体不适的办法"
+  },
+  {
+    "id": "e-707-action-rei-ayanami-49",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 707,
+    "orderInMonth": 49,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-707-rei-ayanami-16554",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+        "kind": "claim",
+        "summary": "接受对方的关心，并愿意共同寻找缓解身体不适的办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "response",
+          "speakerId": "rei-ayanami",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ],
+          "referenceEventId": "e-707-action-born-244-potianfeng-13-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 3,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-707-decision-rei-ayanami-4-50",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 50,
+    "planningTick": 4,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 21%（15 次亲历）"
+    },
+    "intentId": "intent-707-rei-ayanami-16555",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：回应孙守一关于身体与照护的话：接受对方的关心，并愿意共同寻找缓解身体不适的办法"
+  },
+  {
+    "id": "e-707-action-rei-ayanami-51",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 707,
+    "orderInMonth": 51,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-707-rei-ayanami-16555",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+        "kind": "claim",
+        "summary": "接受对方的关心，并愿意共同寻找缓解身体不适的办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "response",
+          "speakerId": "rei-ayanami",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ],
+          "referenceEventId": "e-707-action-born-244-potianfeng-13-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 4,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-707-action-born-22-potianfeng-8-52",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 707,
+    "orderInMonth": 52,
+    "cellId": 606,
+    "who": "born-22-potianfeng-8",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "act",
+      "operation": "ingest",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "born-22-potianfeng-8",
+          "stackId": "stack-born-22-potianfeng-8-21-707"
+        }
+      ]
+    },
+    "fromCellId": 606,
+    "toCellId": 606,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      606
+    ],
+    "status": "completed",
+    "result": "摄入了食物",
+    "diff": {
+      "materialId": 21,
+      "nutrition": 48,
+      "hydration": 4,
+      "health": 0,
+      "consumedStackId": "stack-born-22-potianfeng-8-21-707",
+      "consumedSourceEventIds": [
+        "e-681-action-rei-ayanami-24",
+        "e-707-action-born-22-potianfeng-8-45"
+      ],
+      "consumedSourceLineageKeys": [
+        "drop:drop-681-rei-ayanami-separate-459"
+      ]
+    },
+    "planningTick": 4,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-707-action-born-16-cai-wenji-7-53",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 707,
+    "orderInMonth": 53,
+    "cellId": 2786,
+    "who": "born-16-cai-wenji-7",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "act",
+      "operation": "ingest",
+      "targets": [
+        {
+          "kind": "voxel",
+          "position": {
+            "x": 14,
+            "y": 32,
+            "z": 4
+          }
+        }
+      ]
+    },
+    "fromCellId": 2786,
+    "toCellId": 2786,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2786
+    ],
+    "status": "completed",
+    "result": "从地表摄入了水",
+    "diff": {
+      "materialId": 7,
+      "hydration": 58
+    },
+    "planningTick": 4,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-707-action-freyja-54",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 707,
+    "orderInMonth": 54,
+    "cellId": 3879,
+    "who": "freyja",
+    "intentId": "intent-707-freyja-16553",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 4050,
+      "toZ": 5
+    },
+    "fromCellId": 3963,
+    "toCellId": 3879,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3963,
+      3879
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.305785123966942,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 4,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-707-action-freyja-55",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 707,
+    "orderInMonth": 55,
+    "cellId": 3880,
+    "who": "freyja",
+    "intentId": "intent-707-freyja-16553",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 4050,
+      "toZ": 5
+    },
+    "fromCellId": 3879,
+    "toCellId": 3880,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3879,
+      3880
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.305785123966942,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 5,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-707-action-born-16-cai-wenji-7-56",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 707,
+    "orderInMonth": 56,
+    "cellId": 2786,
+    "who": "born-16-cai-wenji-7",
+    "intentId": "intent-706-born-16-cai-wenji-7-16541",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "separate",
+      "targets": [
+        {
+          "kind": "voxel",
+          "position": {
+            "x": 14,
+            "y": 33,
+            "z": 4
+          }
+        }
+      ],
+      "toolStackId": "stack-born-16-cai-wenji-7-24-161"
+    },
+    "fromCellId": 2786,
+    "toCellId": 2786,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2786
+    ],
+    "status": "completed",
+    "result": "从结果灌木分离出食物 × 5、种子 × 1",
+    "diff": {
+      "sourceMaterialId": 10,
+      "replacementMaterialId": 9,
+      "outputs": [
+        {
+          "materialId": 21,
+          "quantity": 5
+        },
+        {
+          "materialId": 22,
+          "quantity": 1
+        }
+      ],
+      "productionMultiplier": 1.7,
+      "toolMaterialId": 24,
+      "toolStackId": "stack-born-16-cai-wenji-7-24-161"
+    },
+    "planningTick": 5,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-707-decision-rei-ayanami-5-57",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 57,
+    "planningTick": 5,
+    "orderInTick": 2,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 20%（16 次亲历）"
+    },
+    "intentId": "intent-707-rei-ayanami-16556",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：回应孙守一关于身体与照护的话：接受对方的关心，并愿意共同寻找缓解身体不适的办法"
+  },
+  {
+    "id": "e-707-action-rei-ayanami-58",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 707,
+    "orderInMonth": 58,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-707-rei-ayanami-16556",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+        "kind": "claim",
+        "summary": "接受对方的关心，并愿意共同寻找缓解身体不适的办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "response",
+          "speakerId": "rei-ayanami",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ],
+          "referenceEventId": "e-707-action-born-244-potianfeng-13-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 5,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-707-action-freyja-59",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 707,
+    "orderInMonth": 59,
+    "cellId": 3881,
+    "who": "freyja",
+    "intentId": "intent-707-freyja-16553",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 4050,
+      "toZ": 5
+    },
+    "fromCellId": 3880,
+    "toCellId": 3881,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3880,
+      3881
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.305785123966942,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 3881,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 6,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-707-action-born-16-cai-wenji-7-60",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 707,
+    "orderInMonth": 60,
+    "cellId": 2786,
+    "who": "born-16-cai-wenji-7",
+    "intentId": "intent-706-born-16-cai-wenji-7-16541",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 21,
+      "quantity": 3,
+      "from": {
+        "kind": "ground",
+        "cellId": 2786,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-16-cai-wenji-7"
+      },
+      "dropId": "drop-707-born-16-cai-wenji-7-separate-463"
+    },
+    "fromCellId": 2786,
+    "toCellId": 2786,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2786
+    ],
+    "status": "completed",
+    "result": "食物 × 3 改变了持有者",
+    "diff": {
+      "materialId": 21,
+      "quantity": 3,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 2786,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-16-cai-wenji-7"
+      },
+      "witnessedBy": [
+        "born-16-cai-wenji-7"
+      ],
+      "sourceEventIds": [
+        "e-707-action-born-16-cai-wenji-7-56",
+        "e-707-action-born-16-cai-wenji-7-60"
+      ],
+      "sourceLineageKeys": [
+        "drop:drop-707-born-16-cai-wenji-7-separate-463"
+      ]
+    },
+    "planningTick": 6,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-707-decision-rei-ayanami-6-61",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 61,
+    "planningTick": 6,
+    "orderInTick": 2,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 19%（17 次亲历）"
+    },
+    "intentId": "intent-707-rei-ayanami-16557",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：回应孙守一关于身体与照护的话：接受对方的关心，并愿意共同寻找缓解身体不适的办法"
+  },
+  {
+    "id": "e-707-action-rei-ayanami-62",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 707,
+    "orderInMonth": 62,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-707-rei-ayanami-16557",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+        "kind": "claim",
+        "summary": "接受对方的关心，并愿意共同寻找缓解身体不适的办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "response",
+          "speakerId": "rei-ayanami",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ],
+          "referenceEventId": "e-707-action-born-244-potianfeng-13-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 6,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-707-decision-rei-ayanami-7-63",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 63,
+    "planningTick": 7,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 18%（18 次亲历）"
+    },
+    "intentId": "intent-707-rei-ayanami-16558",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：回应孙守一关于身体与照护的话：接受对方的关心，并愿意共同寻找缓解身体不适的办法"
+  },
+  {
+    "id": "e-707-action-rei-ayanami-64",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 707,
+    "orderInMonth": 64,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-707-rei-ayanami-16558",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+        "kind": "claim",
+        "summary": "接受对方的关心，并愿意共同寻找缓解身体不适的办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "response",
+          "speakerId": "rei-ayanami",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ],
+          "referenceEventId": "e-707-action-born-244-potianfeng-13-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 7,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-707-action-freyja-65",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 707,
+    "orderInMonth": 65,
+    "cellId": 3965,
+    "who": "freyja",
+    "intentId": "intent-707-freyja-16553",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 4050,
+      "toZ": 5
+    },
+    "fromCellId": 3881,
+    "toCellId": 3965,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3881,
+      3965
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.652892561983471,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 7,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-707-decision-rei-ayanami-8-66",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 66,
+    "planningTick": 8,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 17%（19 次亲历）"
+    },
+    "intentId": "intent-707-rei-ayanami-16559",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：回应孙守一关于身体与照护的话：接受对方的关心，并愿意共同寻找缓解身体不适的办法"
+  },
+  {
+    "id": "e-707-action-rei-ayanami-67",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 707,
+    "orderInMonth": 67,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-707-rei-ayanami-16559",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+        "kind": "claim",
+        "summary": "接受对方的关心，并愿意共同寻找缓解身体不适的办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "response",
+          "speakerId": "rei-ayanami",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ],
+          "referenceEventId": "e-707-action-born-244-potianfeng-13-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 8,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-707-action-freyja-68",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 707,
+    "orderInMonth": 68,
+    "cellId": 3966,
+    "who": "freyja",
+    "intentId": "intent-707-freyja-16553",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 4050,
+      "toZ": 5
+    },
+    "fromCellId": 3965,
+    "toCellId": 3966,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3965,
+      3966
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.652892561983471,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 8,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-707-decision-rei-ayanami-9-69",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 69,
+    "planningTick": 9,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 17%（20 次亲历）"
+    },
+    "intentId": "intent-707-rei-ayanami-16560",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：回应孙守一关于身体与照护的话：接受对方的关心，并愿意共同寻找缓解身体不适的办法"
+  },
+  {
+    "id": "e-707-action-rei-ayanami-70",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 707,
+    "orderInMonth": 70,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-707-rei-ayanami-16560",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+        "kind": "claim",
+        "summary": "接受对方的关心，并愿意共同寻找缓解身体不适的办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "response",
+          "speakerId": "rei-ayanami",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ],
+          "referenceEventId": "e-707-action-born-244-potianfeng-13-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 9,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-707-action-freyja-71",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 707,
+    "orderInMonth": 71,
+    "cellId": 4050,
+    "who": "freyja",
+    "intentId": "intent-707-freyja-16553",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 4050,
+      "toZ": 5
+    },
+    "fromCellId": 3966,
+    "toCellId": 4050,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3966,
+      4050
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 18, 48 的高度 5",
+    "diff": {
+      "spentWork": 1.652892561983471,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 9,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-707-decision-rei-ayanami-10-72",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 72,
+    "planningTick": 10,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 16%（21 次亲历）"
+    },
+    "intentId": "intent-707-rei-ayanami-16561",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：回应孙守一关于身体与照护的话：接受对方的关心，并愿意共同寻找缓解身体不适的办法"
+  },
+  {
+    "id": "e-707-action-rei-ayanami-73",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 707,
+    "orderInMonth": 73,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-707-rei-ayanami-16561",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+        "kind": "claim",
+        "summary": "接受对方的关心，并愿意共同寻找缓解身体不适的办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "response",
+          "speakerId": "rei-ayanami",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ],
+          "referenceEventId": "e-707-action-born-244-potianfeng-13-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 10,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-707-decision-rei-ayanami-11-74",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 74,
+    "planningTick": 11,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 15%（22 次亲历）"
+    },
+    "intentId": "intent-707-rei-ayanami-16562",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：回应孙守一关于身体与照护的话：接受对方的关心，并愿意共同寻找缓解身体不适的办法"
+  },
+  {
+    "id": "e-707-action-rei-ayanami-75",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 707,
+    "orderInMonth": 75,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-707-rei-ayanami-16562",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+        "kind": "claim",
+        "summary": "接受对方的关心，并愿意共同寻找缓解身体不适的办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "response",
+          "speakerId": "rei-ayanami",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ],
+          "referenceEventId": "e-707-action-born-244-potianfeng-13-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 11,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-707-decision-rei-ayanami-12-76",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 76,
+    "planningTick": 12,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 15%（23 次亲历）"
+    },
+    "intentId": "intent-707-rei-ayanami-16563",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：回应孙守一关于身体与照护的话：接受对方的关心，并愿意共同寻找缓解身体不适的办法"
+  },
+  {
+    "id": "e-707-action-rei-ayanami-77",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 707,
+    "orderInMonth": 77,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-707-rei-ayanami-16563",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+        "kind": "claim",
+        "summary": "接受对方的关心，并愿意共同寻找缓解身体不适的办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "response",
+          "speakerId": "rei-ayanami",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ],
+          "referenceEventId": "e-707-action-born-244-potianfeng-13-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 12,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-707-decision-rei-ayanami-13-78",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 78,
+    "planningTick": 13,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 14%（24 次亲历）"
+    },
+    "intentId": "intent-707-rei-ayanami-16564",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：回应孙守一关于身体与照护的话：接受对方的关心，并愿意共同寻找缓解身体不适的办法"
+  },
+  {
+    "id": "e-707-action-rei-ayanami-79",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 707,
+    "orderInMonth": 79,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-707-rei-ayanami-16564",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+        "kind": "claim",
+        "summary": "接受对方的关心，并愿意共同寻找缓解身体不适的办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "response",
+          "speakerId": "rei-ayanami",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ],
+          "referenceEventId": "e-707-action-born-244-potianfeng-13-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 13,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-707-decision-rei-ayanami-14-80",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 80,
+    "planningTick": 14,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 14%（25 次亲历）"
+    },
+    "intentId": "intent-707-rei-ayanami-16565",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：回应孙守一关于身体与照护的话：接受对方的关心，并愿意共同寻找缓解身体不适的办法"
+  },
+  {
+    "id": "e-707-action-rei-ayanami-81",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 707,
+    "orderInMonth": 81,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-707-rei-ayanami-16565",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+        "kind": "claim",
+        "summary": "接受对方的关心，并愿意共同寻找缓解身体不适的办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "response",
+          "speakerId": "rei-ayanami",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ],
+          "referenceEventId": "e-707-action-born-244-potianfeng-13-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 14,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-707-decision-rei-ayanami-15-82",
+    "kind": "decision",
+    "atMonth": 707,
+    "orderInMonth": 82,
+    "planningTick": 15,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 13%（26 次亲历）"
+    },
+    "intentId": "intent-707-rei-ayanami-16566",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：回应孙守一关于身体与照护的话：接受对方的关心，并愿意共同寻找缓解身体不适的办法"
+  },
+  {
+    "id": "e-707-action-rei-ayanami-83",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 707,
+    "orderInMonth": 83,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-707-rei-ayanami-16566",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-707-action-born-244-potianfeng-13-26:rei-ayanami",
+        "kind": "claim",
+        "summary": "接受对方的关心，并愿意共同寻找缓解身体不适的办法",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=care|speaker=born-244-potianfeng-13|listener=rei-ayanami|sources=e-492-environment-condition-0,e-683-environment-condition-0",
+          "topic": "care",
+          "turn": "response",
+          "speakerId": "rei-ayanami",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-492-environment-condition-0",
+            "e-683-environment-condition-0"
+          ],
+          "referenceEventId": "e-707-action-born-244-potianfeng-13-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 15,
+    "orderInTick": 1
+  }
+]

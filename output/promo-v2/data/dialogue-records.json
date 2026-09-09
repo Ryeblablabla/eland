@@ -1,0 +1,228 @@
+[
+  {
+    "id": "agent-conversation:055a5d84e1dc9b9e417ba1d4",
+    "clientMessageId": "66337805-20e2-4aec-9e1d-a6fda34a1a62",
+    "agentId": "sun-wu",
+    "branchId": "root-1166699014-16",
+    "requestedAtMonth": 124,
+    "completedAtMonth": 125,
+    "userMessage": "你最近跟谁做了什么",
+    "agentReply": "我最近主要是在整理手头的事。破天锋那边需要木材的时候，我就把那份许可给他了，咱们之间这样配合着走比较顺。后羿也在附近，偶尔会一起看看能不能凑出些有用的东西。至于孙疏影和孙朝宗，他们还在家里等着消息呢。",
+    "requestKind": "conversation",
+    "stance": "answer",
+    "grounding": "supported",
+    "evidenceIds": [
+      "memory:1",
+      "memory:2",
+      "memory:3",
+      "memory:4"
+    ],
+    "influenceStatus": "none",
+    "model": {
+      "endpointId": "lan-qwen",
+      "protocol": "ollama-chat",
+      "model": "qwen3.5:4b"
+    },
+    "usage": {
+      "inputTokens": 3080,
+      "outputTokens": 93
+    }
+  },
+  {
+    "id": "agent-conversation:7c7500c2b0ad5ba942ba941e",
+    "clientMessageId": "821c84cd-f7e5-4e24-b4fa-835d285872c6",
+    "agentId": "sun-wu",
+    "branchId": "root-1166699014-16",
+    "requestedAtMonth": 125,
+    "completedAtMonth": 126,
+    "userMessage": "孙疏影和孙朝宗根你是啥关系",
+    "agentReply": "我和他们就是普通的父子关系。疏影和朝宗都在家里等着消息，我这边正忙着跟破天锋那边扯木材的事，心里有点乱，但还得把话说清楚。",
+    "requestKind": "conversation",
+    "stance": "answer",
+    "grounding": "supported",
+    "evidenceIds": [
+      "kinship-child:1",
+      "kinship-child:2"
+    ],
+    "influenceStatus": "none",
+    "model": {
+      "endpointId": "lan-qwen",
+      "protocol": "ollama-chat",
+      "model": "qwen3.5:4b"
+    },
+    "usage": {
+      "inputTokens": 6256,
+      "outputTokens": 128
+    }
+  },
+  {
+    "id": "agent-conversation:b9503bd1bf1bb6798a11c9dc",
+    "clientMessageId": "30485744-995a-4af9-9233-6d4c346dd49f",
+    "agentId": "sun-wu",
+    "branchId": "root-1166699014-16",
+    "requestedAtMonth": 126,
+    "completedAtMonth": 127,
+    "userMessage": "你最近心情不好吗",
+    "agentReply": "心情确实有点乱，主要是担心孙疏影和孙朝宗那边的事。他们都在家里等着消息，我心里没底，怕给不了他们想要的回应。不过只要能把眼前的木材整理好，把该说的话讲清楚，我就觉得心里能踏实点。",
+    "requestKind": "conversation",
+    "stance": "answer",
+    "grounding": "opinion",
+    "evidenceIds": [],
+    "influenceStatus": "none",
+    "model": {
+      "endpointId": "lan-qwen",
+      "protocol": "ollama-chat",
+      "model": "qwen3.5:4b"
+    },
+    "usage": {
+      "inputTokens": 6613,
+      "outputTokens": 147
+    }
+  },
+  {
+    "id": "agent-conversation:f47207c465dded96215fa092",
+    "clientMessageId": "c84e1c9e-8ffa-40cd-aea6-6a06ae23cc43",
+    "agentId": "born-16-cai-wenji-7",
+    "branchId": "root-1166699014-16",
+    "requestedAtMonth": 475,
+    "completedAtMonth": 476,
+    "userMessage": "铜和锡可以制造青铜",
+    "agentReply": "铜和锡确实能造出青铜，但这事儿没那么简单。光有材料不行，还得有能高温熔炼的炉子，还有配比的知识。我这儿只有几块铜，没见着锡矿，更别提那种大锅了。倒是南边有个陶窑，虽然烧的是土器，但火源或许能用上？只是这火候和温度，怕是得慢慢摸索。",
+    "requestKind": "conversation",
+    "stance": "answer",
+    "grounding": "opinion",
+    "evidenceIds": [],
+    "influenceStatus": "none",
+    "model": {
+      "endpointId": "lan-qwen",
+      "protocol": "ollama-chat",
+      "model": "qwen3.5:4b"
+    },
+    "usage": {
+      "inputTokens": 3912,
+      "outputTokens": 100
+    }
+  },
+  {
+    "id": "agent-conversation:82786c1eac73010f7342ce04",
+    "clientMessageId": "ac72eb7b-ae82-4d79-87c9-f27a593575ac",
+    "agentId": "born-16-cai-wenji-7",
+    "branchId": "root-1166699014-16",
+    "requestedAtMonth": 478,
+    "completedAtMonth": 478,
+    "userMessage": "你见过锡矿吗",
+    "agentReply": "见过，就在南边不远。那地方埋着锡矿，只是离这儿有点远，得走一段路才能到。不过光有矿没用，还得想办法挖出来，再运回来才行。",
+    "requestKind": "conversation",
+    "stance": "answer",
+    "grounding": "supported",
+    "evidenceIds": [
+      "known-place:5"
+    ],
+    "influenceStatus": "none",
+    "model": {
+      "endpointId": "lan-qwen",
+      "protocol": "ollama-chat",
+      "model": "qwen3.5:4b"
+    },
+    "usage": {
+      "inputTokens": 4020,
+      "outputTokens": 62
+    }
+  },
+  {
+    "id": "agent-conversation:0bba6180e31d16b23a03fd50",
+    "clientMessageId": "38ebecfe-7562-4687-9914-0c7a0c6acf68",
+    "agentId": "born-16-cai-wenji-7",
+    "branchId": "root-1166699014-16",
+    "requestedAtMonth": 524,
+    "completedAtMonth": 524,
+    "userMessage": "你正在尝试构建青铜是吗",
+    "agentReply": "我在琢磨这事儿，但光有铜和锡还不够。造青铜得先把矿挖出来、熔炼成块，再按比例混合，最后还得有个能耐高温的炉子。我这儿只有几块铜，没见着锡矿，更别提那种大锅了。倒是南边有个陶窑，虽然烧的是土器，但火源或许能用上？只是这火候和温度，怕是得慢慢摸索。",
+    "requestKind": "conversation",
+    "stance": "answer",
+    "grounding": "opinion",
+    "evidenceIds": [],
+    "influenceStatus": "none",
+    "model": {
+      "endpointId": "lan-qwen",
+      "protocol": "ollama-chat",
+      "model": "qwen3.5:4b"
+    },
+    "usage": {
+      "inputTokens": 4166,
+      "outputTokens": 115
+    }
+  },
+  {
+    "id": "agent-conversation:17733b22f3fd81100b65ffe2",
+    "clientMessageId": "1454bc66-3a71-428d-9772-b0ca03f1bda9",
+    "agentId": "born-16-cai-wenji-7",
+    "branchId": "root-1166699014-16",
+    "requestedAtMonth": 527,
+    "completedAtMonth": 528,
+    "userMessage": "可是你的年纪已经很大了 早点教导其他人",
+    "agentReply": "年纪大确实是个坎儿，教人这事儿比我自己干还难。我手里这点铜和锡，离成器还远着呢，更别提去教别人造青铜了。不过既然你提了，或许可以换个方向？比如先看看南边那陶窑能不能借个火，或者把地上的黏土捡回来试试烧制？这些活儿虽然简单，但能让人明白些门道。",
+    "requestKind": "conversation",
+    "stance": "answer",
+    "grounding": "opinion",
+    "evidenceIds": [],
+    "influenceStatus": "none",
+    "model": {
+      "endpointId": "lan-qwen",
+      "protocol": "ollama-chat",
+      "model": "qwen3.5:4b"
+    },
+    "usage": {
+      "inputTokens": 8745,
+      "outputTokens": 209
+    }
+  },
+  {
+    "id": "agent-conversation:137c5354b65369b3a1f6638d",
+    "clientMessageId": "e250e388-91cf-4040-8e74-6805f43e6fd9",
+    "agentId": "born-115-cai-wenji-10",
+    "branchId": "root-1166699014-16",
+    "requestedAtMonth": 707,
+    "completedAtMonth": 709,
+    "userMessage": "你咋样",
+    "agentReply": "我挺好的，主。蔡文姬、后羿还有若水都在身边，大家伙儿都挺安稳的，我也没觉得有什么需要退缩的事。只是心里头总惦记着那乱纪元的事儿，总觉得得赶紧把能用的东西收好，再去找个稳妥的地儿安顿下来。",
+    "requestKind": "conversation",
+    "stance": "answer",
+    "grounding": "opinion",
+    "evidenceIds": [],
+    "influenceStatus": "none",
+    "model": {
+      "endpointId": "lan-qwen",
+      "protocol": "ollama-chat",
+      "model": "qwen3.5:4b"
+    },
+    "usage": {
+      "inputTokens": 7617,
+      "outputTokens": 164
+    }
+  },
+  {
+    "id": "agent-conversation:e1b82e2580376b44dd7073bb",
+    "clientMessageId": "4341bf19-48ae-4d28-a16f-decb45249a53",
+    "agentId": "born-193-cai-wenji-12",
+    "branchId": "root-1166699014-16",
+    "requestedAtMonth": 785,
+    "completedAtMonth": 786,
+    "userMessage": "你们的文明。。。还能延续吗",
+    "agentReply": "能延续，但得靠我们自己一步步去争取。现在大家聚在一起，有蔡文姬、后羿还有后凌川，他们愿意跟着我走，这就是希望。不过文明这东西，光靠感情不够，还得看能不能找到足够的食物和水，能不能把日子过得下去。如果哪天大家散了，或者资源没了，那就算再亲密也没用。所以比起问‘还能不能’，我更关心‘现在该做什么’，比如怎么让大家吃饱，怎么让种子发芽。",
+    "requestKind": "conversation",
+    "stance": "answer",
+    "grounding": "opinion",
+    "evidenceIds": [],
+    "influenceStatus": "none",
+    "model": {
+      "endpointId": "lan-qwen",
+      "protocol": "ollama-chat",
+      "model": "qwen3.5:4b"
+    },
+    "usage": {
+      "inputTokens": 8341,
+      "outputTokens": 239
+    }
+  }
+]

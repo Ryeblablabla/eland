@@ -8,6 +8,7 @@ import { animalSpecies, isAnimalAlive } from '../animal';
 import { containerById } from '../container';
 import { worldEventById } from '../event-index';
 import { Material, materialDefinition } from '../material';
+import { perceiveMaterial } from '../material-perception';
 import {
   MECHANICAL_POWER_WORLD_VERSION,
   mechanicalPowerFaultObservationFactId,
@@ -16,7 +17,8 @@ import {
 } from '../mechanical-power';
 import type { SimulationState } from '../model';
 import { remainsById } from '../mortuary';
-import type { PersonState } from '../person';
+import { isAlive, type PersonState } from '../person';
+import { positionsCanTouch } from '../social-space';
 import {
   projectLeadershipInspectionFactId,
   validateProjectLeadershipSuccessionAction,
@@ -34,6 +36,8 @@ import { workById, WORK_ARRANGEMENT_NAMES, WORK_COLLAPSE_CONDITION } from '../wo
 import { workOccupiedVoxels } from '../work-layout';
 
 type AttendAction = Extract<PrimitiveAction, { kind: 'attend' }>;
+type VisibleBodySign = { kind: 'wound'; severity: 'minor' | 'moderate' | 'severe' }
+  | { kind: 'restrained' | 'dehydrated-hibernation' };
 
 function inspectRecord(person: PersonState, record: RecordPayload, atMonth: number, eventId: string) {
   const understood = Boolean(knownWritingConvention(person, record.codebookId));
@@ -82,6 +86,47 @@ function targetCell(state: SimulationState, target: WorldRef): number | null {
   return personById(state, target.personId)?.position.cellId ?? null;
 }
 
+/** An ordinary look records current exterior evidence, not another person's
+ * feelings, diagnosis, knowledge, or the hidden history of an injury.
+ */
+function observePersonBody(state: SimulationState, observer: PersonState,
+  target: Extract<WorldRef, { kind: 'person' }>, atMonth: number, eventId: string) {
+  const observed = personById(state, target.personId);
+  if (!observed) return { status: 'blocked' as const, result: '点名的人物已经不在当前世界中', diff: {} };
+  const self = observed.id === observer.id;
+  const close = self || positionsCanTouch(state.world.grid, observer.position, observed.position);
+  const visibleSigns = close ? observed.conditions.flatMap<VisibleBodySign>((condition) => {
+    if (condition.kind === 'wound') return [{ kind: 'wound' as const, severity: condition.stage === 1
+      ? 'minor' as const : condition.stage === 2 ? 'moderate' as const : 'severe' as const }];
+    if (condition.kind === 'restrained') return [{ kind: 'restrained' as const }];
+    if (condition.kind === 'dehydrated-hibernation') return [{ kind: 'dehydrated-hibernation' as const }];
+    return [];
+  }) : [];
+  const wounds = visibleSigns.filter((sign) => sign.kind === 'wound');
+  const severityNames = { minor: '轻微', moderate: '较重', severe: '严重' };
+  const subject = self ? '自己' : observed.name;
+  const summary = close
+    ? `${self ? '查看' : '近身观察'}${subject}：${wounds.length
+      ? `可见${wounds.map((wound) => `${severityNames[wound.severity]}伤口`).join('、')}` : '当前未见伤口'}${visibleSigns.some((sign) => sign.kind === 'restrained')
+      ? '；可见绳索拘束身体' : ''}${visibleSigns.some((sign) => sign.kind === 'dehydrated-hibernation')
+      ? '；身体呈脱水休眠或复苏状态' : ''}${!isAlive(observed) ? '；已无生命活动' : ''}`
+    : `从当前位置无法看清${subject}的伤口和身体细节，当前不能确认有无伤口`;
+  const factId = `target:${JSON.stringify(target)}`;
+  const observation = { kind: 'observation' as const, summary: `第${atMonth}月${summary}`, confidence: 58,
+    learnedAtMonth: atMonth, sourceEventIds: [eventId] };
+  const existing = observer.knowledge.find((fact) => fact.id === factId);
+  if (existing) Object.assign(existing, observation);
+  else observer.knowledge.push({ id: factId, ...observation });
+  return { status: 'completed' as const, result: summary, diff: {
+    factId, observedPersonId: observed.id, observedAtMonth: atMonth, sourceEventIds: [eventId],
+    bodyObservation: {
+      scope: self ? 'self' : close ? 'close-exterior' : 'not-clear',
+      wound: close ? wounds.length ? 'seen' : 'not-seen' : 'unverified',
+      ...(close ? { visibleSigns, alive: isAlive(observed) } : {}),
+    },
+  } };
+}
+
 export function executeAttend(
   state: SimulationState,
   person: PersonState,
@@ -92,6 +137,30 @@ export function executeAttend(
 ) {
   const cell = targetCell(state, action.target);
   if (cell === null || Math.abs(cellX(cell) - cellX(person.position.cellId)) + Math.abs(cellY(cell) - cellY(person.position.cellId)) > 7) return { status: 'blocked' as const, result: '观察目标超出感知范围', diff: {} };
+  if (action.target.kind === 'inventory-stack' && action.target.personId !== person.id) {
+    const target = action.target;
+    const holder = personById(state, target.personId);
+    const stack = holder?.inventory.find((stack) => stack.id === target.stackId && stack.quantity > 0);
+    if (!holder || !isAlive(holder) || !stack
+      || !positionsCanTouch(state.world.grid, person.position, holder.position)) return {
+      status: 'blocked' as const, result: '点名的他人持物已经不在当前可看清、可触及的位置', diff: {},
+    };
+    if (action.learning || action.verification || action.measurement) return {
+      status: 'blocked' as const, result: '此次可见持物观察只能确认外部材料与数量，尚未执行记录阅读、技术核验或测量', diff: {},
+    };
+    const factId = `target:${JSON.stringify(target)}`;
+    const summary = `观察到${holder.name}持有${materialDefinition(stack.materialId).name} × ${stack.quantity}`;
+    const known = person.knowledge.find((fact) => fact.id === factId);
+    if (known) {
+      known.summary = summary;
+      known.confidence = clamp(known.confidence + 12);
+      known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId])];
+    } else person.knowledge.push({ id: factId, kind: 'observation', summary, confidence: 58,
+      learnedAtMonth: atMonth, sourceEventIds: [eventId] });
+    return { status: 'completed' as const, result: summary,
+      diff: { factId, observedPersonId: holder.id, observedStackId: stack.id,
+        materialId: stack.materialId, quantity: stack.quantity, sourceEventIds: [eventId] } };
+  }
   if (action.learning) {
     const source = heardKnowledgeSource(state, person, action.learning.sourceEventId, action.learning.factId);
     if (!source || lifePlanningStage(person, atMonth) === 'dependent-child') return {
@@ -271,6 +340,12 @@ export function executeAttend(
       },
     };
   }
+  if (action.target.kind === 'person') {
+    if (action.verification) return {
+      status: 'blocked' as const, result: '查看人物外观不能核验这项实体材料方法，尚未完成所指核验', diff: {},
+    };
+    return observePersonBody(state, person, action.target, atMonth, eventId);
+  }
   let factId = `target:${JSON.stringify(action.target)}`;
   let summary = '持续观察了一个对象';
   if (action.target.kind === 'work') {
@@ -308,6 +383,25 @@ export function executeAttend(
     const drop = state.world.drops.find((candidate) => candidate.id === dropId && candidate.quantity > 0);
     const record = drop?.recordPayloadId ? state.records.find((candidate) => candidate.id === drop.recordPayloadId) : undefined;
     if (record) return inspectRecord(person, record, atMonth, eventId);
+    if (!drop) return { status: 'blocked' as const, result: '点名的地面物资已经不在或已经耗尽', diff: {} };
+    const perception = perceiveMaterial(drop.materialId, 'visible');
+    const forms = { 'compact-body': '块状', 'structural-member': '长条结构', 'shaped-object': '已经成形',
+      'flexible-strand': '柔软纤维状', 'flexible-sheet': '柔软片状', 'plant-bundle': '植物束状',
+      'granular-body': '颗粒状', fluid: '可流动', plume: '气团' };
+    const phase = { solid: '固体', liquid: '液体', gas: '气体' }[perception.phase];
+    const position = { x: cellX(drop.cellId), y: cellY(drop.cellId), z: drop.z };
+    summary = `观察到地面上的${materialDefinition(drop.materialId).name}共${drop.quantity}份，位于（${position.x}，${position.y}，${position.z}）；每份外观为${phase}、${forms[perception.form]}，这些份数可以分别取用`;
+    const existing = person.knowledge.find((fact) => fact.id === factId);
+    if (existing) {
+      existing.summary = summary;
+      existing.confidence = clamp(existing.confidence + 12);
+      existing.sourceEventIds = [...new Set([...existing.sourceEventIds, eventId])];
+    } else person.knowledge.push({ id: factId, kind: 'observation', summary, confidence: 58,
+      learnedAtMonth: atMonth, sourceEventIds: [eventId] });
+    return { status: 'completed' as const, result: summary, diff: {
+      factId, observedDropId: drop.id, materialId: drop.materialId, quantity: drop.quantity,
+      quantityUnit: 'portion', position, perception, propertyScope: 'per-portion', sourceEventIds: [eventId],
+    } };
   }
   if (action.target.kind === 'inventory-stack' && action.target.personId === person.id) {
     const attendedStackId = action.target.stackId;

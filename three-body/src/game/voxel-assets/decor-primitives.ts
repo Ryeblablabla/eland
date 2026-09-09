@@ -22,6 +22,8 @@ export interface DecorInstance {
   entityRotation?: number;              // Kit 的 90° 朝向；设施部件动画据此选择转轴
   part?: string;                        // body / head / tail / leg-N
   animation?: 'fire' | 'wind' | 'facility-smoke' | 'facility-lift' | 'wheel-spin' | 'mill-turn';
+  /** Shared presentation anchor; keeps one plant's existing blocks moving together. */
+  windOrigin?: { x: number; y: number; z: number };
   /** 时代切换时单独交叉渐变的聚落装饰；不参与领域状态与观察器计算。 */
   visualLayer?: 'settlement-era';
 }

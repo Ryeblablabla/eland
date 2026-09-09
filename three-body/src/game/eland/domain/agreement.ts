@@ -37,7 +37,8 @@ import {
 import { invalidateFulfilledAgreementRelationshipEvidence } from './relationship-outcome-evidence';
 import { languageInterpreterIds } from './language-perception';
 
-export type AgreementStatus = 'proposed' | 'active' | 'fulfilled' | 'rejected' | 'expired' | 'breached' | 'cancelled';
+export const AGREEMENT_STATUSES = ['proposed', 'active', 'fulfilled', 'rejected', 'expired', 'breached', 'cancelled'] as const;
+export type AgreementStatus = (typeof AGREEMENT_STATUSES)[number];
 
 export interface ResponseDeadlineSuspensionFact {
   kind: 'pause' | 'resume';
@@ -67,7 +68,10 @@ export interface Agreement {
   rejectedByPersonIds: PersonId[];
   status: AgreementStatus;
   proposedAtMonth: number;
-  acceptByMonth: number;
+  /** Omitted when the author did not state a response deadline. */
+  acceptByMonth?: number;
+  /** Joint invitations are known only to their author and actual hearers. */
+  knownToPersonIds?: PersonId[];
   acceptedAtMonth?: number;
   dueAtMonth?: number;
   resolvedAtMonth?: number;
@@ -120,7 +124,7 @@ function deadlineSuspensionState(
 
 export function agreementResponseDeadline(agreement: Agreement, responderId: PersonId): number {
   const suspension = deadlineSuspensionState(agreement, responderId, 'response');
-  return suspension.openConditionIds.size > 0
+  return agreement.acceptByMonth === undefined || suspension.openConditionIds.size > 0
     ? Number.POSITIVE_INFINITY
     : agreement.acceptByMonth + suspension.extensionMonths;
 }
@@ -139,6 +143,7 @@ export function agreementFulfillmentDeadline(agreement: Agreement): number {
 }
 
 function parties(proposal: SocialProposal): { proposerId: PersonId; responderId: PersonId; requiredResponderIds: PersonId[] } {
+  if (proposal.kind === 'joint-action') return { proposerId: proposal.proposerId, responderId: proposal.inviteeIds[0]!, requiredResponderIds: [...proposal.inviteeIds] };
   if (proposal.kind === 'assist') return { proposerId: proposal.requesterId, responderId: proposal.helperId, requiredResponderIds: [proposal.helperId] };
   if (proposal.kind === 'exchange') return { proposerId: proposal.offererId, responderId: proposal.partnerId, requiredResponderIds: [proposal.partnerId] };
   if (proposal.kind === 'membership' || proposal.kind === 'decision-rule' || proposal.kind === 'mandate') return {
@@ -149,7 +154,8 @@ function parties(proposal: SocialProposal): { proposerId: PersonId; responderId:
   return { proposerId: proposal.proposerId, responderId: proposal.partnerId, requiredResponderIds: [proposal.partnerId] };
 }
 
-function duration(proposal: SocialProposal): number {
+function duration(proposal: SocialProposal): number | undefined {
+  if (proposal.kind === 'joint-action') return undefined;
   if (proposal.kind === 'companion') return 24;
   if (proposal.kind === 'collective' || proposal.kind === 'membership' || proposal.kind === 'permission' || proposal.kind === 'decision-rule' || proposal.kind === 'mandate') return 1;
   if (proposal.kind === 'exchange') return 12;
@@ -191,7 +197,8 @@ function resolveCollectiveVoteIfSettled(
   if (support >= requiredSupport) {
     agreement.status = 'active';
     agreement.acceptedAtMonth = atMonth;
-    agreement.dueAtMonth = atMonth + duration(agreement.proposal);
+    const fulfillmentMonths = duration(agreement.proposal);
+    if (fulfillmentMonths !== undefined) agreement.dueAtMonth = atMonth + fulfillmentMonths;
   } else if (support + unresolved < requiredSupport) {
     agreement.status = 'rejected';
     agreement.resolvedAtMonth = atMonth;
@@ -323,12 +330,18 @@ export function agreementByProposalEventId(
   return agreementIdIndex(state).byProposalEventId.get(eventId);
 }
 
+/** An invitation does not remotely inform someone merely because it named them. */
+export function agreementIsKnownTo(agreement: Agreement, personId: PersonId): boolean {
+  return agreement.partyIds.includes(personId) && (agreement.proposal.kind !== 'joint-action'
+    || personId === agreement.proposerId || Boolean(agreement.knownToPersonIds?.includes(personId)));
+}
+
 /** Agreement membership is immutable after creation; status fields remain live. */
 export function agreementsForPerson(
   state: Pick<DecisionAuthorityState, 'agreements'>,
   personId: PersonId,
 ): readonly Agreement[] {
-  return agreementIdIndex(state).byParticipantId.get(personId) ?? [];
+  return (agreementIdIndex(state).byParticipantId.get(personId) ?? []).filter((agreement) => agreementIsKnownTo(agreement, personId));
 }
 
 /**
@@ -784,15 +797,19 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
     const content = action.speakerMeaning;
     if ((content.kind === 'request' || content.kind === 'offer') && content.proposal && !agreementById(state, content.id)) {
       if (!governanceElectorateMatchesCurrentMembers(state, content.proposal)) return;
+      if (content.proposal.kind === 'joint-action' && (!content.proposal.inviteeIds.length
+        || content.proposal.proposerId !== fact.who
+        || content.proposal.inviteeIds.includes(fact.who)
+        || new Set(content.proposal.inviteeIds).size !== content.proposal.inviteeIds.length)) return;
       const pair = parties(content.proposal);
       const reachedAudienceIds = languageInterpreterIds(fact.diff, content.id);
-      if (!pair.requiredResponderIds.every((id) => reachedAudienceIds.includes(id))) return;
+      if (content.proposal.kind !== 'joint-action' && !pair.requiredResponderIds.every((id) => reachedAudienceIds.includes(id))) return;
       const intentSources = fact.intentId ? intentById(state, fact.intentId)?.sourceFactIds ?? [] : [];
       const relationshipBasisSources = (content.proposal.kind === 'companion' || content.proposal.kind === 'reproduce')
         ? content.proposal.basis?.sourceFactIds ?? []
         : [];
       const proposal = structuredClone(content.proposal);
-      if (proposal.kind === 'companion') proposal.sharedLivingAnchor = {
+      if (proposal.kind === 'companion' && !proposal.sharedLivingAnchor) proposal.sharedLivingAnchor = {
         version: 'shared-living-anchor-v1',
         cellId: fact.toCellId,
         z: fact.toZ,
@@ -808,7 +825,10 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
         rejectedByPersonIds: [],
         status: 'proposed',
         proposedAtMonth: fact.atMonth,
-        acceptByMonth: content.proposal.expiresAtMonth,
+        ...(content.proposal.expiresAtMonth !== undefined ? { acceptByMonth: content.proposal.expiresAtMonth } : {}),
+        ...(content.proposal.kind === 'joint-action' ? { knownToPersonIds: [...new Set([fact.who,
+          ...pair.requiredResponderIds.filter((id) => reachedAudienceIds.includes(id)),
+        ])] } : {}),
         proposalEventId: fact.id,
         fulfillmentEventIds: [],
         fulfilledByPersonIds: [],
@@ -820,6 +840,17 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
     if (content.kind === 'revoke-agreement') {
       const agreement = agreementById(state, content.referenceId);
       const understoodBy = languageInterpreterIds(fact.diff, content.id);
+      if (agreement?.proposal.kind === 'joint-action') {
+        if ((agreement.status !== 'proposed' && agreement.status !== 'active')
+          || (fact.who !== agreement.proposerId && !agreement.acceptedByPersonIds.includes(fact.who))
+          || !agreementIsKnownTo(agreement, fact.who)) return;
+        // Ending this declaration does not cancel anyone's independent work.
+        agreement.status = 'cancelled';
+        agreement.resolvedAtMonth = fact.atMonth;
+        agreement.responseEventId = fact.id;
+        agreement.sourceEventIds = [...new Set([...agreement.sourceEventIds, fact.id])];
+        return;
+      }
       if (!agreement
         || agreement.status !== 'active'
         || (agreement.proposal.kind !== 'reproduce'
@@ -836,7 +867,7 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
     if (content.kind !== 'accept' && content.kind !== 'reject') return;
     const agreement = agreementById(state, content.referenceId);
     const understoodBy = languageInterpreterIds(fact.diff, content.id);
-    if (!agreement || agreement.status !== 'proposed'
+    if (!agreement || !agreementIsKnownTo(agreement, fact.who) || agreement.status !== 'proposed'
       || !agreement.requiredResponderIds.includes(fact.who)
       || agreement.acceptedByPersonIds.includes(fact.who)
       || agreement.rejectedByPersonIds.includes(fact.who)
@@ -851,6 +882,19 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
     }
     agreement.responseEventId = fact.id;
     agreement.sourceEventIds = [...new Set([...agreement.sourceEventIds, fact.id])];
+    if (agreement.proposal.kind === 'joint-action') {
+      const responses = content.kind === 'accept' ? agreement.acceptedByPersonIds : agreement.rejectedByPersonIds;
+      responses.push(fact.who);
+      const allResponded = agreement.requiredResponderIds.every((id) => agreement.acceptedByPersonIds.includes(id)
+        || agreement.rejectedByPersonIds.includes(id));
+      if (allResponded) {
+        agreement.status = agreement.rejectedByPersonIds.length ? 'rejected' : 'active';
+        if (agreement.status === 'active') agreement.acceptedAtMonth = fact.atMonth;
+        else agreement.resolvedAtMonth = fact.atMonth;
+      }
+      // No duration, assigned task or inferred accomplishment follows assent.
+      return;
+    }
     const decisionMethod = collectiveDecisionMethod(state, agreement);
     if (content.kind === 'accept') {
       agreement.acceptedByPersonIds.push(fact.who);
@@ -859,7 +903,8 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       } else if (agreement.requiredResponderIds.every((id) => agreement.acceptedByPersonIds.includes(id))) {
         agreement.status = 'active';
         agreement.acceptedAtMonth = fact.atMonth;
-        agreement.dueAtMonth = fact.atMonth + duration(agreement.proposal);
+        const fulfillmentMonths = duration(agreement.proposal);
+        if (fulfillmentMonths !== undefined) agreement.dueAtMonth = fact.atMonth + fulfillmentMonths;
       }
     } else {
       agreement.rejectedByPersonIds.push(fact.who);
@@ -1058,7 +1103,7 @@ export function synchronizeAgreementResponseDeadlineSuspensions(
     const fulfillmentResponderIds = agreement.status === 'active' && agreement.proposal.kind === 'assist'
       ? [agreement.proposal.helperId]
       : [];
-    const responseResponderIds = agreement.status === 'proposed'
+    const responseResponderIds = agreement.status === 'proposed' && agreement.acceptByMonth !== undefined
       ? agreement.requiredResponderIds
       : [];
     for (const responderId of [...new Set([...responseResponderIds, ...fulfillmentResponderIds])]) {

@@ -1,0 +1,2651 @@
+[
+  {
+    "id": "e-528-environment-material-0",
+    "kind": "environment",
+    "atMonth": 528,
+    "orderInMonth": 0,
+    "cellId": 0,
+    "change": "material",
+    "result": "3 个格子的物质因自然过程发生变化",
+    "diff": {
+      "changes": [
+        {
+          "cellId": 2516,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 3267,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 3498,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        }
+      ]
+    },
+    "planningTick": 0,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-528-permission-expired-permission:offer-permission:503:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41",
+    "kind": "permission",
+    "atMonth": 528,
+    "orderInMonth": 1,
+    "cellId": 0,
+    "permissionId": "permission:offer-permission:503:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41",
+    "change": "expired",
+    "partyIds": [
+      "sun-wu",
+      "potianfeng"
+    ],
+    "result": "一项物质取用许可已到期",
+    "planningTick": 0,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-528-decision-rei-ayanami-1-2",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 2,
+    "planningTick": 1,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "revoke-permission:528:permission:offer-permission:525:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+      "reason": "持有者对未来取用授权保留明确撤回能力"
+    },
+    "intentId": "intent-528-rei-ayanami-12391",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：向破天锋撤回木制生产工具取用许可"
+  },
+  {
+    "id": "e-528-action-rei-ayanami-3",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 528,
+    "orderInMonth": 3,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-528-rei-ayanami-12391",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "revoke-permission:528:permission:offer-permission:525:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:525:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+        "summary": "我撤回你对我的木制生产工具的取用许可"
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "绫波丽向破天锋表达：我撤回你对我的木制生产工具的取用许可",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "revoke-permission:528:permission:offer-permission:525:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:525:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+        "summary": "我撤回你对我的木制生产工具的取用许可"
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-528-decision-aphrodite-1-4",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 4,
+    "planningTick": 1,
+    "orderInTick": 2,
+    "cellId": 4218,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "start",
+      "optionId": "revoke-permission:528:permission:offer-permission:527:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+      "reason": "持有者对未来取用授权保留明确撤回能力"
+    },
+    "intentId": "intent-528-aphrodite-12392",
+    "domain": "social",
+    "usedModel": false,
+    "result": "阿佛洛狄忒决定：向芙蕾雅撤回公共谷仓取用许可"
+  },
+  {
+    "id": "e-528-action-aphrodite-5",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 528,
+    "orderInMonth": 5,
+    "cellId": 4218,
+    "who": "aphrodite",
+    "intentId": "intent-528-aphrodite-12392",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "revoke-permission:528:permission:offer-permission:527:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:527:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+        "summary": "我撤回你对我的公共谷仓的取用许可"
+      },
+      "audience": [
+        "freyja"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 4218,
+    "toCellId": 4218,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4218
+    ],
+    "status": "completed",
+    "result": "阿佛洛狄忒向芙蕾雅表达：我撤回你对我的公共谷仓的取用许可",
+    "diff": {
+      "audience": [
+        "freyja"
+      ],
+      "content": {
+        "id": "revoke-permission:528:permission:offer-permission:527:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:527:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+        "summary": "我撤回你对我的公共谷仓的取用许可"
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-528-decision-sun-wu-1-6",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 6,
+    "planningTick": 1,
+    "orderInTick": 4,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:528:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界"
+    },
+    "intentId": "intent-528-sun-wu-12393",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：允许破天锋在需要时取用自己的木制生产工具"
+  },
+  {
+    "id": "e-528-action-sun-wu-7",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 528,
+    "orderInMonth": 7,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-528-sun-wu-12393",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:528:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份木制生产工具",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "sun-wu",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "sun-wu",
+          "granteeId": "potianfeng",
+          "materialId": 41,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 552,
+          "expiresAtMonth": 534
+        }
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙武向破天锋表达：你可以在需要时每次取用我的一份木制生产工具",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "offer-permission:528:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份木制生产工具",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "sun-wu",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "sun-wu",
+          "granteeId": "potianfeng",
+          "materialId": 41,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 552,
+          "expiresAtMonth": 534
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-528-decision-born-115-cai-wenji-10-1-8",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 8,
+    "planningTick": 1,
+    "orderInTick": 6,
+    "cellId": 1358,
+    "who": "born-115-cai-wenji-10",
+    "decision": {
+      "kind": "start",
+      "optionId": "revoke-permission:528:permission:offer-permission:525:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:1",
+      "reason": "持有者对未来取用授权保留明确撤回能力"
+    },
+    "intentId": "intent-528-born-115-cai-wenji-10-12394",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后凌川决定：向蔡文姬撤回石取用许可"
+  },
+  {
+    "id": "e-528-action-born-115-cai-wenji-10-9",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 528,
+    "orderInMonth": 9,
+    "cellId": 1358,
+    "who": "born-115-cai-wenji-10",
+    "intentId": "intent-528-born-115-cai-wenji-10-12394",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "revoke-permission:528:permission:offer-permission:525:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:1",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:525:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:1",
+        "summary": "我撤回你对我的石的取用许可"
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1358,
+    "toCellId": 1358,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1358
+    ],
+    "status": "completed",
+    "result": "后凌川向蔡文姬表达：我撤回你对我的石的取用许可",
+    "diff": {
+      "audience": [
+        "cai-wenji"
+      ],
+      "content": {
+        "id": "revoke-permission:528:permission:offer-permission:525:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:1",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:525:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:1",
+        "summary": "我撤回你对我的石的取用许可"
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 1,
+    "orderInTick": 7
+  },
+  {
+    "id": "e-528-decision-potianfeng-1-10",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 10,
+    "planningTick": 1,
+    "orderInTick": 8,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:528:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-528-potianfeng-12395",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：接受孙武的物质取用许可"
+  },
+  {
+    "id": "e-528-action-potianfeng-11",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 528,
+    "orderInMonth": 11,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-528-potianfeng-12395",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:528:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:528:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41"
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "破天锋向孙武表达：accept",
+    "diff": {
+      "audience": [
+        "sun-wu"
+      ],
+      "content": {
+        "id": "accept:offer-permission:528:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:528:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41"
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 9
+  },
+  {
+    "id": "e-528-decision-born-244-potianfeng-13-1-12",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 12,
+    "planningTick": 1,
+    "orderInTick": 10,
+    "cellId": 689,
+    "who": "born-244-potianfeng-13",
+    "decision": {
+      "kind": "start",
+      "optionId": "conversation:discovery:528:born-244-potianfeng-13:sun-wu",
+      "reason": "本人有一项可靠且对方尚未可靠掌握的观察，可以把发现变成有回应的交谈"
+    },
+    "intentId": "intent-528-born-244-potianfeng-13-12396",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙守一决定：与孙武谈新发现：向孙武分享本人可靠掌握、对方尚未可靠掌握的发现“观察到木制生产工具与铜结合时没有产生物质变化”"
+  },
+  {
+    "id": "e-528-action-born-244-potianfeng-13-13",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 528,
+    "orderInMonth": 13,
+    "cellId": 689,
+    "who": "born-244-potianfeng-13",
+    "intentId": "intent-528-born-244-potianfeng-13-12396",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "conversation:discovery:528:born-244-potianfeng-13:sun-wu",
+        "kind": "claim",
+        "summary": "向孙武分享本人可靠掌握、对方尚未可靠掌握的发现“观察到木制生产工具与铜结合时没有产生物质变化”",
+        "factId": "observation:no-response:combine-inventory:41+46",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+          "topic": "discovery",
+          "turn": "opening",
+          "speakerId": "born-244-potianfeng-13",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-519-action-born-244-potianfeng-13-9",
+            "e-526-action-born-244-potianfeng-13-15"
+          ]
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙守一向孙武表达：向孙武分享本人可靠掌握、对方尚未可靠掌握的发现“观察到木制生产工具与铜结合时没有产生物质变化”",
+    "diff": {
+      "audience": [
+        "sun-wu"
+      ],
+      "content": {
+        "id": "conversation:discovery:528:born-244-potianfeng-13:sun-wu",
+        "kind": "claim",
+        "summary": "向孙武分享本人可靠掌握、对方尚未可靠掌握的发现“观察到木制生产工具与铜结合时没有产生物质变化”",
+        "factId": "observation:no-response:combine-inventory:41+46",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+          "topic": "discovery",
+          "turn": "opening",
+          "speakerId": "born-244-potianfeng-13",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-519-action-born-244-potianfeng-13-9",
+            "e-526-action-born-244-potianfeng-13-15"
+          ]
+        }
+      },
+      "assertedFactId": "observation:no-response:combine-inventory:41+46",
+      "assertedFactSourceEventIds": [
+        "e-519-action-born-244-potianfeng-13-9",
+        "e-526-action-born-244-potianfeng-13-15"
+      ],
+      "groundedConversationBasisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+      "groundedConversationTopic": "discovery",
+      "groundedConversationTurn": "opening",
+      "groundedConversationSourceFactIds": [
+        "e-519-action-born-244-potianfeng-13-9",
+        "e-526-action-born-244-potianfeng-13-15"
+      ],
+      "relationTrustDelta": 0,
+      "relationBondDelta": 1
+    },
+    "planningTick": 1,
+    "orderInTick": 11
+  },
+  {
+    "id": "e-528-decision-born-16-cai-wenji-7-1-14",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 14,
+    "planningTick": 1,
+    "orderInTick": 12,
+    "cellId": 3122,
+    "who": "born-16-cai-wenji-7",
+    "decision": {
+      "kind": "start",
+      "optionId": "harvest:2786",
+      "reason": "看见结出可分离食物的灌木物质"
+    },
+    "intentId": "intent-528-born-16-cai-wenji-7-12397",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "孙疏影决定：从结果灌木分离食物与种子"
+  },
+  {
+    "id": "e-528-action-born-16-cai-wenji-7-15",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 528,
+    "orderInMonth": 15,
+    "cellId": 3038,
+    "who": "born-16-cai-wenji-7",
+    "intentId": "intent-528-born-16-cai-wenji-7-12397",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2786
+    },
+    "fromCellId": 3122,
+    "toCellId": 3038,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3122,
+      3038
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 13
+  },
+  {
+    "id": "e-528-decision-born-159-potianfeng-11-1-16",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 16,
+    "planningTick": 1,
+    "orderInTick": 14,
+    "cellId": 689,
+    "who": "born-159-potianfeng-11",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:528:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:22",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界"
+    },
+    "intentId": "intent-528-born-159-potianfeng-11-12398",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙明哲决定：允许破天锋在需要时取用自己的种子"
+  },
+  {
+    "id": "e-528-action-born-159-potianfeng-11-17",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 528,
+    "orderInMonth": 17,
+    "cellId": 689,
+    "who": "born-159-potianfeng-11",
+    "intentId": "intent-528-born-159-potianfeng-11-12398",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:528:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:22",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份种子",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "born-159-potianfeng-11",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "born-159-potianfeng-11",
+          "granteeId": "potianfeng",
+          "materialId": 22,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 552,
+          "expiresAtMonth": 534
+        }
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙明哲向破天锋表达：你可以在需要时每次取用我的一份种子",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "offer-permission:528:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:22",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份种子",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "born-159-potianfeng-11",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "born-159-potianfeng-11",
+          "granteeId": "potianfeng",
+          "materialId": 22,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 552,
+          "expiresAtMonth": 534
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 15
+  },
+  {
+    "id": "e-528-decision-cai-wenji-1-18",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 18,
+    "planningTick": 1,
+    "orderInTick": 16,
+    "cellId": 1358,
+    "who": "cai-wenji",
+    "decision": {
+      "kind": "start",
+      "optionId": "use-permission:permission:offer-permission:527:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21:stack-born-193-cai-wenji-12-21-206",
+      "reason": "授权人、被授权人、物质、单次数量与有效期都有可追溯许可"
+    },
+    "intentId": "intent-528-cai-wenji-12399",
+    "domain": "social",
+    "usedModel": false,
+    "result": "蔡文姬决定：依据许可从后若水处取用食物"
+  },
+  {
+    "id": "e-528-action-cai-wenji-19",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 528,
+    "orderInMonth": 19,
+    "cellId": 1358,
+    "who": "cai-wenji",
+    "intentId": "intent-528-cai-wenji-12399",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 21,
+      "quantity": 1,
+      "from": {
+        "kind": "person",
+        "personId": "born-193-cai-wenji-12"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "cai-wenji"
+      },
+      "stackId": "stack-born-193-cai-wenji-12-21-206",
+      "authorizationRef": "permission:offer-permission:527:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21"
+    },
+    "fromCellId": 1358,
+    "toCellId": 1358,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1358
+    ],
+    "status": "completed",
+    "result": "食物 × 1 改变了持有者",
+    "diff": {
+      "materialId": 21,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": true,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "person",
+        "personId": "born-193-cai-wenji-12"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "cai-wenji"
+      },
+      "witnessedBy": [
+        "cai-wenji",
+        "houyi",
+        "born-115-cai-wenji-10",
+        "born-193-cai-wenji-12"
+      ],
+      "sourceEventIds": [
+        "e-273-action-born-193-cai-wenji-12-45",
+        "e-273-action-born-193-cai-wenji-12-46",
+        "e-308-action-born-193-cai-wenji-12-26",
+        "e-308-action-born-193-cai-wenji-12-40",
+        "e-310-action-born-193-cai-wenji-12-48",
+        "e-310-action-born-193-cai-wenji-12-50",
+        "e-312-action-born-115-cai-wenji-10-43",
+        "e-312-action-born-193-cai-wenji-12-52",
+        "e-314-action-born-193-cai-wenji-12-36",
+        "e-316-action-born-193-cai-wenji-12-44",
+        "e-316-action-born-193-cai-wenji-12-47",
+        "e-318-action-born-193-cai-wenji-12-42",
+        "e-318-action-born-115-cai-wenji-10-38",
+        "e-318-action-born-193-cai-wenji-12-48",
+        "e-320-action-born-193-cai-wenji-12-43",
+        "e-317-action-born-244-potianfeng-13-39",
+        "e-321-action-born-244-potianfeng-13-33",
+        "e-322-action-born-193-cai-wenji-12-52",
+        "e-322-action-born-193-cai-wenji-12-57",
+        "e-328-action-born-193-cai-wenji-12-57",
+        "e-328-action-born-193-cai-wenji-12-63",
+        "e-334-action-born-193-cai-wenji-12-80",
+        "e-334-action-born-193-cai-wenji-12-89",
+        "e-528-action-cai-wenji-19"
+      ],
+      "sourceLineageKeys": [
+        "inventory:born-193-cai-wenji-12:stack-born-193-cai-wenji-12-21-206",
+        "drop:drop-206-born-193-cai-wenji-12-separate-437",
+        "drop:drop-210-born-193-cai-wenji-12-separate-438",
+        "drop:drop-212-born-193-cai-wenji-12-separate-441",
+        "drop:drop-214-born-193-cai-wenji-12-separate-441",
+        "drop:drop-216-born-193-cai-wenji-12-separate-443",
+        "drop:drop-273-born-193-cai-wenji-12-separate-432",
+        "drop:drop-308-born-193-cai-wenji-12-separate-434",
+        "drop:drop-310-born-193-cai-wenji-12-separate-435",
+        "drop:drop-316-born-193-cai-wenji-12-separate-439",
+        "drop:drop-317-born-244-potianfeng-13-separate-443",
+        "drop:drop-328-born-193-cai-wenji-12-separate-446",
+        "drop:drop-334-born-193-cai-wenji-12-separate-443"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 17
+  },
+  {
+    "id": "e-528-decision-born-22-potianfeng-8-1-20",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 20,
+    "planningTick": 1,
+    "orderInTick": 18,
+    "cellId": 689,
+    "who": "born-22-potianfeng-8",
+    "decision": {
+      "kind": "start",
+      "optionId": "request-assist:528:born-22-potianfeng-8:sun-wu:food",
+      "reason": "自己的生存储备下降，而身边存在可以沟通的人"
+    },
+    "intentId": "intent-528-born-22-potianfeng-8-12400",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙朝宗决定：向孙武请求食物帮助"
+  },
+  {
+    "id": "e-528-action-born-22-potianfeng-8-21",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 528,
+    "orderInMonth": 21,
+    "cellId": 689,
+    "who": "born-22-potianfeng-8",
+    "intentId": "intent-528-born-22-potianfeng-8-12400",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "request-assist:528:born-22-potianfeng-8:sun-wu:food",
+        "kind": "request",
+        "summary": "请帮助我取得食物",
+        "proposal": {
+          "kind": "assist",
+          "requesterId": "born-22-potianfeng-8",
+          "helperId": "sun-wu",
+          "need": "food",
+          "expiresAtMonth": 532
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙朝宗向孙武表达：请帮助我取得食物",
+    "diff": {
+      "audience": [
+        "sun-wu"
+      ],
+      "content": {
+        "id": "request-assist:528:born-22-potianfeng-8:sun-wu:food",
+        "kind": "request",
+        "summary": "请帮助我取得食物",
+        "proposal": {
+          "kind": "assist",
+          "requesterId": "born-22-potianfeng-8",
+          "helperId": "sun-wu",
+          "need": "food",
+          "expiresAtMonth": 532
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 19
+  },
+  {
+    "id": "e-528-decision-freyja-1-22",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 22,
+    "planningTick": 1,
+    "orderInTick": 20,
+    "cellId": 4218,
+    "who": "freyja",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:528:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界"
+    },
+    "intentId": "intent-528-freyja-12401",
+    "domain": "social",
+    "usedModel": false,
+    "result": "芙蕾雅决定：允许阿佛洛狄忒在需要时取用自己的公共谷仓"
+  },
+  {
+    "id": "e-528-action-freyja-23",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 528,
+    "orderInMonth": 23,
+    "cellId": 4218,
+    "who": "freyja",
+    "intentId": "intent-528-freyja-12401",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:528:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份公共谷仓",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "freyja",
+          "partnerId": "aphrodite",
+          "collectiveId": "collective:offer-collective:66:aphrodite:freyja",
+          "grantorId": "freyja",
+          "granteeId": "aphrodite",
+          "materialId": 56,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 552,
+          "expiresAtMonth": 534
+        }
+      },
+      "audience": [
+        "aphrodite"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 4218,
+    "toCellId": 4218,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4218
+    ],
+    "status": "completed",
+    "result": "芙蕾雅向阿佛洛狄忒表达：你可以在需要时每次取用我的一份公共谷仓",
+    "diff": {
+      "audience": [
+        "aphrodite"
+      ],
+      "content": {
+        "id": "offer-permission:528:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份公共谷仓",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "freyja",
+          "partnerId": "aphrodite",
+          "collectiveId": "collective:offer-collective:66:aphrodite:freyja",
+          "grantorId": "freyja",
+          "granteeId": "aphrodite",
+          "materialId": 56,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 552,
+          "expiresAtMonth": 534
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 21
+  },
+  {
+    "id": "e-528-decision-houyi-1-24",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 24,
+    "planningTick": 1,
+    "orderInTick": 22,
+    "cellId": 1358,
+    "who": "houyi",
+    "decision": {
+      "kind": "start",
+      "optionId": "request-assist:528:houyi:born-115-cai-wenji-10:food",
+      "reason": "自己的生存储备下降，而身边存在可以沟通的人"
+    },
+    "intentId": "intent-528-houyi-12402",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后羿决定：向后凌川请求食物帮助"
+  },
+  {
+    "id": "e-528-action-houyi-25",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 528,
+    "orderInMonth": 25,
+    "cellId": 1358,
+    "who": "houyi",
+    "intentId": "intent-528-houyi-12402",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "request-assist:528:houyi:born-115-cai-wenji-10:food",
+        "kind": "request",
+        "summary": "请帮助我取得食物",
+        "proposal": {
+          "kind": "assist",
+          "requesterId": "houyi",
+          "helperId": "born-115-cai-wenji-10",
+          "need": "food",
+          "expiresAtMonth": 532
+        }
+      },
+      "audience": [
+        "born-115-cai-wenji-10"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1358,
+    "toCellId": 1358,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1358
+    ],
+    "status": "completed",
+    "result": "后羿向后凌川表达：请帮助我取得食物",
+    "diff": {
+      "audience": [
+        "born-115-cai-wenji-10"
+      ],
+      "content": {
+        "id": "request-assist:528:houyi:born-115-cai-wenji-10:food",
+        "kind": "request",
+        "summary": "请帮助我取得食物",
+        "proposal": {
+          "kind": "assist",
+          "requesterId": "houyi",
+          "helperId": "born-115-cai-wenji-10",
+          "need": "food",
+          "expiresAtMonth": 532
+        }
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 1,
+    "orderInTick": 23
+  },
+  {
+    "id": "e-528-decision-born-193-cai-wenji-12-1-26",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 26,
+    "planningTick": 1,
+    "orderInTick": 24,
+    "cellId": 1358,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "revoke-permission:528:permission:offer-permission:527:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21",
+      "reason": "持有者对未来取用授权保留明确撤回能力"
+    },
+    "intentId": "intent-528-born-193-cai-wenji-12-12403",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：向蔡文姬撤回食物取用许可"
+  },
+  {
+    "id": "e-528-action-born-193-cai-wenji-12-27",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 528,
+    "orderInMonth": 27,
+    "cellId": 1358,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-528-born-193-cai-wenji-12-12403",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "revoke-permission:528:permission:offer-permission:527:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:527:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21",
+        "summary": "我撤回你对我的食物的取用许可"
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1358,
+    "toCellId": 1358,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1358
+    ],
+    "status": "completed",
+    "result": "后若水向蔡文姬表达：我撤回你对我的食物的取用许可",
+    "diff": {
+      "audience": [
+        "cai-wenji"
+      ],
+      "content": {
+        "id": "revoke-permission:528:permission:offer-permission:527:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:527:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21",
+        "summary": "我撤回你对我的食物的取用许可"
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 1,
+    "orderInTick": 25
+  },
+  {
+    "id": "e-528-decision-potianfeng-2-28",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 28,
+    "planningTick": 2,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:528:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:22",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-528-potianfeng-12404",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：接受孙明哲的物质取用许可"
+  },
+  {
+    "id": "e-528-action-potianfeng-29",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 528,
+    "orderInMonth": 29,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-528-potianfeng-12404",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:528:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:22:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:528:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:22"
+      },
+      "audience": [
+        "born-159-potianfeng-11"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "破天锋向孙明哲表达：accept",
+    "diff": {
+      "audience": [
+        "born-159-potianfeng-11"
+      ],
+      "content": {
+        "id": "accept:offer-permission:528:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:22:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:528:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:22"
+      }
+    },
+    "planningTick": 2,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-528-action-born-16-cai-wenji-7-30",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 528,
+    "orderInMonth": 30,
+    "cellId": 2954,
+    "who": "born-16-cai-wenji-7",
+    "intentId": "intent-528-born-16-cai-wenji-7-12397",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2786
+    },
+    "fromCellId": 3038,
+    "toCellId": 2954,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3038,
+      2954
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2954,
+          "z": 4,
+          "from": 2,
+          "to": 15
+        }
+      ]
+    },
+    "planningTick": 2,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-528-decision-sun-wu-2-31",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 31,
+    "planningTick": 2,
+    "orderInTick": 3,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-assist:request-assist:528:born-22-potianfeng-8:sun-wu:food",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-528-sun-wu-12405",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：接受孙朝宗的求助"
+  },
+  {
+    "id": "e-528-action-sun-wu-32",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 528,
+    "orderInMonth": 32,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-528-sun-wu-12405",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:request-assist:528:born-22-potianfeng-8:sun-wu:food:sun-wu",
+        "kind": "accept",
+        "referenceId": "request-assist:528:born-22-potianfeng-8:sun-wu:food"
+      },
+      "audience": [
+        "born-22-potianfeng-8"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙武向孙朝宗表达：accept",
+    "diff": {
+      "audience": [
+        "born-22-potianfeng-8"
+      ],
+      "content": {
+        "id": "accept:request-assist:528:born-22-potianfeng-8:sun-wu:food:sun-wu",
+        "kind": "accept",
+        "referenceId": "request-assist:528:born-22-potianfeng-8:sun-wu:food"
+      }
+    },
+    "planningTick": 2,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-528-decision-born-115-cai-wenji-10-2-33",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 33,
+    "planningTick": 2,
+    "orderInTick": 5,
+    "cellId": 1358,
+    "who": "born-115-cai-wenji-10",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-assist:request-assist:528:houyi:born-115-cai-wenji-10:food",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-528-born-115-cai-wenji-10-12406",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后凌川决定：接受后羿的求助"
+  },
+  {
+    "id": "e-528-action-born-115-cai-wenji-10-34",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 528,
+    "orderInMonth": 34,
+    "cellId": 1358,
+    "who": "born-115-cai-wenji-10",
+    "intentId": "intent-528-born-115-cai-wenji-10-12406",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:request-assist:528:houyi:born-115-cai-wenji-10:food:born-115-cai-wenji-10",
+        "kind": "accept",
+        "referenceId": "request-assist:528:houyi:born-115-cai-wenji-10:food"
+      },
+      "audience": [
+        "houyi"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1358,
+    "toCellId": 1358,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1358
+    ],
+    "status": "completed",
+    "result": "后凌川向后羿表达：accept",
+    "diff": {
+      "audience": [
+        "houyi"
+      ],
+      "content": {
+        "id": "accept:request-assist:528:houyi:born-115-cai-wenji-10:food:born-115-cai-wenji-10",
+        "kind": "accept",
+        "referenceId": "request-assist:528:houyi:born-115-cai-wenji-10:food"
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 2,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-528-decision-aphrodite-2-35",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 35,
+    "planningTick": 2,
+    "orderInTick": 7,
+    "cellId": 4218,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:528:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-528-aphrodite-12407",
+    "domain": "social",
+    "usedModel": false,
+    "result": "阿佛洛狄忒决定：接受芙蕾雅的物质取用许可"
+  },
+  {
+    "id": "e-528-action-aphrodite-36",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 528,
+    "orderInMonth": 36,
+    "cellId": 4218,
+    "who": "aphrodite",
+    "intentId": "intent-528-aphrodite-12407",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:528:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56:aphrodite",
+        "kind": "accept",
+        "referenceId": "offer-permission:528:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56"
+      },
+      "audience": [
+        "freyja"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 4218,
+    "toCellId": 4218,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4218
+    ],
+    "status": "completed",
+    "result": "阿佛洛狄忒向芙蕾雅表达：accept",
+    "diff": {
+      "audience": [
+        "freyja"
+      ],
+      "content": {
+        "id": "accept:offer-permission:528:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56:aphrodite",
+        "kind": "accept",
+        "referenceId": "offer-permission:528:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56"
+      }
+    },
+    "planningTick": 2,
+    "orderInTick": 8
+  },
+  {
+    "id": "e-528-decision-sun-wu-3-37",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 37,
+    "planningTick": 3,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-528-sun-wu-12405",
+      "optionId": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+      "reason": "先完成必须由本人作出的回应"
+    },
+    "intentId": "intent-528-sun-wu-12408",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武改为：回应孙守一关于新发现的话：愿意继续了解对方的新发现及其可能用途"
+  },
+  {
+    "id": "e-528-action-sun-wu-38",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 528,
+    "orderInMonth": 38,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-528-sun-wu-12408",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+        "kind": "claim",
+        "summary": "愿意继续了解对方的新发现及其可能用途",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+          "topic": "discovery",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-519-action-born-244-potianfeng-13-9",
+            "e-526-action-born-244-potianfeng-13-15"
+          ],
+          "referenceEventId": "e-528-action-born-244-potianfeng-13-13",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙武向孙守一表达：愿意继续了解对方的新发现及其可能用途",
+    "diff": {
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "content": {
+        "id": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+        "kind": "claim",
+        "summary": "愿意继续了解对方的新发现及其可能用途",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+          "topic": "discovery",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-519-action-born-244-potianfeng-13-9",
+            "e-526-action-born-244-potianfeng-13-15"
+          ],
+          "referenceEventId": "e-528-action-born-244-potianfeng-13-13",
+          "stance": "supportive"
+        }
+      },
+      "groundedConversationBasisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+      "groundedConversationTopic": "discovery",
+      "groundedConversationTurn": "response",
+      "groundedConversationSourceFactIds": [
+        "e-519-action-born-244-potianfeng-13-9",
+        "e-526-action-born-244-potianfeng-13-15"
+      ],
+      "groundedConversationReferenceEventId": "e-528-action-born-244-potianfeng-13-13",
+      "groundedConversationStance": "supportive",
+      "relationTrustDelta": 1,
+      "relationBondDelta": 2
+    },
+    "planningTick": 3,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-528-action-born-115-cai-wenji-10-39",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 528,
+    "orderInMonth": 39,
+    "cellId": 1358,
+    "who": "born-115-cai-wenji-10",
+    "intentId": "intent-528-born-115-cai-wenji-10-12406",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 29,
+      "quantity": 1,
+      "from": {
+        "kind": "person",
+        "personId": "born-115-cai-wenji-10"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "houyi"
+      },
+      "stackId": "stack-born-115-cai-wenji-10-29-491",
+      "authorizationRef": "request-assist:528:houyi:born-115-cai-wenji-10:food"
+    },
+    "fromCellId": 1358,
+    "toCellId": 1358,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1358
+    ],
+    "status": "completed",
+    "result": "生肉 × 1 改变了持有者",
+    "diff": {
+      "materialId": 29,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": true,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "person",
+        "personId": "born-115-cai-wenji-10"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "houyi"
+      },
+      "witnessedBy": [
+        "cai-wenji",
+        "houyi",
+        "born-115-cai-wenji-10",
+        "born-193-cai-wenji-12"
+      ],
+      "sourceEventIds": [
+        "e-30-environment-animal-1",
+        "e-330-action-born-193-cai-wenji-12-60",
+        "e-436-action-cai-wenji-11",
+        "e-438-action-cai-wenji-14",
+        "e-439-action-cai-wenji-37",
+        "e-442-action-cai-wenji-13",
+        "e-442-action-cai-wenji-44",
+        "e-445-action-cai-wenji-3",
+        "e-491-action-cai-wenji-31",
+        "e-528-action-born-115-cai-wenji-10-39"
+      ],
+      "sourceLineageKeys": [
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-29-491",
+        "inventory:cai-wenji:stack-cai-wenji-29-436",
+        "inventory:born-193-cai-wenji-12:stack-born-193-cai-wenji-12-29-330",
+        "drop:drop-30-animal-wolf-3-carcass-379",
+        "inventory:born-193-cai-wenji-12:stack-born-193-cai-wenji-12-29-439",
+        "inventory:born-193-cai-wenji-12:stack-born-193-cai-wenji-12-29-442"
+      ]
+    },
+    "planningTick": 3,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-528-action-born-16-cai-wenji-7-40",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 528,
+    "orderInMonth": 40,
+    "cellId": 2870,
+    "who": "born-16-cai-wenji-7",
+    "intentId": "intent-528-born-16-cai-wenji-7-12397",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2786
+    },
+    "fromCellId": 2954,
+    "toCellId": 2870,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2954,
+      2870
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-528-action-houyi-41",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 528,
+    "orderInMonth": 41,
+    "cellId": 1358,
+    "who": "houyi",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "act",
+      "operation": "ingest",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "houyi",
+          "stackId": "stack-houyi-29-528"
+        }
+      ]
+    },
+    "fromCellId": 1358,
+    "toCellId": 1358,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1358
+    ],
+    "status": "completed",
+    "result": "摄入了生肉",
+    "diff": {
+      "materialId": 29,
+      "nutrition": 24,
+      "hydration": 0,
+      "health": -3,
+      "consumedStackId": "stack-houyi-29-528",
+      "consumedSourceEventIds": [
+        "e-30-environment-animal-1",
+        "e-330-action-born-193-cai-wenji-12-60",
+        "e-436-action-cai-wenji-11",
+        "e-438-action-cai-wenji-14",
+        "e-439-action-cai-wenji-37",
+        "e-442-action-cai-wenji-13",
+        "e-442-action-cai-wenji-44",
+        "e-445-action-cai-wenji-3",
+        "e-491-action-cai-wenji-31",
+        "e-528-action-born-115-cai-wenji-10-39"
+      ],
+      "consumedSourceLineageKeys": [
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-29-491",
+        "inventory:cai-wenji:stack-cai-wenji-29-436",
+        "inventory:born-193-cai-wenji-12:stack-born-193-cai-wenji-12-29-330",
+        "drop:drop-30-animal-wolf-3-carcass-379",
+        "inventory:born-193-cai-wenji-12:stack-born-193-cai-wenji-12-29-439",
+        "inventory:born-193-cai-wenji-12:stack-born-193-cai-wenji-12-29-442"
+      ]
+    },
+    "planningTick": 4,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-528-decision-sun-wu-4-42",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 42,
+    "planningTick": 4,
+    "orderInTick": 1,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-528-sun-wu-12409",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应孙守一关于新发现的话：愿意继续了解对方的新发现及其可能用途"
+  },
+  {
+    "id": "e-528-action-sun-wu-43",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 528,
+    "orderInMonth": 43,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-528-sun-wu-12409",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+        "kind": "claim",
+        "summary": "愿意继续了解对方的新发现及其可能用途",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+          "topic": "discovery",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-519-action-born-244-potianfeng-13-9",
+            "e-526-action-born-244-potianfeng-13-15"
+          ],
+          "referenceEventId": "e-528-action-born-244-potianfeng-13-13",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 4,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-528-action-born-16-cai-wenji-7-44",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 528,
+    "orderInMonth": 44,
+    "cellId": 2870,
+    "who": "born-16-cai-wenji-7",
+    "intentId": "intent-528-born-16-cai-wenji-7-12397",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "separate",
+      "targets": [
+        {
+          "kind": "voxel",
+          "position": {
+            "x": 14,
+            "y": 33,
+            "z": 4
+          }
+        }
+      ]
+    },
+    "fromCellId": 2870,
+    "toCellId": 2870,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2870
+    ],
+    "status": "completed",
+    "result": "从结果灌木分离出食物 × 3、种子 × 1",
+    "diff": {
+      "sourceMaterialId": 10,
+      "replacementMaterialId": 9,
+      "outputs": [
+        {
+          "materialId": 21,
+          "quantity": 3
+        },
+        {
+          "materialId": 22,
+          "quantity": 1
+        }
+      ],
+      "productionMultiplier": 1
+    },
+    "planningTick": 4,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-528-decision-sun-wu-5-45",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 45,
+    "planningTick": 5,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-528-sun-wu-12410",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应孙守一关于新发现的话：愿意继续了解对方的新发现及其可能用途"
+  },
+  {
+    "id": "e-528-action-sun-wu-46",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 528,
+    "orderInMonth": 46,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-528-sun-wu-12410",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+        "kind": "claim",
+        "summary": "愿意继续了解对方的新发现及其可能用途",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+          "topic": "discovery",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-519-action-born-244-potianfeng-13-9",
+            "e-526-action-born-244-potianfeng-13-15"
+          ],
+          "referenceEventId": "e-528-action-born-244-potianfeng-13-13",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 5,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-528-action-born-16-cai-wenji-7-47",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 528,
+    "orderInMonth": 47,
+    "cellId": 2870,
+    "who": "born-16-cai-wenji-7",
+    "intentId": "intent-528-born-16-cai-wenji-7-12397",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 21,
+      "quantity": 3,
+      "from": {
+        "kind": "ground",
+        "cellId": 2870,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-16-cai-wenji-7"
+      },
+      "dropId": "drop-528-born-16-cai-wenji-7-separate-450"
+    },
+    "fromCellId": 2870,
+    "toCellId": 2870,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2870
+    ],
+    "status": "completed",
+    "result": "食物 × 3 改变了持有者",
+    "diff": {
+      "materialId": 21,
+      "quantity": 3,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 2870,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-16-cai-wenji-7"
+      },
+      "witnessedBy": [
+        "born-16-cai-wenji-7"
+      ],
+      "sourceEventIds": [
+        "e-528-action-born-16-cai-wenji-7-44",
+        "e-528-action-born-16-cai-wenji-7-47"
+      ],
+      "sourceLineageKeys": [
+        "drop:drop-528-born-16-cai-wenji-7-separate-450"
+      ]
+    },
+    "planningTick": 5,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-528-decision-sun-wu-6-48",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 48,
+    "planningTick": 6,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-528-sun-wu-12411",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应孙守一关于新发现的话：愿意继续了解对方的新发现及其可能用途"
+  },
+  {
+    "id": "e-528-action-sun-wu-49",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 528,
+    "orderInMonth": 49,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-528-sun-wu-12411",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+        "kind": "claim",
+        "summary": "愿意继续了解对方的新发现及其可能用途",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+          "topic": "discovery",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-519-action-born-244-potianfeng-13-9",
+            "e-526-action-born-244-potianfeng-13-15"
+          ],
+          "referenceEventId": "e-528-action-born-244-potianfeng-13-13",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 6,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-528-decision-sun-wu-7-50",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 50,
+    "planningTick": 7,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-528-sun-wu-12412",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应孙守一关于新发现的话：愿意继续了解对方的新发现及其可能用途"
+  },
+  {
+    "id": "e-528-action-sun-wu-51",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 528,
+    "orderInMonth": 51,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-528-sun-wu-12412",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+        "kind": "claim",
+        "summary": "愿意继续了解对方的新发现及其可能用途",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+          "topic": "discovery",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-519-action-born-244-potianfeng-13-9",
+            "e-526-action-born-244-potianfeng-13-15"
+          ],
+          "referenceEventId": "e-528-action-born-244-potianfeng-13-13",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 7,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-528-decision-sun-wu-8-52",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 52,
+    "planningTick": 8,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-528-sun-wu-12413",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应孙守一关于新发现的话：愿意继续了解对方的新发现及其可能用途"
+  },
+  {
+    "id": "e-528-action-sun-wu-53",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 528,
+    "orderInMonth": 53,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-528-sun-wu-12413",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+        "kind": "claim",
+        "summary": "愿意继续了解对方的新发现及其可能用途",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+          "topic": "discovery",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-519-action-born-244-potianfeng-13-9",
+            "e-526-action-born-244-potianfeng-13-15"
+          ],
+          "referenceEventId": "e-528-action-born-244-potianfeng-13-13",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 8,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-528-decision-sun-wu-9-54",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 54,
+    "planningTick": 9,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-528-sun-wu-12414",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应孙守一关于新发现的话：愿意继续了解对方的新发现及其可能用途"
+  },
+  {
+    "id": "e-528-action-sun-wu-55",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 528,
+    "orderInMonth": 55,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-528-sun-wu-12414",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+        "kind": "claim",
+        "summary": "愿意继续了解对方的新发现及其可能用途",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+          "topic": "discovery",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-519-action-born-244-potianfeng-13-9",
+            "e-526-action-born-244-potianfeng-13-15"
+          ],
+          "referenceEventId": "e-528-action-born-244-potianfeng-13-13",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 9,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-528-decision-sun-wu-10-56",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 56,
+    "planningTick": 10,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-528-sun-wu-12415",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应孙守一关于新发现的话：愿意继续了解对方的新发现及其可能用途"
+  },
+  {
+    "id": "e-528-action-sun-wu-57",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 528,
+    "orderInMonth": 57,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-528-sun-wu-12415",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+        "kind": "claim",
+        "summary": "愿意继续了解对方的新发现及其可能用途",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+          "topic": "discovery",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-519-action-born-244-potianfeng-13-9",
+            "e-526-action-born-244-potianfeng-13-15"
+          ],
+          "referenceEventId": "e-528-action-born-244-potianfeng-13-13",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 10,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-528-decision-sun-wu-11-58",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 58,
+    "planningTick": 11,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-528-sun-wu-12416",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应孙守一关于新发现的话：愿意继续了解对方的新发现及其可能用途"
+  },
+  {
+    "id": "e-528-action-sun-wu-59",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 528,
+    "orderInMonth": 59,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-528-sun-wu-12416",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+        "kind": "claim",
+        "summary": "愿意继续了解对方的新发现及其可能用途",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+          "topic": "discovery",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-519-action-born-244-potianfeng-13-9",
+            "e-526-action-born-244-potianfeng-13-15"
+          ],
+          "referenceEventId": "e-528-action-born-244-potianfeng-13-13",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 11,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-528-decision-sun-wu-12-60",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 60,
+    "planningTick": 12,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-528-sun-wu-12417",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应孙守一关于新发现的话：愿意继续了解对方的新发现及其可能用途"
+  },
+  {
+    "id": "e-528-action-sun-wu-61",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 528,
+    "orderInMonth": 61,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-528-sun-wu-12417",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+        "kind": "claim",
+        "summary": "愿意继续了解对方的新发现及其可能用途",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+          "topic": "discovery",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-519-action-born-244-potianfeng-13-9",
+            "e-526-action-born-244-potianfeng-13-15"
+          ],
+          "referenceEventId": "e-528-action-born-244-potianfeng-13-13",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 12,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-528-decision-sun-wu-13-62",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 62,
+    "planningTick": 13,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-528-sun-wu-12418",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应孙守一关于新发现的话：愿意继续了解对方的新发现及其可能用途"
+  },
+  {
+    "id": "e-528-action-sun-wu-63",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 528,
+    "orderInMonth": 63,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-528-sun-wu-12418",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+        "kind": "claim",
+        "summary": "愿意继续了解对方的新发现及其可能用途",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+          "topic": "discovery",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-519-action-born-244-potianfeng-13-9",
+            "e-526-action-born-244-potianfeng-13-15"
+          ],
+          "referenceEventId": "e-528-action-born-244-potianfeng-13-13",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 13,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-528-decision-sun-wu-14-64",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 64,
+    "planningTick": 14,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-528-sun-wu-12419",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应孙守一关于新发现的话：愿意继续了解对方的新发现及其可能用途"
+  },
+  {
+    "id": "e-528-action-sun-wu-65",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 528,
+    "orderInMonth": 65,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-528-sun-wu-12419",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+        "kind": "claim",
+        "summary": "愿意继续了解对方的新发现及其可能用途",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+          "topic": "discovery",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-519-action-born-244-potianfeng-13-9",
+            "e-526-action-born-244-potianfeng-13-15"
+          ],
+          "referenceEventId": "e-528-action-born-244-potianfeng-13-13",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 14,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-528-decision-sun-wu-15-66",
+    "kind": "decision",
+    "atMonth": 528,
+    "orderInMonth": 66,
+    "planningTick": 15,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-528-sun-wu-12420",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应孙守一关于新发现的话：愿意继续了解对方的新发现及其可能用途"
+  },
+  {
+    "id": "e-528-action-sun-wu-67",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 528,
+    "orderInMonth": 67,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-528-sun-wu-12420",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-528-action-born-244-potianfeng-13-13:sun-wu",
+        "kind": "claim",
+        "summary": "愿意继续了解对方的新发现及其可能用途",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=discovery|speaker=born-244-potianfeng-13|listener=sun-wu|sources=e-519-action-born-244-potianfeng-13-9,e-526-action-born-244-potianfeng-13-15",
+          "topic": "discovery",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-519-action-born-244-potianfeng-13-9",
+            "e-526-action-born-244-potianfeng-13-15"
+          ],
+          "referenceEventId": "e-528-action-born-244-potianfeng-13-13",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 15,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-528-environment-body-0",
+    "kind": "environment",
+    "atMonth": 528,
+    "orderInMonth": 68,
+    "cellId": 4133,
+    "change": "body",
+    "who": "born-63-potianfeng-9",
+    "result": "后修远结算了脱水休眠 episode 的本月身体代价",
+    "diff": {
+      "hibernationMonthlySettlement": true,
+      "hibernationConditionId": "condition-dehydrated-hibernation-born-63-potianfeng-9-259",
+      "hibernationPhase": "dormant",
+      "monthlyCostApplied": true,
+      "metabolicProfile": "dormant",
+      "hydrationCost": 0.35,
+      "nutritionCost": 0.3,
+      "healthDelta": -0.25,
+      "bodyBefore": {
+        "health": 32.75,
+        "hydration": 0,
+        "nutrition": 0
+      },
+      "bodyAfter": {
+        "health": 32.5,
+        "hydration": 0,
+        "nutrition": 0
+      }
+    },
+    "planningTick": 0,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-528-environment-body-1",
+    "kind": "environment",
+    "atMonth": 528,
+    "orderInMonth": 69,
+    "cellId": 4133,
+    "change": "body",
+    "who": "born-63-potianfeng-9",
+    "result": "后修远的身体储备发生显著变化",
+    "diff": {
+      "health": 32.5,
+      "hydration": 0,
+      "nutrition": 0,
+      "healthDelta": -0.25
+    },
+    "planningTick": 0,
+    "orderInTick": 3
+  }
+]

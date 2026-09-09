@@ -73,6 +73,28 @@ try {
   assert.notEqual(person.position.cellId, counterpart.position.cellId, 'approach cannot occupy another person');
   assert.equal(approach.receipt.planAssessment.step, 'satisfied');
 
+  const semanticCheck = makeIntent([{ kind: 'near-target', target, maxDistance: 1 }]);
+  semanticCheck.plan.completion.goal.meaningReview = {
+    sufficiency: 'insufficient', reason: '靠近对方不能证明已经完成后续合作',
+  };
+  const insufficient = api.assessIntentPlan(state, person, semanticCheck);
+  assert.equal(insufficient.step, 'satisfied', 'unreviewed kernel checks retain their direct semantics');
+  assert.equal(insufficient.goal, 'unverified', 'true proximity alone cannot satisfy a semantically insufficient goal check');
+  assert(insufficient.satisfiedConditionIds.includes('goal:0'), 'actual true conditions remain visible even when insufficient');
+  assert.deepEqual(insufficient.checked.goal.meaningReview, semanticCheck.plan.completion.goal.meaningReview);
+  semanticCheck.plan.completion.goal.meaningReview = { sufficiency: 'sufficient', reason: '这一步的目标就是达到指定距离' };
+  assert.equal(api.assessIntentPlan(state, person, semanticCheck).goal, 'satisfied');
+  semanticCheck.plan.completion.goal = { description: '持有明确数量的石料', conditions: [{ kind: 'fact', predicate: {
+    kind: 'inventory-at-least', materialId: api.Material.Stone, quantity: 999,
+  } }], meaningReview: { sufficiency: 'sufficient', reason: '该库存数量是这项目标明确要求的成果' } };
+  assert.equal(api.assessIntentPlan(state, person, semanticCheck).goal, 'unmet', 'semantic sufficiency cannot make false facts true');
+  semanticCheck.plan.completion.goal.meaningReview = { sufficiency: 'unverified', reason: '还没有独立判断这些条件的充分性' };
+  assert.equal(api.assessIntentPlan(state, person, semanticCheck).goal, 'unverified', 'pending review remains unverified even if a condition is false');
+  semanticCheck.plan.completion.goal = { description: '另一个直接检查', conditions: [{ kind: 'near-target', target, maxDistance: 2 }] };
+  const replacement = api.assessIntentPlan(state, person, semanticCheck, insufficient);
+  assert.equal(replacement.checked.goal.meaningReview, undefined, 'a new check never inherits a previous check review');
+  assert.equal(replacement.goal, 'satisfied');
+
   const drop = { id: 'arrival-wood', materialId: api.Material.Wood, quantity: 1,
     cellId: person.position.cellId, z: 1, createdAtMonth: 0, sourceEventIds: [] };
   state.world.drops.push(drop);
@@ -143,6 +165,10 @@ try {
     plannedBuild.goal = { kind: 'knowledge', factId: `unattempted:${order}` };
     plannedBuild.plan.completion.goal.conditions = proxyGoal ? [near]
       : [{ kind: 'work-state', target: { kind: 'produced-work' } }];
+    const review = proxyGoal
+      ? { sufficiency: 'insufficient', reason: '靠近施工地点不足以证明搭建完成' }
+      : { sufficiency: 'sufficient', reason: '实际存在本次新搭成的构件即可证明该单步成果' };
+    plannedBuild.plan.completion.goal.meaningReview = structuredClone(review);
     plannedBuild.nextAction = { kind: 'world-interact', adjudication: {
       version: 'world-adjudicated-interaction-v1', request: '把木材立在选定位置', result: '搭建尝试',
       targets: [{ kind: 'inventory-stack', personId: person.id, stackId: 'preflight-wood' }, site],
@@ -159,6 +185,11 @@ try {
     assert.equal(plannedBuild.actionEventIds.length, 1);
     assert.equal(plannedBuild.planPreflight, undefined);
     assert(fact.diff.appliedEffects.some((effect) => effect.kind === 'assemble'));
+    assert.equal(fact.diff.planAssessment.goal, proxyGoal ? 'unverified' : 'satisfied');
+    assert(fact.diff.planAssessment.satisfiedConditionIds.includes('goal:0'), 'physical truth is retained independently of meaning review');
+    assert.deepEqual(plannedBuild.plan.completion.goal.meaningReview, review,
+      'binding a produced-work placeholder preserves the review of the same check');
+    if (!proxyGoal) assert.equal(plannedBuild.plan.completion.goal.conditions[0].target.kind, 'work');
   };
   executeBuild({ x: 13, y: 12, z: 1 }, false, 3);
   executeBuild({ x: 12, y: 13, z: 1 }, true, 4);

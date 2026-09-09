@@ -1,5 +1,8 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import type { AtmosphereCaptureApi, AtmosphereCaptureOptions } from './cosmosCaptureControls';
+
+export type { AtmosphereCaptureApi, AtmosphereCaptureOptions } from './cosmosCaptureControls';
 
 export type AtmosphereTransitionDirection = 'dive' | 'rise';
 
@@ -7,6 +10,7 @@ interface Props {
   direction: AtmosphereTransitionDirection;
   onComplete: (direction: AtmosphereTransitionDirection) => void;
   onOpaque: (direction: AtmosphereTransitionDirection) => void;
+  capture?: AtmosphereCaptureOptions;
 }
 
 const TRANSITION_MS = 2000;
@@ -15,18 +19,20 @@ const TRANSITION_MS = 2000;
  * 两个独立 WebGL 场景之间的短时大气桥接层。
  * 云层完全遮屏时切换底层场景，因此不要求宇宙球体与人间体素地形连续。
  */
-export default function AtmosphereTransition({ direction, onComplete, onOpaque }: Props) {
+export default function AtmosphereTransition({ direction, onComplete, onOpaque, capture }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const callbacksRef = useRef({ onComplete, onOpaque });
   callbacksRef.current = { onComplete, onOpaque };
 
   useEffect(() => {
     const canvas = canvasRef.current!;
+    const manualCapture = Boolean(capture && capture.manual !== false);
     const renderer = new THREE.WebGLRenderer({
       canvas,
       alpha: true,
       antialias: false,
       powerPreference: 'high-performance',
+      preserveDrawingBuffer: Boolean(capture),
     });
     renderer.setClearColor(0x000000, 0);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -148,7 +154,9 @@ export default function AtmosphereTransition({ direction, onComplete, onOpaque }
 
     const resize = () => {
       const rect = canvas.parentElement!.getBoundingClientRect();
-      const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.25);
+      const pixelRatio = capture
+        ? Math.max(0.25, capture.pixelRatio ?? 1)
+        : Math.min(window.devicePixelRatio || 1, 1.25);
       renderer.setPixelRatio(pixelRatio);
       renderer.setSize(rect.width, rect.height, false);
       material.uniforms.uResolution.value.set(rect.width * pixelRatio, rect.height * pixelRatio);
@@ -159,25 +167,42 @@ export default function AtmosphereTransition({ direction, onComplete, onOpaque }
 
     const startedAt = performance.now();
     let midpointSent = false;
+    let completeSent = false;
     let raf = 0;
-    const tick = (now: number) => {
-      const progress = THREE.MathUtils.clamp((now - startedAt) / TRANSITION_MS, 0, 1);
+    const renderFrame = (elapsedMs: number) => {
+      const progress = THREE.MathUtils.clamp(elapsedMs / TRANSITION_MS, 0, 1);
       material.uniforms.uProgress.value = progress;
-      material.uniforms.uTime.value = (now - startedAt) / 1000;
+      material.uniforms.uTime.value = Math.max(0, elapsedMs) / 1000;
       renderer.render(scene, camera);
       if (!midpointSent && progress >= 0.5) {
         midpointSent = true;
         callbacksRef.current.onOpaque(direction);
       }
-      if (progress >= 1) {
+      if (!completeSent && progress >= 1) {
+        completeSent = true;
         callbacksRef.current.onComplete(direction);
-        return;
       }
+      return progress;
+    };
+    const tick = (now: number) => {
+      if (renderFrame(now - startedAt) >= 1) return;
       raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
+    if (!manualCapture) raf = requestAnimationFrame(tick);
+    const captureApi: AtmosphereCaptureApi = {
+      renderer,
+      durationMs: TRANSITION_MS,
+      renderAt: renderFrame,
+      resize,
+    };
+    let captureDisposed = false;
+    queueMicrotask(() => {
+      if (!captureDisposed) capture?.onReady(captureApi);
+    });
 
     return () => {
+      captureDisposed = true;
+      capture?.onReady(null);
       cancelAnimationFrame(raf);
       observer.disconnect();
       geometry.dispose();

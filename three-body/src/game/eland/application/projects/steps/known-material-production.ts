@@ -14,7 +14,6 @@ import {
   type ItemStack,
   type PersonState,
 } from '../../../domain/person';
-import { canPersonPlanToCollectProjectMaterialDrop } from '../../../domain/project-material-request';
 import { findCurrentVisibleStoredMaterialAccess } from '../../../domain/stored-food-access';
 import {
   dropStep,
@@ -155,13 +154,7 @@ export function localFinishedOutputAccess(
     state,
     person,
     state.world.drops.filter((candidate) => candidate.quantity > 0
-      && visible.has(candidate.cellId)
-      && canPersonPlanToCollectProjectMaterialDrop(
-        state,
-        person.id,
-        candidate,
-        state.clock.elapsedMonths + 1,
-      )),
+      && visible.has(candidate.cellId)),
     [outputMaterialId],
   );
   if (drop) return { kind: 'drop', sourceFactIds: [...drop.sourceEventIds] };

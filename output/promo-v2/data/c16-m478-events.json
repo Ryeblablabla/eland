@@ -1,0 +1,2089 @@
+[
+  {
+    "id": "e-478-permission-expired-permission:offer-permission:453:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:41",
+    "kind": "permission",
+    "atMonth": 478,
+    "orderInMonth": 0,
+    "cellId": 0,
+    "permissionId": "permission:offer-permission:453:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:41",
+    "change": "expired",
+    "partyIds": [
+      "sun-wu",
+      "potianfeng"
+    ],
+    "result": "一项物质取用许可已到期",
+    "planningTick": 0,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-478-decision-potianfeng-1-1",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 1,
+    "planningTick": 1,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "use-permission:permission:offer-permission:477:collective:offer-collective:3:potianfeng:rei-ayanami:born-22-potianfeng-8:potianfeng:56:stack-born-22-potianfeng-8-56-393",
+      "reason": "授权人、被授权人、物质、单次数量与有效期都有可追溯许可"
+    },
+    "intentId": "intent-478-potianfeng-11084",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：依据许可从孙朝宗处取用公共谷仓"
+  },
+  {
+    "id": "e-478-action-potianfeng-2",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 478,
+    "orderInMonth": 2,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-478-potianfeng-11084",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 56,
+      "quantity": 1,
+      "from": {
+        "kind": "person",
+        "personId": "born-22-potianfeng-8"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "potianfeng"
+      },
+      "stackId": "stack-born-22-potianfeng-8-56-393",
+      "authorizationRef": "permission:offer-permission:477:collective:offer-collective:3:potianfeng:rei-ayanami:born-22-potianfeng-8:potianfeng:56"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "公共谷仓 × 1 改变了持有者",
+    "diff": {
+      "materialId": 56,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": true,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "person",
+        "personId": "born-22-potianfeng-8"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "potianfeng"
+      },
+      "witnessedBy": [
+        "potianfeng",
+        "rei-ayanami",
+        "sun-wu",
+        "born-22-potianfeng-8",
+        "born-159-potianfeng-11",
+        "born-244-potianfeng-13"
+      ],
+      "sourceEventIds": [
+        "e-337-action-potianfeng-25",
+        "e-337-action-houyi-28",
+        "e-338-action-cai-wenji-24",
+        "e-338-action-houyi-34",
+        "e-406-action-born-22-potianfeng-8-8",
+        "e-339-action-potianfeng-26",
+        "e-330-action-houyi-26",
+        "e-330-action-cai-wenji-30",
+        "e-339-action-cai-wenji-23",
+        "e-340-action-houyi-30",
+        "e-407-action-born-22-potianfeng-8-19",
+        "e-246-action-houyi-22",
+        "e-340-action-potianfeng-36",
+        "e-230-action-born-22-potianfeng-8-33",
+        "e-312-action-born-22-potianfeng-8-38",
+        "e-351-action-potianfeng-35",
+        "e-412-action-born-22-potianfeng-8-15",
+        "e-246-action-potianfeng-25",
+        "e-332-action-cai-wenji-28",
+        "e-336-action-potianfeng-31",
+        "e-282-action-potianfeng-25",
+        "e-353-action-potianfeng-34",
+        "e-413-action-born-22-potianfeng-8-15",
+        "e-478-action-potianfeng-2"
+      ],
+      "sourceLineageKeys": [
+        "inventory:born-22-potianfeng-8:stack-born-22-potianfeng-8-56-393",
+        "inventory:potianfeng:stack-potianfeng-56-322",
+        "inventory:houyi:stack-houyi-56-286",
+        "inventory:cai-wenji:stack-cai-wenji-56-119",
+        "inventory:potianfeng:stack-potianfeng-56-149",
+        "inventory:sun-wu:stack-sun-wu-56-173",
+        "inventory:sun-wu:stack-sun-wu-56-182",
+        "inventory:sun-wu:stack-sun-wu-56-183",
+        "inventory:sun-wu:stack-sun-wu-56-191",
+        "inventory:sun-wu:stack-sun-wu-56-192",
+        "inventory:houyi:stack-houyi-56-229",
+        "inventory:potianfeng:stack-potianfeng-56-211",
+        "inventory:potianfeng:stack-potianfeng-56-239",
+        "inventory:potianfeng:stack-potianfeng-56-240",
+        "inventory:potianfeng:stack-potianfeng-56-241",
+        "inventory:potianfeng:stack-potianfeng-56-242",
+        "inventory:houyi:stack-houyi-56-260",
+        "inventory:houyi:stack-houyi-56-262",
+        "inventory:potianfeng:stack-potianfeng-56-252",
+        "inventory:cai-wenji:stack-cai-wenji-56-305",
+        "inventory:cai-wenji:stack-cai-wenji-56-309",
+        "inventory:potianfeng:stack-potianfeng-56-314",
+        "inventory:potianfeng:stack-potianfeng-56-318",
+        "inventory:cai-wenji:stack-cai-wenji-56-336",
+        "inventory:cai-wenji:stack-cai-wenji-56-338",
+        "inventory:cai-wenji:stack-cai-wenji-56-339",
+        "inventory:born-22-potianfeng-8:stack-born-22-potianfeng-8-56-230"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-478-decision-born-16-cai-wenji-7-1-3",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 3,
+    "planningTick": 1,
+    "orderInTick": 2,
+    "cellId": 3039,
+    "who": "born-16-cai-wenji-7",
+    "decision": {
+      "kind": "start",
+      "optionId": "try-inventory-combine:stack-born-16-cai-wenji-7-23-329:stack-born-16-cai-wenji-7-41-328",
+      "reason": "背包中的两种物质可以尝试局部结合，但结果未知"
+    },
+    "intentId": "intent-478-born-16-cai-wenji-7-11085",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "孙疏影决定：尝试结合绳与木制生产工具"
+  },
+  {
+    "id": "e-478-action-born-16-cai-wenji-7-4",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 478,
+    "orderInMonth": 4,
+    "cellId": 3039,
+    "who": "born-16-cai-wenji-7",
+    "intentId": "intent-478-born-16-cai-wenji-7-11085",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "combine",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "born-16-cai-wenji-7",
+          "stackId": "stack-born-16-cai-wenji-7-23-329"
+        },
+        {
+          "kind": "inventory-stack",
+          "personId": "born-16-cai-wenji-7",
+          "stackId": "stack-born-16-cai-wenji-7-41-328"
+        }
+      ]
+    },
+    "fromCellId": 3039,
+    "toCellId": 3039,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3039
+    ],
+    "status": "blocked",
+    "result": "这些随身物质当前没有可发生的结合规则",
+    "diff": {
+      "inputMaterialIds": [
+        23,
+        41
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-478-decision-cai-wenji-1-5",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 5,
+    "planningTick": 1,
+    "orderInTick": 4,
+    "cellId": 1358,
+    "who": "cai-wenji",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:478:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:born-115-cai-wenji-10:1",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界"
+    },
+    "intentId": "intent-478-cai-wenji-11086",
+    "domain": "social",
+    "usedModel": false,
+    "result": "蔡文姬决定：允许后凌川在需要时取用自己的石"
+  },
+  {
+    "id": "e-478-action-cai-wenji-6",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 478,
+    "orderInMonth": 6,
+    "cellId": 1358,
+    "who": "cai-wenji",
+    "intentId": "intent-478-cai-wenji-11086",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:478:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:born-115-cai-wenji-10:1",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份石",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "cai-wenji",
+          "partnerId": "born-115-cai-wenji-10",
+          "collectiveId": "collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10",
+          "grantorId": "cai-wenji",
+          "granteeId": "born-115-cai-wenji-10",
+          "materialId": 1,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 502,
+          "expiresAtMonth": 484
+        }
+      },
+      "audience": [
+        "born-115-cai-wenji-10"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1358,
+    "toCellId": 1358,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1358
+    ],
+    "status": "completed",
+    "result": "蔡文姬向后凌川表达：你可以在需要时每次取用我的一份石",
+    "diff": {
+      "audience": [
+        "born-115-cai-wenji-10"
+      ],
+      "content": {
+        "id": "offer-permission:478:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:born-115-cai-wenji-10:1",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份石",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "cai-wenji",
+          "partnerId": "born-115-cai-wenji-10",
+          "collectiveId": "collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10",
+          "grantorId": "cai-wenji",
+          "granteeId": "born-115-cai-wenji-10",
+          "materialId": 1,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 502,
+          "expiresAtMonth": 484
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-478-decision-houyi-1-7",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 7,
+    "planningTick": 1,
+    "orderInTick": 6,
+    "cellId": 1359,
+    "who": "houyi",
+    "decision": {
+      "kind": "start",
+      "optionId": "meet:born-115-cai-wenji-10",
+      "reason": "看见另一个人，接近后才能沟通、求助或共同做事"
+    },
+    "intentId": "intent-478-houyi-11087",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后羿决定：去与后凌川会合"
+  },
+  {
+    "id": "e-478-action-houyi-8",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 478,
+    "orderInMonth": 8,
+    "cellId": 1358,
+    "who": "houyi",
+    "intentId": "intent-478-houyi-11087",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1358,
+      "toZ": 5
+    },
+    "fromCellId": 1359,
+    "toCellId": 1358,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1359,
+      1358
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 14, 16 的高度 5",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 7
+  },
+  {
+    "id": "e-478-decision-born-244-potianfeng-13-1-9",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 9,
+    "planningTick": 1,
+    "orderInTick": 8,
+    "cellId": 689,
+    "who": "born-244-potianfeng-13",
+    "decision": {
+      "kind": "start",
+      "optionId": "conversation:failure:478:born-244-potianfeng-13:potianfeng",
+      "reason": "本人记得一次真实失败，可以向身边人表达挫折并寻求理解"
+    },
+    "intentId": "intent-478-born-244-potianfeng-13-11088",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙守一决定：与破天锋谈失败与挫折：向破天锋说明本人记得的失败“与破天锋谈感谢：感谢破天锋此前在本人需要帮助时给予物质、照护或履约支持，随后尝试结合石制工具与铜失败：这些随身物质当前没有可发生的结合规则”，并邀请对方一起复盘"
+  },
+  {
+    "id": "e-478-action-born-244-potianfeng-13-10",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 478,
+    "orderInMonth": 10,
+    "cellId": 689,
+    "who": "born-244-potianfeng-13",
+    "intentId": "intent-478-born-244-potianfeng-13-11088",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "conversation:failure:478:born-244-potianfeng-13:potianfeng",
+        "kind": "claim",
+        "summary": "向破天锋说明本人记得的失败“与破天锋谈感谢：感谢破天锋此前在本人需要帮助时给予物质、照护或履约支持，随后尝试结合石制工具与铜失败：这些随身物质当前没有可发生的结合规则”，并邀请对方一起复盘",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+          "topic": "failure",
+          "turn": "opening",
+          "speakerId": "born-244-potianfeng-13",
+          "listenerId": "potianfeng",
+          "sourceFactIds": [
+            "e-477-action-born-244-potianfeng-13-28"
+          ]
+        }
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙守一向破天锋表达：向破天锋说明本人记得的失败“与破天锋谈感谢：感谢破天锋此前在本人需要帮助时给予物质、照护或履约支持，随后尝试结合石制工具与铜失败：这些随身物质当前没有可发生的结合规则”，并邀请对方一起复盘",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "conversation:failure:478:born-244-potianfeng-13:potianfeng",
+        "kind": "claim",
+        "summary": "向破天锋说明本人记得的失败“与破天锋谈感谢：感谢破天锋此前在本人需要帮助时给予物质、照护或履约支持，随后尝试结合石制工具与铜失败：这些随身物质当前没有可发生的结合规则”，并邀请对方一起复盘",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+          "topic": "failure",
+          "turn": "opening",
+          "speakerId": "born-244-potianfeng-13",
+          "listenerId": "potianfeng",
+          "sourceFactIds": [
+            "e-477-action-born-244-potianfeng-13-28"
+          ]
+        }
+      },
+      "groundedConversationBasisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+      "groundedConversationTopic": "failure",
+      "groundedConversationTurn": "opening",
+      "groundedConversationSourceFactIds": [
+        "e-477-action-born-244-potianfeng-13-28"
+      ],
+      "relationTrustDelta": 0,
+      "relationBondDelta": 2
+    },
+    "planningTick": 1,
+    "orderInTick": 9
+  },
+  {
+    "id": "e-478-decision-born-22-potianfeng-8-1-11",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 11,
+    "planningTick": 1,
+    "orderInTick": 10,
+    "cellId": 689,
+    "who": "born-22-potianfeng-8",
+    "decision": {
+      "kind": "start",
+      "optionId": "revoke-permission:478:permission:offer-permission:477:collective:offer-collective:3:potianfeng:rei-ayanami:born-22-potianfeng-8:potianfeng:56",
+      "reason": "持有者对未来取用授权保留明确撤回能力"
+    },
+    "intentId": "intent-478-born-22-potianfeng-8-11089",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙朝宗决定：向破天锋撤回公共谷仓取用许可"
+  },
+  {
+    "id": "e-478-action-born-22-potianfeng-8-12",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 478,
+    "orderInMonth": 12,
+    "cellId": 689,
+    "who": "born-22-potianfeng-8",
+    "intentId": "intent-478-born-22-potianfeng-8-11089",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "revoke-permission:478:permission:offer-permission:477:collective:offer-collective:3:potianfeng:rei-ayanami:born-22-potianfeng-8:potianfeng:56",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:477:collective:offer-collective:3:potianfeng:rei-ayanami:born-22-potianfeng-8:potianfeng:56",
+        "summary": "我撤回你对我的公共谷仓的取用许可"
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙朝宗向破天锋表达：我撤回你对我的公共谷仓的取用许可",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "revoke-permission:478:permission:offer-permission:477:collective:offer-collective:3:potianfeng:rei-ayanami:born-22-potianfeng-8:potianfeng:56",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:477:collective:offer-collective:3:potianfeng:rei-ayanami:born-22-potianfeng-8:potianfeng:56",
+        "summary": "我撤回你对我的公共谷仓的取用许可"
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 11
+  },
+  {
+    "id": "e-478-decision-born-159-potianfeng-11-1-13",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 13,
+    "planningTick": 1,
+    "orderInTick": 12,
+    "cellId": 689,
+    "who": "born-159-potianfeng-11",
+    "decision": {
+      "kind": "start",
+      "optionId": "use-permission:permission:offer-permission:469:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:born-159-potianfeng-11:31:stack-potianfeng-31-472",
+      "reason": "授权人、被授权人、物质、单次数量与有效期都有可追溯许可"
+    },
+    "intentId": "intent-478-born-159-potianfeng-11-11090",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙明哲决定：依据许可从破天锋处取用骨"
+  },
+  {
+    "id": "e-478-action-born-159-potianfeng-11-14",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 478,
+    "orderInMonth": 14,
+    "cellId": 689,
+    "who": "born-159-potianfeng-11",
+    "intentId": "intent-478-born-159-potianfeng-11-11090",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 31,
+      "quantity": 1,
+      "from": {
+        "kind": "person",
+        "personId": "potianfeng"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-159-potianfeng-11"
+      },
+      "stackId": "stack-potianfeng-31-472",
+      "authorizationRef": "permission:offer-permission:469:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:born-159-potianfeng-11:31"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "骨 × 1 改变了持有者",
+    "diff": {
+      "materialId": 31,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": true,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "person",
+        "personId": "potianfeng"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-159-potianfeng-11"
+      },
+      "witnessedBy": [
+        "potianfeng",
+        "rei-ayanami",
+        "sun-wu",
+        "born-22-potianfeng-8",
+        "born-159-potianfeng-11",
+        "born-244-potianfeng-13"
+      ],
+      "sourceEventIds": [
+        "e-158-environment-animal-1",
+        "e-228-action-born-159-potianfeng-11-42",
+        "e-183-environment-animal-1",
+        "e-255-action-born-22-potianfeng-8-43",
+        "e-255-action-born-22-potianfeng-8-45",
+        "e-356-action-born-22-potianfeng-8-47",
+        "e-357-action-potianfeng-28",
+        "e-471-action-born-159-potianfeng-11-10",
+        "e-472-action-born-159-potianfeng-11-3",
+        "e-472-action-born-159-potianfeng-11-28",
+        "e-478-action-born-159-potianfeng-11-14"
+      ],
+      "sourceLineageKeys": [
+        "inventory:potianfeng:stack-potianfeng-31-472",
+        "inventory:born-159-potianfeng-11:stack-born-159-potianfeng-11-31-228",
+        "drop:drop-158-animal-deer-9-carcass-436",
+        "inventory:potianfeng:stack-potianfeng-31-356",
+        "inventory:born-22-potianfeng-8:stack-born-22-potianfeng-8-31-255",
+        "drop:drop-183-animal-deer-0-carcass-435"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 13
+  },
+  {
+    "id": "e-478-decision-rei-ayanami-1-15",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 15,
+    "planningTick": 1,
+    "orderInTick": 14,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "revoke-permission:478:permission:offer-permission:459:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+      "reason": "持有者对未来取用授权保留明确撤回能力"
+    },
+    "intentId": "intent-478-rei-ayanami-11091",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：向破天锋撤回木制生产工具取用许可"
+  },
+  {
+    "id": "e-478-action-rei-ayanami-16",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 478,
+    "orderInMonth": 16,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-478-rei-ayanami-11091",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "revoke-permission:478:permission:offer-permission:459:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:459:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+        "summary": "我撤回你对我的木制生产工具的取用许可"
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "绫波丽向破天锋表达：我撤回你对我的木制生产工具的取用许可",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "revoke-permission:478:permission:offer-permission:459:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:459:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+        "summary": "我撤回你对我的木制生产工具的取用许可"
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 15
+  },
+  {
+    "id": "e-478-decision-born-193-cai-wenji-12-1-17",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 17,
+    "planningTick": 1,
+    "orderInTick": 16,
+    "cellId": 1358,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "revoke-permission:478:permission:offer-permission:477:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21",
+      "reason": "持有者对未来取用授权保留明确撤回能力"
+    },
+    "intentId": "intent-478-born-193-cai-wenji-12-11092",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：向蔡文姬撤回食物取用许可"
+  },
+  {
+    "id": "e-478-action-born-193-cai-wenji-12-18",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 478,
+    "orderInMonth": 18,
+    "cellId": 1358,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-478-born-193-cai-wenji-12-11092",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "revoke-permission:478:permission:offer-permission:477:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:477:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21",
+        "summary": "我撤回你对我的食物的取用许可"
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1358,
+    "toCellId": 1358,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1358
+    ],
+    "status": "completed",
+    "result": "后若水向蔡文姬表达：我撤回你对我的食物的取用许可",
+    "diff": {
+      "audience": [
+        "cai-wenji"
+      ],
+      "content": {
+        "id": "revoke-permission:478:permission:offer-permission:477:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:477:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21",
+        "summary": "我撤回你对我的食物的取用许可"
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 17
+  },
+  {
+    "id": "e-478-decision-aphrodite-1-19",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 19,
+    "planningTick": 1,
+    "orderInTick": 18,
+    "cellId": 4301,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:478:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界"
+    },
+    "intentId": "intent-478-aphrodite-11093",
+    "domain": "social",
+    "usedModel": false,
+    "result": "阿佛洛狄忒决定：允许芙蕾雅在需要时取用自己的公共谷仓"
+  },
+  {
+    "id": "e-478-action-aphrodite-20",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 478,
+    "orderInMonth": 20,
+    "cellId": 4301,
+    "who": "aphrodite",
+    "intentId": "intent-478-aphrodite-11093",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:478:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份公共谷仓",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "aphrodite",
+          "partnerId": "freyja",
+          "collectiveId": "collective:offer-collective:66:aphrodite:freyja",
+          "grantorId": "aphrodite",
+          "granteeId": "freyja",
+          "materialId": 56,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 502,
+          "expiresAtMonth": 484
+        }
+      },
+      "audience": [
+        "freyja"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 4301,
+    "toCellId": 4301,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4301
+    ],
+    "status": "completed",
+    "result": "阿佛洛狄忒向芙蕾雅表达：你可以在需要时每次取用我的一份公共谷仓",
+    "diff": {
+      "audience": [
+        "freyja"
+      ],
+      "content": {
+        "id": "offer-permission:478:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份公共谷仓",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "aphrodite",
+          "partnerId": "freyja",
+          "collectiveId": "collective:offer-collective:66:aphrodite:freyja",
+          "grantorId": "aphrodite",
+          "granteeId": "freyja",
+          "materialId": 56,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 502,
+          "expiresAtMonth": 484
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 19
+  },
+  {
+    "id": "e-478-decision-sun-wu-1-21",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 21,
+    "planningTick": 1,
+    "orderInTick": 20,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:478:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:41",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界"
+    },
+    "intentId": "intent-478-sun-wu-11094",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：允许破天锋在需要时取用自己的木制生产工具"
+  },
+  {
+    "id": "e-478-action-sun-wu-22",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 478,
+    "orderInMonth": 22,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-478-sun-wu-11094",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:478:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:41",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份木制生产工具",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "sun-wu",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:29:houyi:sun-wu",
+          "grantorId": "sun-wu",
+          "granteeId": "potianfeng",
+          "materialId": 41,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 502,
+          "expiresAtMonth": 484
+        }
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙武向破天锋表达：你可以在需要时每次取用我的一份木制生产工具",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "offer-permission:478:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:41",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份木制生产工具",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "sun-wu",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:29:houyi:sun-wu",
+          "grantorId": "sun-wu",
+          "granteeId": "potianfeng",
+          "materialId": 41,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 502,
+          "expiresAtMonth": 484
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 21
+  },
+  {
+    "id": "e-478-decision-born-115-cai-wenji-10-1-23",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 23,
+    "planningTick": 1,
+    "orderInTick": 22,
+    "cellId": 1358,
+    "who": "born-115-cai-wenji-10",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:478:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:born-115-cai-wenji-10:1",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-478-born-115-cai-wenji-10-11095",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后凌川决定：接受蔡文姬的物质取用许可"
+  },
+  {
+    "id": "e-478-action-born-115-cai-wenji-10-24",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 478,
+    "orderInMonth": 24,
+    "cellId": 1358,
+    "who": "born-115-cai-wenji-10",
+    "intentId": "intent-478-born-115-cai-wenji-10-11095",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:478:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:born-115-cai-wenji-10:1:born-115-cai-wenji-10",
+        "kind": "accept",
+        "referenceId": "offer-permission:478:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:born-115-cai-wenji-10:1"
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1358,
+    "toCellId": 1358,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1358
+    ],
+    "status": "completed",
+    "result": "后凌川向蔡文姬表达：accept",
+    "diff": {
+      "audience": [
+        "cai-wenji"
+      ],
+      "content": {
+        "id": "accept:offer-permission:478:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:born-115-cai-wenji-10:1:born-115-cai-wenji-10",
+        "kind": "accept",
+        "referenceId": "offer-permission:478:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:born-115-cai-wenji-10:1"
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 23
+  },
+  {
+    "id": "e-478-decision-freyja-1-25",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 25,
+    "planningTick": 1,
+    "orderInTick": 24,
+    "cellId": 4301,
+    "who": "freyja",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:478:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-478-freyja-11096",
+    "domain": "social",
+    "usedModel": false,
+    "result": "芙蕾雅决定：接受阿佛洛狄忒的物质取用许可"
+  },
+  {
+    "id": "e-478-action-freyja-26",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 478,
+    "orderInMonth": 26,
+    "cellId": 4301,
+    "who": "freyja",
+    "intentId": "intent-478-freyja-11096",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:478:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56:freyja",
+        "kind": "accept",
+        "referenceId": "offer-permission:478:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56"
+      },
+      "audience": [
+        "aphrodite"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 4301,
+    "toCellId": 4301,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4301
+    ],
+    "status": "completed",
+    "result": "芙蕾雅向阿佛洛狄忒表达：accept",
+    "diff": {
+      "audience": [
+        "aphrodite"
+      ],
+      "content": {
+        "id": "accept:offer-permission:478:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56:freyja",
+        "kind": "accept",
+        "referenceId": "offer-permission:478:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56"
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 25
+  },
+  {
+    "id": "e-478-decision-potianfeng-2-27",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 27,
+    "planningTick": 2,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:478:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:41",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-478-potianfeng-11097",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：接受孙武的物质取用许可"
+  },
+  {
+    "id": "e-478-action-potianfeng-28",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 478,
+    "orderInMonth": 28,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-478-potianfeng-11097",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:478:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:41:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:478:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:41"
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "破天锋向孙武表达：accept",
+    "diff": {
+      "audience": [
+        "sun-wu"
+      ],
+      "content": {
+        "id": "accept:offer-permission:478:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:41:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:478:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:41"
+      }
+    },
+    "planningTick": 2,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-478-decision-potianfeng-3-29",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 29,
+    "planningTick": 3,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-478-potianfeng-11098",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙守一关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-478-action-potianfeng-30",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 478,
+    "orderInMonth": 30,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-478-potianfeng-11098",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-477-action-born-244-potianfeng-13-28"
+          ],
+          "referenceEventId": "e-478-action-born-244-potianfeng-13-10",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "破天锋向孙守一表达：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+    "diff": {
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "content": {
+        "id": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-477-action-born-244-potianfeng-13-28"
+          ],
+          "referenceEventId": "e-478-action-born-244-potianfeng-13-10",
+          "stance": "supportive"
+        }
+      },
+      "groundedConversationBasisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+      "groundedConversationTopic": "failure",
+      "groundedConversationTurn": "response",
+      "groundedConversationSourceFactIds": [
+        "e-477-action-born-244-potianfeng-13-28"
+      ],
+      "groundedConversationReferenceEventId": "e-478-action-born-244-potianfeng-13-10",
+      "groundedConversationStance": "supportive",
+      "relationTrustDelta": 1,
+      "relationBondDelta": 2
+    },
+    "planningTick": 3,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-478-decision-potianfeng-4-31",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 31,
+    "planningTick": 4,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-478-potianfeng-11099",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙守一关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-478-action-potianfeng-32",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 478,
+    "orderInMonth": 32,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-478-potianfeng-11099",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-477-action-born-244-potianfeng-13-28"
+          ],
+          "referenceEventId": "e-478-action-born-244-potianfeng-13-10",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 4,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-478-decision-potianfeng-5-33",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 33,
+    "planningTick": 5,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-478-potianfeng-11100",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙守一关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-478-action-potianfeng-34",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 478,
+    "orderInMonth": 34,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-478-potianfeng-11100",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-477-action-born-244-potianfeng-13-28"
+          ],
+          "referenceEventId": "e-478-action-born-244-potianfeng-13-10",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 5,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-478-decision-potianfeng-6-35",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 35,
+    "planningTick": 6,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-478-potianfeng-11101",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙守一关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-478-action-potianfeng-36",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 478,
+    "orderInMonth": 36,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-478-potianfeng-11101",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-477-action-born-244-potianfeng-13-28"
+          ],
+          "referenceEventId": "e-478-action-born-244-potianfeng-13-10",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 6,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-478-decision-potianfeng-7-37",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 37,
+    "planningTick": 7,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-478-potianfeng-11102",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙守一关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-478-action-potianfeng-38",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 478,
+    "orderInMonth": 38,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-478-potianfeng-11102",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-477-action-born-244-potianfeng-13-28"
+          ],
+          "referenceEventId": "e-478-action-born-244-potianfeng-13-10",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 7,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-478-decision-potianfeng-8-39",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 39,
+    "planningTick": 8,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-478-potianfeng-11103",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙守一关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-478-action-potianfeng-40",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 478,
+    "orderInMonth": 40,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-478-potianfeng-11103",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-477-action-born-244-potianfeng-13-28"
+          ],
+          "referenceEventId": "e-478-action-born-244-potianfeng-13-10",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 8,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-478-decision-potianfeng-9-41",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 41,
+    "planningTick": 9,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-478-potianfeng-11104",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙守一关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-478-action-potianfeng-42",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 478,
+    "orderInMonth": 42,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-478-potianfeng-11104",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-477-action-born-244-potianfeng-13-28"
+          ],
+          "referenceEventId": "e-478-action-born-244-potianfeng-13-10",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 9,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-478-decision-potianfeng-10-43",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 43,
+    "planningTick": 10,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-478-potianfeng-11105",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙守一关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-478-action-potianfeng-44",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 478,
+    "orderInMonth": 44,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-478-potianfeng-11105",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-477-action-born-244-potianfeng-13-28"
+          ],
+          "referenceEventId": "e-478-action-born-244-potianfeng-13-10",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 10,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-478-decision-potianfeng-11-45",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 45,
+    "planningTick": 11,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-478-potianfeng-11106",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙守一关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-478-action-potianfeng-46",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 478,
+    "orderInMonth": 46,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-478-potianfeng-11106",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-477-action-born-244-potianfeng-13-28"
+          ],
+          "referenceEventId": "e-478-action-born-244-potianfeng-13-10",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 11,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-478-decision-potianfeng-12-47",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 47,
+    "planningTick": 12,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-478-potianfeng-11107",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙守一关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-478-action-potianfeng-48",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 478,
+    "orderInMonth": 48,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-478-potianfeng-11107",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-477-action-born-244-potianfeng-13-28"
+          ],
+          "referenceEventId": "e-478-action-born-244-potianfeng-13-10",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 12,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-478-decision-potianfeng-13-49",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 49,
+    "planningTick": 13,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-478-potianfeng-11108",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙守一关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-478-action-potianfeng-50",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 478,
+    "orderInMonth": 50,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-478-potianfeng-11108",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-477-action-born-244-potianfeng-13-28"
+          ],
+          "referenceEventId": "e-478-action-born-244-potianfeng-13-10",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 13,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-478-decision-potianfeng-14-51",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 51,
+    "planningTick": 14,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-478-potianfeng-11109",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙守一关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-478-action-potianfeng-52",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 478,
+    "orderInMonth": 52,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-478-potianfeng-11109",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-477-action-born-244-potianfeng-13-28"
+          ],
+          "referenceEventId": "e-478-action-born-244-potianfeng-13-10",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 14,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-478-decision-potianfeng-15-53",
+    "kind": "decision",
+    "atMonth": 478,
+    "orderInMonth": 53,
+    "planningTick": 15,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-478-potianfeng-11110",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙守一关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-478-action-potianfeng-54",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 478,
+    "orderInMonth": 54,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-478-potianfeng-11110",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-478-action-born-244-potianfeng-13-10:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=born-244-potianfeng-13|listener=potianfeng|sources=e-477-action-born-244-potianfeng-13-28",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "born-244-potianfeng-13",
+          "sourceFactIds": [
+            "e-477-action-born-244-potianfeng-13-28"
+          ],
+          "referenceEventId": "e-478-action-born-244-potianfeng-13-10",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 15,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-478-environment-body-0",
+    "kind": "environment",
+    "atMonth": 478,
+    "orderInMonth": 55,
+    "cellId": 4133,
+    "change": "body",
+    "who": "born-63-potianfeng-9",
+    "result": "后修远结算了脱水休眠 episode 的本月身体代价",
+    "diff": {
+      "hibernationMonthlySettlement": true,
+      "hibernationConditionId": "condition-dehydrated-hibernation-born-63-potianfeng-9-259",
+      "hibernationPhase": "dormant",
+      "monthlyCostApplied": true,
+      "metabolicProfile": "dormant",
+      "hydrationCost": 0.35,
+      "nutritionCost": 0.3,
+      "healthDelta": -0.25,
+      "bodyBefore": {
+        "health": 45.25,
+        "hydration": 0,
+        "nutrition": 0
+      },
+      "bodyAfter": {
+        "health": 45,
+        "hydration": 0,
+        "nutrition": 0
+      }
+    },
+    "planningTick": 0,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-478-environment-body-1",
+    "kind": "environment",
+    "atMonth": 478,
+    "orderInMonth": 56,
+    "cellId": 4133,
+    "change": "body",
+    "who": "born-63-potianfeng-9",
+    "result": "后修远的身体储备发生显著变化",
+    "diff": {
+      "health": 45,
+      "hydration": 0,
+      "nutrition": 0,
+      "healthDelta": -0.25
+    },
+    "planningTick": 0,
+    "orderInTick": 2
+  }
+]

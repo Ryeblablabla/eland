@@ -46,7 +46,11 @@ export interface AnimalState {
   bornAtMonth: number;
   lifespanMonths: number;
   geneticParents: string[];
-  position: { cellId: number; z: number; previousCellId: number; previousZ: number };
+  position: {
+    cellId: number; z: number; previousCellId: number; previousZ: number;
+    /** Actual standing positions traversed in the last movement; never an inferred route. */
+    movementPath?: Array<{ cellId: number; z: number }>;
+  };
   health: number;
   hunger: number;
   lastAteAtMonth: number;

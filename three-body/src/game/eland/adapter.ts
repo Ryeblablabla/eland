@@ -705,6 +705,9 @@ export function toSocietyState(state: SimulationState): SocietyState {
       z: animal.position.z,
       previousCellId: animal.position.previousCellId,
       previousZ: animal.position.previousZ,
+      ...(animal.position.movementPath ? {
+        movementPath: animal.position.movementPath.map((position) => ({ ...position })),
+      } : {}),
       health: animal.health,
       hunger: animal.hunger,
       sex: animal.sex,

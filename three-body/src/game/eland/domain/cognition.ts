@@ -86,6 +86,8 @@ function goalFamilyKey(goal?: FactPredicate): string {
     case 'project-completed': return goal.kind;
     case 'technique-demonstrated': return goal.kind;
     case 'agreement-fulfilled': return goal.kind;
+    case 'agreement-status': return `${goal.kind}:${goal.status}`;
+    case 'agreement-response-recorded': return `${goal.kind}:${goal.response}`;
     case 'agreement-contribution-recorded': return goal.kind;
     case 'death-mourned': return goal.kind;
     case 'remains-interred': return goal.kind;

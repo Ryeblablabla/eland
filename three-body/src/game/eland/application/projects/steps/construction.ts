@@ -4,6 +4,7 @@ import type { DropState, SimulationState } from '../../../domain/model';
 import type { PersonState } from '../../../domain/person';
 import type { ProjectState } from '../../../domain/project';
 import { shelterGeometryAt } from '../../../domain/structure';
+import { rootedSolidPath } from '../../../domain/solid-support';
 import {
   cellX,
   cellY,
@@ -42,7 +43,8 @@ function solidBuildingAt(
 ): boolean {
   const materialId = voxelAt(state.world.grid, position.x, position.y, position.z);
   return materialHas(materialId, 'solid')
-    && (materialHas(materialId, 'building') || materialHas(materialId, 'ground'));
+    && (materialHas(materialId, 'building') || materialHas(materialId, 'ground'))
+    && Boolean(rootedSolidPath(state.world.grid, position));
 }
 
 function nextConstructionPosition(
@@ -64,11 +66,10 @@ function nextConstructionPosition(
         upper: { x: cellX(neighbor), y: cellY(neighbor), z: site.z + 1 },
       }))
       .filter((candidate) => {
-        const support = voxelAt(state.world.grid, candidate.lower.x, candidate.lower.y, candidate.lower.z - 1);
+        const support = rootedSolidPath(state.world.grid, { ...candidate.lower, z: candidate.lower.z - 1 });
         const wasTraversableOpening = standingPositions(state.world.grid, candidate.cellId)
           .some((position) => Math.abs(position.z - site.z) <= 1);
-        return support !== Material.Air
-          && support !== Material.Water
+        return Boolean(support)
           && voxelAt(state.world.grid, candidate.lower.x, candidate.lower.y, candidate.lower.z) === Material.Air
           && !solidBuildingAt(state, candidate.upper)
           && currentShelter.openSides - Number(wasTraversableOpening) >= 1;
@@ -86,23 +87,24 @@ function nextConstructionPosition(
   })).sort((a, b) => seededFraction(state.seed, `project-wall:${project.id}:${a.cellId}`)
     - seededFraction(state.seed, `project-wall:${project.id}:${b.cellId}`));
   const side = sides.find((candidate) => {
-    const support = voxelAt(state.world.grid, candidate.lower.x, candidate.lower.y, candidate.lower.z - 1);
+    const support = rootedSolidPath(state.world.grid, { ...candidate.lower, z: candidate.lower.z - 1 });
     const lower = voxelAt(state.world.grid, candidate.lower.x, candidate.lower.y, candidate.lower.z);
-    return support !== Material.Air
-      && support !== Material.Water
+    return Boolean(support)
       && (lower === Material.Air || solidBuildingAt(state, candidate.lower));
   });
   if (!side) return null;
 
-  const support = voxelAt(state.world.grid, side.lower.x, side.lower.y, side.lower.z - 1);
-  if (support !== Material.Air
-    && support !== Material.Water
+  const support = rootedSolidPath(state.world.grid, { ...side.lower, z: side.lower.z - 1 });
+  if (support
     && voxelAt(state.world.grid, side.lower.x, side.lower.y, side.lower.z) === Material.Air) return side.lower;
   if (solidBuildingAt(state, side.lower)
     && voxelAt(state.world.grid, side.upper.x, side.upper.y, side.upper.z) === Material.Air) return side.upper;
+  const roofConnection = { x: side.upper.x, y: side.upper.y, z: site.z + 2 };
+  if (solidBuildingAt(state, side.upper)
+    && voxelAt(state.world.grid, roofConnection.x, roofConnection.y, roofConnection.z) === Material.Air) return roofConnection;
   const roof = { x: cellX(site.cellId), y: cellY(site.cellId), z: site.z + 2 };
   if (voxelAt(state.world.grid, roof.x, roof.y, roof.z) === Material.Air
-    && solidBuildingAt(state, side.upper)) return roof;
+    && solidBuildingAt(state, roofConnection)) return roof;
   return null;
 }
 

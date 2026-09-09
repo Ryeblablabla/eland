@@ -4,6 +4,7 @@ import { isAlive, type PersonState } from '../domain/person';
 import type { SimulationState } from '../domain/model';
 import { cellId, cellX, cellY, neighbors4, voxelAt } from '../world/grid';
 import { constructedConnectionPositionsOf } from '../domain/physical-structure-index';
+import { solidSupportQuery } from '../domain/solid-support';
 
 type CandidateKind = 'grounded' | 'vertical' | 'lateral' | 'overhead';
 
@@ -27,6 +28,7 @@ function constructedStructurePositions(state: SimulationState): Set<string> {
 
 function classifyConnection(state: SimulationState, person: PersonState, position: ConnectionCandidate['position'], constructed: Set<string>): CandidateKind | null {
   if (voxelAt(state.world.grid, position.x, position.y, position.z) !== Material.Air || occupiedByBody(state, position)) return null;
+  if (!solidSupportQuery(state.world.grid, [{ position, solid: true }])(position)) return null;
   const targetCell = cellId(position.x, position.y);
   const below = voxelAt(state.world.grid, position.x, position.y, position.z - 1);
   const horizontalStructure = neighbors4(targetCell).some((neighbor) => constructed.has(`${cellX(neighbor)}:${cellY(neighbor)}:${position.z}`));

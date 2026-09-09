@@ -1,0 +1,2308 @@
+[
+  {
+    "id": "e-397-environment-weather-0",
+    "kind": "environment",
+    "atMonth": 397,
+    "orderInMonth": 0,
+    "cellId": 0,
+    "change": "weather",
+    "result": "本月天气转为降雨",
+    "diff": {
+      "kind": "rain",
+      "intensity": 2
+    },
+    "planningTick": 0,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-397-decision-born-193-cai-wenji-12-1-1",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 1,
+    "planningTick": 1,
+    "orderInTick": 0,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:397:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:19",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界"
+    },
+    "intentId": "intent-397-born-193-cai-wenji-12-9142",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：允许蔡文姬在需要时取用自己的木板"
+  },
+  {
+    "id": "e-397-action-born-193-cai-wenji-12-2",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 397,
+    "orderInMonth": 2,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-397-born-193-cai-wenji-12-9142",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:397:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:19",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份木板",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "born-193-cai-wenji-12",
+          "partnerId": "cai-wenji",
+          "collectiveId": "collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10",
+          "grantorId": "born-193-cai-wenji-12",
+          "granteeId": "cai-wenji",
+          "materialId": 19,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 421,
+          "expiresAtMonth": 403
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "completed",
+    "result": "后若水向蔡文姬表达：你可以在需要时每次取用我的一份木板",
+    "diff": {
+      "audience": [
+        "cai-wenji"
+      ],
+      "content": {
+        "id": "offer-permission:397:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:19",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份木板",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "born-193-cai-wenji-12",
+          "partnerId": "cai-wenji",
+          "collectiveId": "collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10",
+          "grantorId": "born-193-cai-wenji-12",
+          "granteeId": "cai-wenji",
+          "materialId": 19,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 421,
+          "expiresAtMonth": 403
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-397-decision-cai-wenji-1-3",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 3,
+    "planningTick": 1,
+    "orderInTick": 2,
+    "cellId": 1443,
+    "who": "cai-wenji",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:397:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:19",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-397-cai-wenji-9143",
+    "domain": "social",
+    "usedModel": false,
+    "result": "蔡文姬决定：接受后若水的物质取用许可"
+  },
+  {
+    "id": "e-397-action-cai-wenji-4",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 397,
+    "orderInMonth": 4,
+    "cellId": 1443,
+    "who": "cai-wenji",
+    "intentId": "intent-397-cai-wenji-9143",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:397:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:19:cai-wenji",
+        "kind": "accept",
+        "referenceId": "offer-permission:397:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:19"
+      },
+      "audience": [
+        "born-193-cai-wenji-12"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "completed",
+    "result": "蔡文姬向后若水表达：accept",
+    "diff": {
+      "audience": [
+        "born-193-cai-wenji-12"
+      ],
+      "content": {
+        "id": "accept:offer-permission:397:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:19:cai-wenji",
+        "kind": "accept",
+        "referenceId": "offer-permission:397:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:19"
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-397-decision-freyja-1-5",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 5,
+    "planningTick": 1,
+    "orderInTick": 4,
+    "cellId": 4218,
+    "who": "freyja",
+    "decision": {
+      "kind": "start",
+      "optionId": "revoke-permission:397:permission:offer-permission:396:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56",
+      "reason": "持有者对未来取用授权保留明确撤回能力"
+    },
+    "intentId": "intent-397-freyja-9144",
+    "domain": "social",
+    "usedModel": false,
+    "result": "芙蕾雅决定：向阿佛洛狄忒撤回公共谷仓取用许可"
+  },
+  {
+    "id": "e-397-action-freyja-6",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 397,
+    "orderInMonth": 6,
+    "cellId": 4218,
+    "who": "freyja",
+    "intentId": "intent-397-freyja-9144",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "revoke-permission:397:permission:offer-permission:396:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:396:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56",
+        "summary": "我撤回你对我的公共谷仓的取用许可"
+      },
+      "audience": [
+        "aphrodite"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 4218,
+    "toCellId": 4218,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4218
+    ],
+    "status": "completed",
+    "result": "芙蕾雅向阿佛洛狄忒表达：我撤回你对我的公共谷仓的取用许可",
+    "diff": {
+      "audience": [
+        "aphrodite"
+      ],
+      "content": {
+        "id": "revoke-permission:397:permission:offer-permission:396:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:396:collective:offer-collective:66:aphrodite:freyja:freyja:aphrodite:56",
+        "summary": "我撤回你对我的公共谷仓的取用许可"
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-397-decision-born-115-cai-wenji-10-1-7",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 7,
+    "planningTick": 1,
+    "orderInTick": 6,
+    "cellId": 1443,
+    "who": "born-115-cai-wenji-10",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:397:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:40",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界"
+    },
+    "intentId": "intent-397-born-115-cai-wenji-10-9145",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后凌川决定：允许蔡文姬在需要时取用自己的铁矿石"
+  },
+  {
+    "id": "e-397-action-born-115-cai-wenji-10-8",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 397,
+    "orderInMonth": 8,
+    "cellId": 1443,
+    "who": "born-115-cai-wenji-10",
+    "intentId": "intent-397-born-115-cai-wenji-10-9145",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:397:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:40",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份铁矿石",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "born-115-cai-wenji-10",
+          "partnerId": "cai-wenji",
+          "collectiveId": "collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10",
+          "grantorId": "born-115-cai-wenji-10",
+          "granteeId": "cai-wenji",
+          "materialId": 40,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 421,
+          "expiresAtMonth": 403
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "completed",
+    "result": "后凌川向蔡文姬表达：你可以在需要时每次取用我的一份铁矿石",
+    "diff": {
+      "audience": [
+        "cai-wenji"
+      ],
+      "content": {
+        "id": "offer-permission:397:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:40",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份铁矿石",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "born-115-cai-wenji-10",
+          "partnerId": "cai-wenji",
+          "collectiveId": "collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10",
+          "grantorId": "born-115-cai-wenji-10",
+          "granteeId": "cai-wenji",
+          "materialId": 40,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 421,
+          "expiresAtMonth": 403
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 7
+  },
+  {
+    "id": "e-397-decision-born-159-potianfeng-11-1-9",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 9,
+    "planningTick": 1,
+    "orderInTick": 8,
+    "cellId": 774,
+    "who": "born-159-potianfeng-11",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:397:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:29",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界"
+    },
+    "intentId": "intent-397-born-159-potianfeng-11-9146",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙明哲决定：允许破天锋在需要时取用自己的生肉"
+  },
+  {
+    "id": "e-397-action-born-159-potianfeng-11-10",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 397,
+    "orderInMonth": 10,
+    "cellId": 774,
+    "who": "born-159-potianfeng-11",
+    "intentId": "intent-397-born-159-potianfeng-11-9146",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:397:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:29",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份生肉",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "born-159-potianfeng-11",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "born-159-potianfeng-11",
+          "granteeId": "potianfeng",
+          "materialId": 29,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 421,
+          "expiresAtMonth": 403
+        }
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "completed",
+    "result": "孙明哲向破天锋表达：你可以在需要时每次取用我的一份生肉",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "offer-permission:397:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:29",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份生肉",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "born-159-potianfeng-11",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "born-159-potianfeng-11",
+          "granteeId": "potianfeng",
+          "materialId": 29,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 421,
+          "expiresAtMonth": 403
+        }
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 1,
+    "orderInTick": 9
+  },
+  {
+    "id": "e-397-decision-born-244-potianfeng-13-1-11",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 11,
+    "planningTick": 1,
+    "orderInTick": 10,
+    "cellId": 1438,
+    "who": "born-244-potianfeng-13",
+    "decision": {
+      "kind": "start",
+      "optionId": "try-inventory-combine:stack-born-244-potianfeng-13-21-270:stack-born-244-potianfeng-13-21-270",
+      "reason": "背包中的两种物质可以尝试局部结合，但结果未知"
+    },
+    "intentId": "intent-397-born-244-potianfeng-13-9147",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "孙守一决定：尝试结合食物与食物"
+  },
+  {
+    "id": "e-397-action-born-244-potianfeng-13-12",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 397,
+    "orderInMonth": 12,
+    "cellId": 1438,
+    "who": "born-244-potianfeng-13",
+    "intentId": "intent-397-born-244-potianfeng-13-9147",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "combine",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "born-244-potianfeng-13",
+          "stackId": "stack-born-244-potianfeng-13-21-270"
+        },
+        {
+          "kind": "inventory-stack",
+          "personId": "born-244-potianfeng-13",
+          "stackId": "stack-born-244-potianfeng-13-21-270"
+        }
+      ]
+    },
+    "fromCellId": 1438,
+    "toCellId": 1438,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1438
+    ],
+    "status": "blocked",
+    "result": "这些随身物质当前没有可发生的结合规则",
+    "diff": {
+      "inputMaterialIds": [
+        21,
+        21
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 11
+  },
+  {
+    "id": "e-397-decision-houyi-1-13",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 13,
+    "planningTick": 1,
+    "orderInTick": 12,
+    "cellId": 1443,
+    "who": "houyi",
+    "decision": {
+      "kind": "start",
+      "optionId": "revoke-permission:397:permission:offer-permission:395:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:houyi:cai-wenji:56",
+      "reason": "持有者对未来取用授权保留明确撤回能力"
+    },
+    "intentId": "intent-397-houyi-9148",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后羿决定：向蔡文姬撤回公共谷仓取用许可"
+  },
+  {
+    "id": "e-397-action-houyi-14",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 397,
+    "orderInMonth": 14,
+    "cellId": 1443,
+    "who": "houyi",
+    "intentId": "intent-397-houyi-9148",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "revoke-permission:397:permission:offer-permission:395:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:houyi:cai-wenji:56",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:395:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:houyi:cai-wenji:56",
+        "summary": "我撤回你对我的公共谷仓的取用许可"
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "completed",
+    "result": "后羿向蔡文姬表达：我撤回你对我的公共谷仓的取用许可",
+    "diff": {
+      "audience": [
+        "cai-wenji"
+      ],
+      "content": {
+        "id": "revoke-permission:397:permission:offer-permission:395:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:houyi:cai-wenji:56",
+        "kind": "revoke",
+        "permissionId": "permission:offer-permission:395:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:houyi:cai-wenji:56",
+        "summary": "我撤回你对我的公共谷仓的取用许可"
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 13
+  },
+  {
+    "id": "e-397-decision-aphrodite-1-15",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 15,
+    "planningTick": 1,
+    "orderInTick": 14,
+    "cellId": 4218,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:397:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界"
+    },
+    "intentId": "intent-397-aphrodite-9149",
+    "domain": "social",
+    "usedModel": false,
+    "result": "阿佛洛狄忒决定：允许芙蕾雅在需要时取用自己的公共谷仓"
+  },
+  {
+    "id": "e-397-action-aphrodite-16",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 397,
+    "orderInMonth": 16,
+    "cellId": 4218,
+    "who": "aphrodite",
+    "intentId": "intent-397-aphrodite-9149",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:397:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份公共谷仓",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "aphrodite",
+          "partnerId": "freyja",
+          "collectiveId": "collective:offer-collective:66:aphrodite:freyja",
+          "grantorId": "aphrodite",
+          "granteeId": "freyja",
+          "materialId": 56,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 421,
+          "expiresAtMonth": 403
+        }
+      },
+      "audience": [
+        "freyja"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 4218,
+    "toCellId": 4218,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4218
+    ],
+    "status": "completed",
+    "result": "阿佛洛狄忒向芙蕾雅表达：你可以在需要时每次取用我的一份公共谷仓",
+    "diff": {
+      "audience": [
+        "freyja"
+      ],
+      "content": {
+        "id": "offer-permission:397:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份公共谷仓",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "aphrodite",
+          "partnerId": "freyja",
+          "collectiveId": "collective:offer-collective:66:aphrodite:freyja",
+          "grantorId": "aphrodite",
+          "granteeId": "freyja",
+          "materialId": 56,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 421,
+          "expiresAtMonth": 403
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 15
+  },
+  {
+    "id": "e-397-decision-sun-wu-1-17",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 17,
+    "planningTick": 1,
+    "orderInTick": 16,
+    "cellId": 774,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:397:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界"
+    },
+    "intentId": "intent-397-sun-wu-9150",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：允许破天锋在需要时取用自己的木制生产工具"
+  },
+  {
+    "id": "e-397-action-sun-wu-18",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 397,
+    "orderInMonth": 18,
+    "cellId": 774,
+    "who": "sun-wu",
+    "intentId": "intent-397-sun-wu-9150",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:397:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份木制生产工具",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "sun-wu",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "sun-wu",
+          "granteeId": "potianfeng",
+          "materialId": 41,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 421,
+          "expiresAtMonth": 403
+        }
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "completed",
+    "result": "孙武向破天锋表达：你可以在需要时每次取用我的一份木制生产工具",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "offer-permission:397:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份木制生产工具",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "sun-wu",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "sun-wu",
+          "granteeId": "potianfeng",
+          "materialId": 41,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 421,
+          "expiresAtMonth": 403
+        }
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 1,
+    "orderInTick": 17
+  },
+  {
+    "id": "e-397-decision-potianfeng-1-19",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 19,
+    "planningTick": 1,
+    "orderInTick": 18,
+    "cellId": 774,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:397:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-397-potianfeng-9151",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：接受孙武的物质取用许可"
+  },
+  {
+    "id": "e-397-action-potianfeng-20",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 397,
+    "orderInMonth": 20,
+    "cellId": 774,
+    "who": "potianfeng",
+    "intentId": "intent-397-potianfeng-9151",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:397:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:397:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41"
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "completed",
+    "result": "破天锋向孙武表达：accept",
+    "diff": {
+      "audience": [
+        "sun-wu"
+      ],
+      "content": {
+        "id": "accept:offer-permission:397:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:397:collective:offer-collective:3:potianfeng:rei-ayanami:sun-wu:potianfeng:41"
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 1,
+    "orderInTick": 19
+  },
+  {
+    "id": "e-397-decision-born-22-potianfeng-8-1-21",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 21,
+    "planningTick": 1,
+    "orderInTick": 20,
+    "cellId": 774,
+    "who": "born-22-potianfeng-8",
+    "decision": {
+      "kind": "start",
+      "optionId": "use-permission:permission:offer-permission:390:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:born-22-potianfeng-8:56:stack-potianfeng-56-322",
+      "reason": "授权人、被授权人、物质、单次数量与有效期都有可追溯许可"
+    },
+    "intentId": "intent-397-born-22-potianfeng-8-9152",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙朝宗决定：依据许可从破天锋处取用公共谷仓"
+  },
+  {
+    "id": "e-397-action-born-22-potianfeng-8-22",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 397,
+    "orderInMonth": 22,
+    "cellId": 774,
+    "who": "born-22-potianfeng-8",
+    "intentId": "intent-397-born-22-potianfeng-8-9152",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 56,
+      "quantity": 1,
+      "from": {
+        "kind": "person",
+        "personId": "potianfeng"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-22-potianfeng-8"
+      },
+      "stackId": "stack-potianfeng-56-322",
+      "authorizationRef": "permission:offer-permission:390:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:born-22-potianfeng-8:56"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "completed",
+    "result": "公共谷仓 × 1 改变了持有者",
+    "diff": {
+      "materialId": 56,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": true,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "person",
+        "personId": "potianfeng"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-22-potianfeng-8"
+      },
+      "witnessedBy": [
+        "potianfeng",
+        "rei-ayanami",
+        "sun-wu",
+        "born-22-potianfeng-8",
+        "born-159-potianfeng-11"
+      ],
+      "sourceEventIds": [
+        "e-246-action-potianfeng-25",
+        "e-332-action-cai-wenji-28",
+        "e-336-action-potianfeng-31",
+        "e-282-action-potianfeng-25",
+        "e-332-action-houyi-29",
+        "e-192-action-potianfeng-34",
+        "e-256-action-cai-wenji-36",
+        "e-336-action-houyi-42",
+        "e-337-action-cai-wenji-24",
+        "e-337-action-potianfeng-25",
+        "e-337-action-houyi-28",
+        "e-338-action-cai-wenji-24",
+        "e-338-action-houyi-34",
+        "e-339-action-potianfeng-26",
+        "e-330-action-houyi-26",
+        "e-330-action-cai-wenji-30",
+        "e-339-action-cai-wenji-23",
+        "e-340-action-houyi-30",
+        "e-340-action-potianfeng-36",
+        "e-230-action-born-22-potianfeng-8-33",
+        "e-312-action-born-22-potianfeng-8-38",
+        "e-351-action-potianfeng-35",
+        "e-353-action-potianfeng-34",
+        "e-397-action-born-22-potianfeng-8-22"
+      ],
+      "sourceLineageKeys": [
+        "inventory:potianfeng:stack-potianfeng-56-322",
+        "inventory:houyi:stack-houyi-56-286",
+        "inventory:cai-wenji:stack-cai-wenji-56-119",
+        "inventory:potianfeng:stack-potianfeng-56-149",
+        "inventory:sun-wu:stack-sun-wu-56-173",
+        "inventory:sun-wu:stack-sun-wu-56-182",
+        "inventory:sun-wu:stack-sun-wu-56-183",
+        "inventory:sun-wu:stack-sun-wu-56-191",
+        "inventory:sun-wu:stack-sun-wu-56-192",
+        "inventory:houyi:stack-houyi-56-229",
+        "inventory:potianfeng:stack-potianfeng-56-211",
+        "inventory:potianfeng:stack-potianfeng-56-239",
+        "inventory:potianfeng:stack-potianfeng-56-240",
+        "inventory:potianfeng:stack-potianfeng-56-241",
+        "inventory:potianfeng:stack-potianfeng-56-242",
+        "inventory:houyi:stack-houyi-56-260",
+        "inventory:houyi:stack-houyi-56-262",
+        "inventory:potianfeng:stack-potianfeng-56-252",
+        "inventory:cai-wenji:stack-cai-wenji-56-305",
+        "inventory:cai-wenji:stack-cai-wenji-56-309",
+        "inventory:potianfeng:stack-potianfeng-56-314",
+        "inventory:potianfeng:stack-potianfeng-56-318",
+        "inventory:cai-wenji:stack-cai-wenji-56-336",
+        "inventory:cai-wenji:stack-cai-wenji-56-338",
+        "inventory:cai-wenji:stack-cai-wenji-56-339",
+        "inventory:born-22-potianfeng-8:stack-born-22-potianfeng-8-56-230"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 21
+  },
+  {
+    "id": "e-397-decision-born-16-cai-wenji-7-1-23",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 23,
+    "planningTick": 1,
+    "orderInTick": 22,
+    "cellId": 2867,
+    "who": "born-16-cai-wenji-7",
+    "decision": {
+      "kind": "start",
+      "optionId": "try-inventory-combine:stack-born-16-cai-wenji-7-21-57:stack-born-16-cai-wenji-7-41-328",
+      "reason": "背包中的两种物质可以尝试局部结合，但结果未知"
+    },
+    "intentId": "intent-397-born-16-cai-wenji-7-9153",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "孙疏影决定：尝试结合食物与木制生产工具"
+  },
+  {
+    "id": "e-397-action-born-16-cai-wenji-7-24",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 397,
+    "orderInMonth": 24,
+    "cellId": 2867,
+    "who": "born-16-cai-wenji-7",
+    "intentId": "intent-397-born-16-cai-wenji-7-9153",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "combine",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "born-16-cai-wenji-7",
+          "stackId": "stack-born-16-cai-wenji-7-21-57"
+        },
+        {
+          "kind": "inventory-stack",
+          "personId": "born-16-cai-wenji-7",
+          "stackId": "stack-born-16-cai-wenji-7-41-328"
+        }
+      ]
+    },
+    "fromCellId": 2867,
+    "toCellId": 2867,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2867
+    ],
+    "status": "blocked",
+    "result": "这些随身物质当前没有可发生的结合规则",
+    "diff": {
+      "inputMaterialIds": [
+        21,
+        41
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 23
+  },
+  {
+    "id": "e-397-decision-rei-ayanami-1-25",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 25,
+    "planningTick": 1,
+    "orderInTick": 24,
+    "cellId": 774,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "conversation:gratitude:397:rei-ayanami:sun-wu",
+      "reason": "对方曾真实给予物质、照护或完成双方约定，感谢有共同经历可追溯"
+    },
+    "intentId": "intent-397-rei-ayanami-9154",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：与孙武谈感谢：感谢孙武此前在本人需要帮助时给予物质、照护或履约支持"
+  },
+  {
+    "id": "e-397-action-rei-ayanami-26",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 397,
+    "orderInMonth": 26,
+    "cellId": 774,
+    "who": "rei-ayanami",
+    "intentId": "intent-397-rei-ayanami-9154",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "conversation:gratitude:397:rei-ayanami:sun-wu",
+        "kind": "claim",
+        "summary": "感谢孙武此前在本人需要帮助时给予物质、照护或履约支持",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "opening",
+          "speakerId": "rei-ayanami",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ]
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "completed",
+    "result": "绫波丽向孙武表达：感谢孙武此前在本人需要帮助时给予物质、照护或履约支持",
+    "diff": {
+      "audience": [
+        "sun-wu"
+      ],
+      "content": {
+        "id": "conversation:gratitude:397:rei-ayanami:sun-wu",
+        "kind": "claim",
+        "summary": "感谢孙武此前在本人需要帮助时给予物质、照护或履约支持",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "opening",
+          "speakerId": "rei-ayanami",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ]
+        }
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1,
+      "groundedConversationBasisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+      "groundedConversationTopic": "gratitude",
+      "groundedConversationTurn": "opening",
+      "groundedConversationSourceFactIds": [
+        "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+      ],
+      "relationTrustDelta": 1,
+      "relationBondDelta": 2
+    },
+    "planningTick": 1,
+    "orderInTick": 25
+  },
+  {
+    "id": "e-397-decision-cai-wenji-2-27",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 27,
+    "planningTick": 2,
+    "orderInTick": 0,
+    "cellId": 1443,
+    "who": "cai-wenji",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:397:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:40",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-397-cai-wenji-9155",
+    "domain": "social",
+    "usedModel": false,
+    "result": "蔡文姬决定：接受后凌川的物质取用许可"
+  },
+  {
+    "id": "e-397-action-cai-wenji-28",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 397,
+    "orderInMonth": 28,
+    "cellId": 1443,
+    "who": "cai-wenji",
+    "intentId": "intent-397-cai-wenji-9155",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:397:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:40:cai-wenji",
+        "kind": "accept",
+        "referenceId": "offer-permission:397:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:40"
+      },
+      "audience": [
+        "born-115-cai-wenji-10"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "completed",
+    "result": "蔡文姬向后凌川表达：accept",
+    "diff": {
+      "audience": [
+        "born-115-cai-wenji-10"
+      ],
+      "content": {
+        "id": "accept:offer-permission:397:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:40:cai-wenji",
+        "kind": "accept",
+        "referenceId": "offer-permission:397:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10:cai-wenji:40"
+      }
+    },
+    "planningTick": 2,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-397-decision-potianfeng-2-29",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 29,
+    "planningTick": 2,
+    "orderInTick": 2,
+    "cellId": 774,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:397:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:29",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-397-potianfeng-9156",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：接受孙明哲的物质取用许可"
+  },
+  {
+    "id": "e-397-action-potianfeng-30",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 397,
+    "orderInMonth": 30,
+    "cellId": 774,
+    "who": "potianfeng",
+    "intentId": "intent-397-potianfeng-9156",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:397:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:29:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:397:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:29"
+      },
+      "audience": [
+        "born-159-potianfeng-11"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "completed",
+    "result": "破天锋向孙明哲表达：accept",
+    "diff": {
+      "audience": [
+        "born-159-potianfeng-11"
+      ],
+      "content": {
+        "id": "accept:offer-permission:397:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:29:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:397:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:29"
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 2,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-397-decision-sun-wu-2-31",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 31,
+    "planningTick": 2,
+    "orderInTick": 4,
+    "cellId": 774,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-397-sun-wu-9157",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应绫波丽关于感谢的话：回应对方的感谢，并确认此前的帮助不构成债务"
+  },
+  {
+    "id": "e-397-action-sun-wu-32",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 397,
+    "orderInMonth": 32,
+    "cellId": 774,
+    "who": "sun-wu",
+    "intentId": "intent-397-sun-wu-9157",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+        "kind": "claim",
+        "summary": "回应对方的感谢，并确认此前的帮助不构成债务",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ],
+          "referenceEventId": "e-397-action-rei-ayanami-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "completed",
+    "result": "孙武向绫波丽表达：回应对方的感谢，并确认此前的帮助不构成债务",
+    "diff": {
+      "audience": [
+        "rei-ayanami"
+      ],
+      "content": {
+        "id": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+        "kind": "claim",
+        "summary": "回应对方的感谢，并确认此前的帮助不构成债务",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ],
+          "referenceEventId": "e-397-action-rei-ayanami-26",
+          "stance": "supportive"
+        }
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1,
+      "groundedConversationBasisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+      "groundedConversationTopic": "gratitude",
+      "groundedConversationTurn": "response",
+      "groundedConversationSourceFactIds": [
+        "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+      ],
+      "groundedConversationReferenceEventId": "e-397-action-rei-ayanami-26",
+      "groundedConversationStance": "supportive",
+      "relationTrustDelta": 1,
+      "relationBondDelta": 2
+    },
+    "planningTick": 2,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-397-decision-freyja-2-33",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 33,
+    "planningTick": 2,
+    "orderInTick": 6,
+    "cellId": 4218,
+    "who": "freyja",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:397:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56",
+      "reason": "对方刚刚提出了一项需要回应的社会请求"
+    },
+    "intentId": "intent-397-freyja-9158",
+    "domain": "social",
+    "usedModel": false,
+    "result": "芙蕾雅决定：接受阿佛洛狄忒的物质取用许可"
+  },
+  {
+    "id": "e-397-action-freyja-34",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 397,
+    "orderInMonth": 34,
+    "cellId": 4218,
+    "who": "freyja",
+    "intentId": "intent-397-freyja-9158",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:397:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56:freyja",
+        "kind": "accept",
+        "referenceId": "offer-permission:397:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56"
+      },
+      "audience": [
+        "aphrodite"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 4218,
+    "toCellId": 4218,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      4218
+    ],
+    "status": "completed",
+    "result": "芙蕾雅向阿佛洛狄忒表达：accept",
+    "diff": {
+      "audience": [
+        "aphrodite"
+      ],
+      "content": {
+        "id": "accept:offer-permission:397:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56:freyja",
+        "kind": "accept",
+        "referenceId": "offer-permission:397:collective:offer-collective:66:aphrodite:freyja:aphrodite:freyja:56"
+      }
+    },
+    "planningTick": 2,
+    "orderInTick": 7
+  },
+  {
+    "id": "e-397-decision-sun-wu-3-35",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 35,
+    "planningTick": 3,
+    "orderInTick": 0,
+    "cellId": 774,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-397-sun-wu-9159",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应绫波丽关于感谢的话：回应对方的感谢，并确认此前的帮助不构成债务"
+  },
+  {
+    "id": "e-397-action-sun-wu-36",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 397,
+    "orderInMonth": 36,
+    "cellId": 774,
+    "who": "sun-wu",
+    "intentId": "intent-397-sun-wu-9159",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+        "kind": "claim",
+        "summary": "回应对方的感谢，并确认此前的帮助不构成债务",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ],
+          "referenceEventId": "e-397-action-rei-ayanami-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 3,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-397-decision-sun-wu-4-37",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 37,
+    "planningTick": 4,
+    "orderInTick": 0,
+    "cellId": 774,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-397-sun-wu-9160",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应绫波丽关于感谢的话：回应对方的感谢，并确认此前的帮助不构成债务"
+  },
+  {
+    "id": "e-397-action-sun-wu-38",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 397,
+    "orderInMonth": 38,
+    "cellId": 774,
+    "who": "sun-wu",
+    "intentId": "intent-397-sun-wu-9160",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+        "kind": "claim",
+        "summary": "回应对方的感谢，并确认此前的帮助不构成债务",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ],
+          "referenceEventId": "e-397-action-rei-ayanami-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 4,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-397-decision-sun-wu-5-39",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 39,
+    "planningTick": 5,
+    "orderInTick": 0,
+    "cellId": 774,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-397-sun-wu-9161",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应绫波丽关于感谢的话：回应对方的感谢，并确认此前的帮助不构成债务"
+  },
+  {
+    "id": "e-397-action-sun-wu-40",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 397,
+    "orderInMonth": 40,
+    "cellId": 774,
+    "who": "sun-wu",
+    "intentId": "intent-397-sun-wu-9161",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+        "kind": "claim",
+        "summary": "回应对方的感谢，并确认此前的帮助不构成债务",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ],
+          "referenceEventId": "e-397-action-rei-ayanami-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 5,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-397-decision-sun-wu-6-41",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 41,
+    "planningTick": 6,
+    "orderInTick": 0,
+    "cellId": 774,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-397-sun-wu-9162",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应绫波丽关于感谢的话：回应对方的感谢，并确认此前的帮助不构成债务"
+  },
+  {
+    "id": "e-397-action-sun-wu-42",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 397,
+    "orderInMonth": 42,
+    "cellId": 774,
+    "who": "sun-wu",
+    "intentId": "intent-397-sun-wu-9162",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+        "kind": "claim",
+        "summary": "回应对方的感谢，并确认此前的帮助不构成债务",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ],
+          "referenceEventId": "e-397-action-rei-ayanami-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 6,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-397-decision-sun-wu-7-43",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 43,
+    "planningTick": 7,
+    "orderInTick": 0,
+    "cellId": 774,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-397-sun-wu-9163",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应绫波丽关于感谢的话：回应对方的感谢，并确认此前的帮助不构成债务"
+  },
+  {
+    "id": "e-397-action-sun-wu-44",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 397,
+    "orderInMonth": 44,
+    "cellId": 774,
+    "who": "sun-wu",
+    "intentId": "intent-397-sun-wu-9163",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+        "kind": "claim",
+        "summary": "回应对方的感谢，并确认此前的帮助不构成债务",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ],
+          "referenceEventId": "e-397-action-rei-ayanami-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 7,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-397-decision-sun-wu-8-45",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 45,
+    "planningTick": 8,
+    "orderInTick": 0,
+    "cellId": 774,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-397-sun-wu-9164",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应绫波丽关于感谢的话：回应对方的感谢，并确认此前的帮助不构成债务"
+  },
+  {
+    "id": "e-397-action-sun-wu-46",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 397,
+    "orderInMonth": 46,
+    "cellId": 774,
+    "who": "sun-wu",
+    "intentId": "intent-397-sun-wu-9164",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+        "kind": "claim",
+        "summary": "回应对方的感谢，并确认此前的帮助不构成债务",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ],
+          "referenceEventId": "e-397-action-rei-ayanami-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 8,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-397-decision-sun-wu-9-47",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 47,
+    "planningTick": 9,
+    "orderInTick": 0,
+    "cellId": 774,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-397-sun-wu-9165",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应绫波丽关于感谢的话：回应对方的感谢，并确认此前的帮助不构成债务"
+  },
+  {
+    "id": "e-397-action-sun-wu-48",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 397,
+    "orderInMonth": 48,
+    "cellId": 774,
+    "who": "sun-wu",
+    "intentId": "intent-397-sun-wu-9165",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+        "kind": "claim",
+        "summary": "回应对方的感谢，并确认此前的帮助不构成债务",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ],
+          "referenceEventId": "e-397-action-rei-ayanami-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 9,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-397-decision-sun-wu-10-49",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 49,
+    "planningTick": 10,
+    "orderInTick": 0,
+    "cellId": 774,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-397-sun-wu-9166",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应绫波丽关于感谢的话：回应对方的感谢，并确认此前的帮助不构成债务"
+  },
+  {
+    "id": "e-397-action-sun-wu-50",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 397,
+    "orderInMonth": 50,
+    "cellId": 774,
+    "who": "sun-wu",
+    "intentId": "intent-397-sun-wu-9166",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+        "kind": "claim",
+        "summary": "回应对方的感谢，并确认此前的帮助不构成债务",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ],
+          "referenceEventId": "e-397-action-rei-ayanami-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 10,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-397-decision-sun-wu-11-51",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 51,
+    "planningTick": 11,
+    "orderInTick": 0,
+    "cellId": 774,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-397-sun-wu-9167",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应绫波丽关于感谢的话：回应对方的感谢，并确认此前的帮助不构成债务"
+  },
+  {
+    "id": "e-397-action-sun-wu-52",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 397,
+    "orderInMonth": 52,
+    "cellId": 774,
+    "who": "sun-wu",
+    "intentId": "intent-397-sun-wu-9167",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+        "kind": "claim",
+        "summary": "回应对方的感谢，并确认此前的帮助不构成债务",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ],
+          "referenceEventId": "e-397-action-rei-ayanami-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 11,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-397-decision-sun-wu-12-53",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 53,
+    "planningTick": 12,
+    "orderInTick": 0,
+    "cellId": 774,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-397-sun-wu-9168",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应绫波丽关于感谢的话：回应对方的感谢，并确认此前的帮助不构成债务"
+  },
+  {
+    "id": "e-397-action-sun-wu-54",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 397,
+    "orderInMonth": 54,
+    "cellId": 774,
+    "who": "sun-wu",
+    "intentId": "intent-397-sun-wu-9168",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+        "kind": "claim",
+        "summary": "回应对方的感谢，并确认此前的帮助不构成债务",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ],
+          "referenceEventId": "e-397-action-rei-ayanami-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 12,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-397-decision-sun-wu-13-55",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 55,
+    "planningTick": 13,
+    "orderInTick": 0,
+    "cellId": 774,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-397-sun-wu-9169",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应绫波丽关于感谢的话：回应对方的感谢，并确认此前的帮助不构成债务"
+  },
+  {
+    "id": "e-397-action-sun-wu-56",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 397,
+    "orderInMonth": 56,
+    "cellId": 774,
+    "who": "sun-wu",
+    "intentId": "intent-397-sun-wu-9169",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+        "kind": "claim",
+        "summary": "回应对方的感谢，并确认此前的帮助不构成债务",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ],
+          "referenceEventId": "e-397-action-rei-ayanami-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 13,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-397-decision-sun-wu-14-57",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 57,
+    "planningTick": 14,
+    "orderInTick": 0,
+    "cellId": 774,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-397-sun-wu-9170",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应绫波丽关于感谢的话：回应对方的感谢，并确认此前的帮助不构成债务"
+  },
+  {
+    "id": "e-397-action-sun-wu-58",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 397,
+    "orderInMonth": 58,
+    "cellId": 774,
+    "who": "sun-wu",
+    "intentId": "intent-397-sun-wu-9170",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+        "kind": "claim",
+        "summary": "回应对方的感谢，并确认此前的帮助不构成债务",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ],
+          "referenceEventId": "e-397-action-rei-ayanami-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 14,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-397-decision-sun-wu-15-59",
+    "kind": "decision",
+    "atMonth": 397,
+    "orderInMonth": 59,
+    "planningTick": 15,
+    "orderInTick": 0,
+    "cellId": 774,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-397-sun-wu-9171",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：回应绫波丽关于感谢的话：回应对方的感谢，并确认此前的帮助不构成债务"
+  },
+  {
+    "id": "e-397-action-sun-wu-60",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 397,
+    "orderInMonth": 60,
+    "cellId": 774,
+    "who": "sun-wu",
+    "intentId": "intent-397-sun-wu-9171",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-397-action-rei-ayanami-26:sun-wu",
+        "kind": "claim",
+        "summary": "回应对方的感谢，并确认此前的帮助不构成债务",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=gratitude|speaker=rei-ayanami|listener=sun-wu|sources=e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu",
+          "topic": "gratitude",
+          "turn": "response",
+          "speakerId": "sun-wu",
+          "listenerId": "rei-ayanami",
+          "sourceFactIds": [
+            "e-372-agreement-fulfilled-offer-companion:347:rei-ayanami:sun-wu"
+          ],
+          "referenceEventId": "e-397-action-rei-ayanami-26",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 774,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 15,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-397-environment-body-0",
+    "kind": "environment",
+    "atMonth": 397,
+    "orderInMonth": 61,
+    "cellId": 4133,
+    "change": "body",
+    "who": "born-63-potianfeng-9",
+    "result": "后修远结算了脱水休眠 episode 的本月身体代价",
+    "diff": {
+      "hibernationMonthlySettlement": true,
+      "hibernationConditionId": "condition-dehydrated-hibernation-born-63-potianfeng-9-259",
+      "hibernationPhase": "dormant",
+      "monthlyCostApplied": true,
+      "metabolicProfile": "dormant",
+      "hydrationCost": 0.35,
+      "nutritionCost": 0.3,
+      "healthDelta": -0.25,
+      "bodyBefore": {
+        "health": 65.5,
+        "hydration": 12.649999999999952,
+        "nutrition": 18.370000000000495
+      },
+      "bodyAfter": {
+        "health": 65.25,
+        "hydration": 12.299999999999953,
+        "nutrition": 18.070000000000494
+      }
+    },
+    "planningTick": 0,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-397-environment-body-1",
+    "kind": "environment",
+    "atMonth": 397,
+    "orderInMonth": 62,
+    "cellId": 4133,
+    "change": "body",
+    "who": "born-63-potianfeng-9",
+    "result": "后修远的身体储备发生显著变化",
+    "diff": {
+      "health": 65.25,
+      "hydration": 12.299999999999953,
+      "nutrition": 18.070000000000494,
+      "healthDelta": -0.25
+    },
+    "planningTick": 0,
+    "orderInTick": 2
+  }
+]

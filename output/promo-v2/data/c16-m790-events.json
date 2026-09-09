@@ -1,0 +1,1244 @@
+[
+  {
+    "id": "e-790-permission-expired-permission:offer-permission:765:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:rei-ayanami:22",
+    "kind": "permission",
+    "atMonth": 790,
+    "orderInMonth": 0,
+    "cellId": 0,
+    "permissionId": "permission:offer-permission:765:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:rei-ayanami:22",
+    "change": "expired",
+    "partyIds": [
+      "potianfeng",
+      "rei-ayanami"
+    ],
+    "result": "一项物质取用许可已到期",
+    "planningTick": 0,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-790-permission-expired-permission:offer-permission:765:collective:offer-collective:29:houyi:sun-wu:houyi:cai-wenji:21",
+    "kind": "permission",
+    "atMonth": 790,
+    "orderInMonth": 1,
+    "cellId": 0,
+    "permissionId": "permission:offer-permission:765:collective:offer-collective:29:houyi:sun-wu:houyi:cai-wenji:21",
+    "change": "expired",
+    "partyIds": [
+      "houyi",
+      "cai-wenji"
+    ],
+    "result": "一项物质取用许可已到期",
+    "planningTick": 0,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-790-permission-expired-permission:offer-permission:765:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+    "kind": "permission",
+    "atMonth": 790,
+    "orderInMonth": 2,
+    "cellId": 0,
+    "permissionId": "permission:offer-permission:765:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:41",
+    "change": "expired",
+    "partyIds": [
+      "rei-ayanami",
+      "potianfeng"
+    ],
+    "result": "一项物质取用许可已到期",
+    "planningTick": 0,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-790-opportunity-potianfeng",
+    "kind": "decision-opportunity",
+    "atMonth": 790,
+    "orderInMonth": 3,
+    "planningTick": 0,
+    "orderInTick": 3,
+    "who": "potianfeng",
+    "cellId": 859,
+    "probability": 0.645,
+    "sample": 0.9412702659610659,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "破天锋本月重新考虑下一步"
+  },
+  {
+    "id": "e-790-opportunity-rei-ayanami",
+    "kind": "decision-opportunity",
+    "atMonth": 790,
+    "orderInMonth": 4,
+    "planningTick": 0,
+    "orderInTick": 4,
+    "who": "rei-ayanami",
+    "cellId": 774,
+    "probability": 0.645,
+    "sample": 0.02640376496128738,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "绫波丽本月重新考虑下一步"
+  },
+  {
+    "id": "e-790-opportunity-cai-wenji",
+    "kind": "decision-opportunity",
+    "atMonth": 790,
+    "orderInMonth": 5,
+    "planningTick": 0,
+    "orderInTick": 5,
+    "who": "cai-wenji",
+    "cellId": 1443,
+    "probability": 0.645,
+    "sample": 0.9784630248323083,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "蔡文姬本月重新考虑下一步"
+  },
+  {
+    "id": "e-790-opportunity-houyi",
+    "kind": "decision-opportunity",
+    "atMonth": 790,
+    "orderInMonth": 6,
+    "planningTick": 0,
+    "orderInTick": 6,
+    "who": "houyi",
+    "cellId": 1528,
+    "probability": 0.645,
+    "sample": 0.2927040243521333,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "后羿本月重新考虑下一步"
+  },
+  {
+    "id": "e-790-opportunity-born-16-cai-wenji-7",
+    "kind": "decision-opportunity",
+    "atMonth": 790,
+    "orderInMonth": 7,
+    "planningTick": 0,
+    "orderInTick": 7,
+    "who": "born-16-cai-wenji-7",
+    "cellId": 3211,
+    "probability": 0.045,
+    "sample": 0.2592624241951853,
+    "triggered": false,
+    "reasons": [
+      "每月非零重新考虑概率"
+    ],
+    "result": "孙疏影本月延续已有意图"
+  },
+  {
+    "id": "e-790-opportunity-born-22-potianfeng-8",
+    "kind": "decision-opportunity",
+    "atMonth": 790,
+    "orderInMonth": 8,
+    "planningTick": 0,
+    "orderInTick": 8,
+    "who": "born-22-potianfeng-8",
+    "cellId": 859,
+    "probability": 0.645,
+    "sample": 0.37019832944497466,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "孙朝宗本月重新考虑下一步"
+  },
+  {
+    "id": "e-790-opportunity-born-115-cai-wenji-10",
+    "kind": "decision-opportunity",
+    "atMonth": 790,
+    "orderInMonth": 9,
+    "planningTick": 0,
+    "orderInTick": 9,
+    "who": "born-115-cai-wenji-10",
+    "cellId": 1528,
+    "probability": 0.645,
+    "sample": 0.21343511040322483,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "后凌川本月重新考虑下一步"
+  },
+  {
+    "id": "e-790-opportunity-born-159-potianfeng-11",
+    "kind": "decision-opportunity",
+    "atMonth": 790,
+    "orderInMonth": 10,
+    "planningTick": 0,
+    "orderInTick": 10,
+    "who": "born-159-potianfeng-11",
+    "cellId": 859,
+    "probability": 0.645,
+    "sample": 0.6782156613189727,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "孙明哲本月重新考虑下一步"
+  },
+  {
+    "id": "e-790-opportunity-born-193-cai-wenji-12",
+    "kind": "decision-opportunity",
+    "atMonth": 790,
+    "orderInMonth": 11,
+    "planningTick": 0,
+    "orderInTick": 11,
+    "who": "born-193-cai-wenji-12",
+    "cellId": 1443,
+    "probability": 0.645,
+    "sample": 0.974745279410854,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "后若水本月重新考虑下一步"
+  },
+  {
+    "id": "e-790-opportunity-born-244-potianfeng-13",
+    "kind": "decision-opportunity",
+    "atMonth": 790,
+    "orderInMonth": 12,
+    "planningTick": 0,
+    "orderInTick": 12,
+    "who": "born-244-potianfeng-13",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.07076939614489675,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "孙守一本月重新考虑下一步"
+  },
+  {
+    "id": "e-790-decision-potianfeng-1-13",
+    "kind": "decision",
+    "atMonth": 790,
+    "orderInMonth": 13,
+    "planningTick": 1,
+    "orderInTick": 0,
+    "cellId": 859,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:790:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:born-22-potianfeng-8:22",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 72%（65 次亲历）"
+    },
+    "intentId": "intent-790-potianfeng-18175",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：允许孙朝宗在需要时取用自己的种子"
+  },
+  {
+    "id": "e-790-decision-rei-ayanami-1-14",
+    "kind": "decision",
+    "atMonth": 790,
+    "orderInMonth": 14,
+    "planningTick": 1,
+    "orderInTick": 1,
+    "cellId": 774,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "meet:potianfeng",
+      "reason": "看见另一个人，接近后才能沟通、求助或共同做事；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；当前项目或观察留下了具体未知点"
+    },
+    "intentId": "intent-790-rei-ayanami-18176",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：去与破天锋会合"
+  },
+  {
+    "id": "e-790-decision-cai-wenji-1-15",
+    "kind": "decision",
+    "atMonth": 790,
+    "orderInMonth": 15,
+    "planningTick": 1,
+    "orderInTick": 2,
+    "cellId": 1443,
+    "who": "cai-wenji",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:790:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:born-193-cai-wenji-12:1",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 96%（52 次亲历）"
+    },
+    "intentId": "intent-790-cai-wenji-18177",
+    "domain": "social",
+    "usedModel": false,
+    "result": "蔡文姬决定：允许后若水在需要时取用自己的石"
+  },
+  {
+    "id": "e-790-decision-houyi-1-16",
+    "kind": "decision",
+    "atMonth": 790,
+    "orderInMonth": 16,
+    "planningTick": 1,
+    "orderInTick": 3,
+    "cellId": 1528,
+    "who": "houyi",
+    "decision": {
+      "kind": "start",
+      "optionId": "rejoin-collective:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji",
+      "reason": "双方仍属于以“持续交换物质并互相履约”为目的的持续共同体；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；当前项目或观察留下了具体未知点"
+    },
+    "intentId": "intent-790-houyi-18178",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后羿决定：重新与共同体成员蔡文姬会合"
+  },
+  {
+    "id": "e-790-decision-born-22-potianfeng-8-1-17",
+    "kind": "decision",
+    "atMonth": 790,
+    "orderInMonth": 17,
+    "planningTick": 1,
+    "orderInTick": 4,
+    "cellId": 859,
+    "who": "born-22-potianfeng-8",
+    "decision": {
+      "kind": "start",
+      "optionId": "rejoin-collective:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami",
+      "reason": "双方仍属于以“继续协作完成共同住所与环境改造”为目的的持续共同体；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；当前项目或观察留下了具体未知点"
+    },
+    "intentId": "intent-790-born-22-potianfeng-8-18179",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙朝宗决定：重新与共同体成员绫波丽会合"
+  },
+  {
+    "id": "e-790-decision-born-115-cai-wenji-10-1-18",
+    "kind": "decision",
+    "atMonth": 790,
+    "orderInMonth": 18,
+    "planningTick": 1,
+    "orderInTick": 5,
+    "cellId": 1528,
+    "who": "born-115-cai-wenji-10",
+    "decision": {
+      "kind": "start",
+      "optionId": "rejoin-collective:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji",
+      "reason": "双方仍属于以“持续交换物质并互相履约”为目的的持续共同体；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；当前项目或观察留下了具体未知点"
+    },
+    "intentId": "intent-790-born-115-cai-wenji-10-18180",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后凌川决定：重新与共同体成员蔡文姬会合"
+  },
+  {
+    "id": "e-790-decision-born-159-potianfeng-11-1-19",
+    "kind": "decision",
+    "atMonth": 790,
+    "orderInMonth": 19,
+    "planningTick": 1,
+    "orderInTick": 6,
+    "cellId": 859,
+    "who": "born-159-potianfeng-11",
+    "decision": {
+      "kind": "start",
+      "optionId": "predict-era:790:born-159-potianfeng-11:0",
+      "reason": "对天象、气温和过去纪元节律的观察可以形成一项有误差的预测；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 88%（12 次亲历）"
+    },
+    "intentId": "intent-790-born-159-potianfeng-11-18181",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "孙明哲决定：预言第 792 月前后将进入乱纪元"
+  },
+  {
+    "id": "e-790-decision-born-193-cai-wenji-12-1-20",
+    "kind": "decision",
+    "atMonth": 790,
+    "orderInMonth": 20,
+    "planningTick": 1,
+    "orderInTick": 7,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "rejoin-collective:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:houyi",
+      "reason": "双方仍属于以“持续交换物质并互相履约”为目的的持续共同体；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；当前项目或观察留下了具体未知点"
+    },
+    "intentId": "intent-790-born-193-cai-wenji-12-18182",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：重新与共同体成员后羿会合"
+  },
+  {
+    "id": "e-790-decision-born-244-potianfeng-13-1-21",
+    "kind": "decision",
+    "atMonth": 790,
+    "orderInMonth": 21,
+    "planningTick": 1,
+    "orderInTick": 8,
+    "cellId": 689,
+    "who": "born-244-potianfeng-13",
+    "decision": {
+      "kind": "start",
+      "optionId": "meet:potianfeng",
+      "reason": "看见另一个人，接近后才能沟通、求助或共同做事；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；当前项目或观察留下了具体未知点"
+    },
+    "intentId": "intent-790-born-244-potianfeng-13-18183",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙守一决定：去与破天锋会合"
+  },
+  {
+    "id": "e-790-action-rei-ayanami-22",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 790,
+    "orderInMonth": 22,
+    "cellId": 775,
+    "who": "rei-ayanami",
+    "intentId": "intent-790-rei-ayanami-18176",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 859,
+      "toZ": 5
+    },
+    "fromCellId": 774,
+    "toCellId": 775,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774,
+      775
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.1363636363636362,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 9
+  },
+  {
+    "id": "e-790-action-houyi-23",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 790,
+    "orderInMonth": 23,
+    "cellId": 1444,
+    "who": "houyi",
+    "intentId": "intent-790-houyi-18178",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1443,
+      "toZ": 5
+    },
+    "fromCellId": 1528,
+    "toCellId": 1444,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1528,
+      1444
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.25,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 10
+  },
+  {
+    "id": "e-790-action-potianfeng-24",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 790,
+    "orderInMonth": 24,
+    "cellId": 859,
+    "who": "potianfeng",
+    "intentId": "intent-790-potianfeng-18175",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:790:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:born-22-potianfeng-8:22",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份种子",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "potianfeng",
+          "partnerId": "born-22-potianfeng-8",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "potianfeng",
+          "granteeId": "born-22-potianfeng-8",
+          "materialId": 22,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 814,
+          "expiresAtMonth": 796
+        }
+      },
+      "audience": [
+        "born-22-potianfeng-8"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 859,
+    "toCellId": 859,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      859
+    ],
+    "status": "completed",
+    "result": "破天锋向孙朝宗表达：你可以在需要时每次取用我的一份种子",
+    "diff": {
+      "audience": [
+        "born-22-potianfeng-8"
+      ],
+      "content": {
+        "id": "offer-permission:790:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:born-22-potianfeng-8:22",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份种子",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "potianfeng",
+          "partnerId": "born-22-potianfeng-8",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "potianfeng",
+          "granteeId": "born-22-potianfeng-8",
+          "materialId": 22,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 814,
+          "expiresAtMonth": 796
+        }
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 1,
+    "orderInTick": 11
+  },
+  {
+    "id": "e-790-action-born-193-cai-wenji-12-25",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 790,
+    "orderInMonth": 25,
+    "cellId": 1444,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-790-born-193-cai-wenji-12-18182",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1444,
+      "toZ": 5
+    },
+    "fromCellId": 1443,
+    "toCellId": 1444,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443,
+      1444
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 16, 17 的高度 5",
+    "diff": {
+      "spentWork": 0.9090909090909091,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 12
+  },
+  {
+    "id": "e-790-action-born-244-potianfeng-13-26",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 790,
+    "orderInMonth": 26,
+    "cellId": 690,
+    "who": "born-244-potianfeng-13",
+    "intentId": "intent-790-born-244-potianfeng-13-18183",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 859,
+      "toZ": 5
+    },
+    "fromCellId": 689,
+    "toCellId": 690,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689,
+      690
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.727272727272727,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 13
+  },
+  {
+    "id": "e-790-action-cai-wenji-27",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 790,
+    "orderInMonth": 27,
+    "cellId": 1443,
+    "who": "cai-wenji",
+    "intentId": "intent-790-cai-wenji-18177",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:790:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:born-193-cai-wenji-12:1",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份石",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "cai-wenji",
+          "partnerId": "born-193-cai-wenji-12",
+          "collectiveId": "collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10",
+          "grantorId": "cai-wenji",
+          "granteeId": "born-193-cai-wenji-12",
+          "materialId": 1,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 814,
+          "expiresAtMonth": 796
+        }
+      },
+      "audience": [
+        "born-193-cai-wenji-12"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "completed",
+    "result": "蔡文姬向后若水表达：你可以在需要时每次取用我的一份石",
+    "diff": {
+      "audience": [
+        "born-193-cai-wenji-12"
+      ],
+      "content": {
+        "id": "offer-permission:790:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:born-193-cai-wenji-12:1",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份石",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "cai-wenji",
+          "partnerId": "born-193-cai-wenji-12",
+          "collectiveId": "collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10",
+          "grantorId": "cai-wenji",
+          "granteeId": "born-193-cai-wenji-12",
+          "materialId": 1,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 814,
+          "expiresAtMonth": 796
+        }
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 1,
+    "orderInTick": 14
+  },
+  {
+    "id": "e-790-action-born-115-cai-wenji-10-28",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 790,
+    "orderInMonth": 28,
+    "cellId": 1444,
+    "who": "born-115-cai-wenji-10",
+    "intentId": "intent-790-born-115-cai-wenji-10-18180",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1443,
+      "toZ": 5
+    },
+    "fromCellId": 1528,
+    "toCellId": 1444,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1528,
+      1444
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 0.9090909090909091,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 15
+  },
+  {
+    "id": "e-790-action-born-22-potianfeng-8-29",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 790,
+    "orderInMonth": 29,
+    "cellId": 775,
+    "who": "born-22-potianfeng-8",
+    "intentId": "intent-790-born-22-potianfeng-8-18179",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 775,
+      "toZ": 5
+    },
+    "fromCellId": 859,
+    "toCellId": 775,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      859,
+      775
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 19, 9 的高度 5",
+    "diff": {
+      "spentWork": 1.25,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 16
+  },
+  {
+    "id": "e-790-action-born-159-potianfeng-11-30",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 790,
+    "orderInMonth": 30,
+    "cellId": 859,
+    "who": "born-159-potianfeng-11",
+    "intentId": "intent-790-born-159-potianfeng-11-18181",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "predict-era:790:born-159-potianfeng-11:0",
+        "kind": "prediction",
+        "summary": "预言第 792 月前后将进入乱纪元",
+        "prediction": {
+          "targetEpoch": "chaotic",
+          "predictedStartMonth": 792,
+          "toleranceMonths": 3,
+          "expiresAtMonth": 795
+        }
+      },
+      "audience": [
+        "potianfeng",
+        "rei-ayanami",
+        "born-22-potianfeng-8",
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 859,
+    "toCellId": 859,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      859
+    ],
+    "status": "completed",
+    "result": "孙明哲向破天锋、绫波丽、孙朝宗、孙守一表达：预言第 792 月前后将进入乱纪元",
+    "diff": {
+      "audience": [
+        "potianfeng",
+        "rei-ayanami",
+        "born-22-potianfeng-8",
+        "born-244-potianfeng-13"
+      ],
+      "content": {
+        "id": "predict-era:790:born-159-potianfeng-11:0",
+        "kind": "prediction",
+        "summary": "预言第 792 月前后将进入乱纪元",
+        "prediction": {
+          "targetEpoch": "chaotic",
+          "predictedStartMonth": 792,
+          "toleranceMonths": 3,
+          "expiresAtMonth": 795
+        }
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 4
+    },
+    "planningTick": 1,
+    "orderInTick": 17
+  },
+  {
+    "id": "e-790-action-born-115-cai-wenji-10-31",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 790,
+    "orderInMonth": 31,
+    "cellId": 1443,
+    "who": "born-115-cai-wenji-10",
+    "intentId": "intent-790-born-115-cai-wenji-10-18180",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1443,
+      "toZ": 5
+    },
+    "fromCellId": 1444,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1444,
+      1443
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 15, 17 的高度 5",
+    "diff": {
+      "spentWork": 2.727272727272727,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-790-action-houyi-32",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 790,
+    "orderInMonth": 32,
+    "cellId": 1443,
+    "who": "houyi",
+    "intentId": "intent-790-houyi-18178",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1443,
+      "toZ": 5
+    },
+    "fromCellId": 1444,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1444,
+      1443
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 15, 17 的高度 5",
+    "diff": {
+      "spentWork": 3.75,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-790-action-rei-ayanami-33",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 790,
+    "orderInMonth": 33,
+    "cellId": 859,
+    "who": "rei-ayanami",
+    "intentId": "intent-790-rei-ayanami-18176",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 859,
+      "toZ": 5
+    },
+    "fromCellId": 775,
+    "toCellId": 859,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      775,
+      859
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 19, 10 的高度 5",
+    "diff": {
+      "spentWork": 2.2727272727272725,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-790-decision-born-22-potianfeng-8-2-34",
+    "kind": "decision",
+    "atMonth": 790,
+    "orderInMonth": 34,
+    "planningTick": 2,
+    "orderInTick": 3,
+    "cellId": 775,
+    "who": "born-22-potianfeng-8",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:790:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:born-22-potianfeng-8:22",
+      "reason": "对方刚刚提出了一项需要回应的社会请求；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；一项具体提议、权限或共同体关系正在等待本人表态"
+    },
+    "intentId": "intent-790-born-22-potianfeng-8-18184",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙朝宗决定：接受破天锋的物质取用许可"
+  },
+  {
+    "id": "e-790-action-born-22-potianfeng-8-35",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 790,
+    "orderInMonth": 35,
+    "cellId": 859,
+    "who": "born-22-potianfeng-8",
+    "intentId": "intent-790-born-22-potianfeng-8-18184",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 859,
+      "toZ": 5
+    },
+    "fromCellId": 775,
+    "toCellId": 859,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      775,
+      859
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 19, 10 的高度 5",
+    "diff": {
+      "spentWork": 2.5,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-790-action-born-244-potianfeng-13-36",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 790,
+    "orderInMonth": 36,
+    "cellId": 774,
+    "who": "born-244-potianfeng-13",
+    "intentId": "intent-790-born-244-potianfeng-13-18183",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 859,
+      "toZ": 5
+    },
+    "fromCellId": 690,
+    "toCellId": 774,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      690,
+      774
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 0.9090909090909091,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-790-decision-born-193-cai-wenji-12-2-37",
+    "kind": "decision",
+    "atMonth": 790,
+    "orderInMonth": 37,
+    "planningTick": 2,
+    "orderInTick": 6,
+    "cellId": 1444,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:790:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:born-193-cai-wenji-12:1",
+      "reason": "对方刚刚提出了一项需要回应的社会请求；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；一项具体提议、权限或共同体关系正在等待本人表态"
+    },
+    "intentId": "intent-790-born-193-cai-wenji-12-18185",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：接受蔡文姬的物质取用许可"
+  },
+  {
+    "id": "e-790-action-born-193-cai-wenji-12-38",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 790,
+    "orderInMonth": 38,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-790-born-193-cai-wenji-12-18185",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1443,
+      "toZ": 5
+    },
+    "fromCellId": 1444,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1444,
+      1443
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 15, 17 的高度 5",
+    "diff": {
+      "spentWork": 2.727272727272727,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 7
+  },
+  {
+    "id": "e-790-action-born-244-potianfeng-13-39",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 790,
+    "orderInMonth": 39,
+    "cellId": 775,
+    "who": "born-244-potianfeng-13",
+    "intentId": "intent-790-born-244-potianfeng-13-18183",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 859,
+      "toZ": 5
+    },
+    "fromCellId": 774,
+    "toCellId": 775,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      774,
+      775
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 0.9090909090909091,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-790-action-born-22-potianfeng-8-40",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 790,
+    "orderInMonth": 40,
+    "cellId": 859,
+    "who": "born-22-potianfeng-8",
+    "intentId": "intent-790-born-22-potianfeng-8-18184",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:790:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:born-22-potianfeng-8:22:born-22-potianfeng-8",
+        "kind": "accept",
+        "referenceId": "offer-permission:790:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:born-22-potianfeng-8:22"
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 859,
+    "toCellId": 859,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      859
+    ],
+    "status": "completed",
+    "result": "孙朝宗向破天锋表达：accept",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "accept:offer-permission:790:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:born-22-potianfeng-8:22:born-22-potianfeng-8",
+        "kind": "accept",
+        "referenceId": "offer-permission:790:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:born-22-potianfeng-8:22"
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 3,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-790-action-born-193-cai-wenji-12-41",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 790,
+    "orderInMonth": 41,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-790-born-193-cai-wenji-12-18185",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:790:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:born-193-cai-wenji-12:1:born-193-cai-wenji-12",
+        "kind": "accept",
+        "referenceId": "offer-permission:790:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:born-193-cai-wenji-12:1"
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "completed",
+    "result": "后若水向蔡文姬表达：accept",
+    "diff": {
+      "audience": [
+        "cai-wenji"
+      ],
+      "content": {
+        "id": "accept:offer-permission:790:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:born-193-cai-wenji-12:1:born-193-cai-wenji-12",
+        "kind": "accept",
+        "referenceId": "offer-permission:790:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:born-193-cai-wenji-12:1"
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 3,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-790-action-born-244-potianfeng-13-42",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 790,
+    "orderInMonth": 42,
+    "cellId": 859,
+    "who": "born-244-potianfeng-13",
+    "intentId": "intent-790-born-244-potianfeng-13-18183",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 859,
+      "toZ": 5
+    },
+    "fromCellId": 775,
+    "toCellId": 859,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      775,
+      859
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 19, 10 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 4,
+    "orderInTick": 0
+  }
+]

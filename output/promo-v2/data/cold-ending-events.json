@@ -1,0 +1,1037 @@
+[
+  {
+    "id": "e-169-environment-climate-0",
+    "kind": "environment",
+    "atMonth": 169,
+    "orderInMonth": 0,
+    "cellId": 0,
+    "change": "climate",
+    "result": "本月地表处于寒冷环境",
+    "diff": {
+      "epoch": "chaotic",
+      "kind": "cold",
+      "severity": 6,
+      "eraSequence": 7,
+      "eraSinceMonth": 155
+    },
+    "planningTick": 0,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-169-environment-weather-0",
+    "kind": "environment",
+    "atMonth": 169,
+    "orderInMonth": 1,
+    "cellId": 0,
+    "change": "weather",
+    "result": "本月天气转为风暴",
+    "diff": {
+      "kind": "storm",
+      "intensity": 3
+    },
+    "planningTick": 0,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-169-environment-material-0",
+    "kind": "environment",
+    "atMonth": 169,
+    "orderInMonth": 2,
+    "cellId": 0,
+    "change": "material",
+    "result": "3 个格子的物质因自然过程发生变化",
+    "diff": {
+      "changes": [
+        {
+          "cellId": 45,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 2157,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 3994,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        }
+      ]
+    },
+    "planningTick": 0,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-169-decision-zhugeliang-1-3",
+    "kind": "decision",
+    "atMonth": 169,
+    "orderInMonth": 3,
+    "planningTick": 1,
+    "orderInTick": 0,
+    "cellId": 1449,
+    "who": "zhugeliang",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-168-zhugeliang-2541",
+      "optionId": "survival-reflex:169:1:zhugeliang",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-169-zhugeliang-interrupt-2549",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "诸葛亮暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-169-action-zhugeliang-4",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 169,
+    "orderInMonth": 4,
+    "cellId": 1448,
+    "who": "zhugeliang",
+    "intentId": "intent-169-zhugeliang-interrupt-2549",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 1274,
+      "toZ": 5
+    },
+    "fromCellId": 1449,
+    "toCellId": 1448,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1449,
+      1448
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.1249999999999996,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-169-decision-zhugeliang-2-5",
+    "kind": "decision",
+    "atMonth": 169,
+    "orderInMonth": 5,
+    "planningTick": 2,
+    "orderInTick": 0,
+    "cellId": 1448,
+    "who": "zhugeliang",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-168-zhugeliang-2541",
+      "optionId": "survival-reflex:169:2:zhugeliang",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-169-zhugeliang-interrupt-2550",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "诸葛亮暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-169-action-zhugeliang-6",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 169,
+    "orderInMonth": 6,
+    "cellId": 1364,
+    "who": "zhugeliang",
+    "intentId": "intent-169-zhugeliang-interrupt-2550",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 1359,
+      "toZ": 5
+    },
+    "fromCellId": 1448,
+    "toCellId": 1364,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1448,
+      1364
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.1249999999999996,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-169-decision-zhugeliang-3-7",
+    "kind": "decision",
+    "atMonth": 169,
+    "orderInMonth": 7,
+    "planningTick": 3,
+    "orderInTick": 0,
+    "cellId": 1364,
+    "who": "zhugeliang",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-168-zhugeliang-2541",
+      "optionId": "survival-reflex:169:3:zhugeliang",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-169-zhugeliang-interrupt-2551",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "诸葛亮暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-169-action-zhugeliang-8",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 169,
+    "orderInMonth": 8,
+    "cellId": 1280,
+    "who": "zhugeliang",
+    "intentId": "intent-169-zhugeliang-interrupt-2551",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 1274,
+      "toZ": 5
+    },
+    "fromCellId": 1364,
+    "toCellId": 1280,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1364,
+      1280
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.1249999999999996,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-169-decision-zhugeliang-4-9",
+    "kind": "decision",
+    "atMonth": 169,
+    "orderInMonth": 9,
+    "planningTick": 4,
+    "orderInTick": 0,
+    "cellId": 1280,
+    "who": "zhugeliang",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-168-zhugeliang-2541",
+      "optionId": "survival-reflex:169:4:zhugeliang",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-169-zhugeliang-interrupt-2552",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "诸葛亮暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-169-action-zhugeliang-10",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 169,
+    "orderInMonth": 10,
+    "cellId": 1279,
+    "who": "zhugeliang",
+    "intentId": "intent-169-zhugeliang-interrupt-2552",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 1274,
+      "toZ": 5
+    },
+    "fromCellId": 1280,
+    "toCellId": 1279,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1280,
+      1279
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.1249999999999996,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 4,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-169-decision-zhugeliang-5-11",
+    "kind": "decision",
+    "atMonth": 169,
+    "orderInMonth": 11,
+    "planningTick": 5,
+    "orderInTick": 0,
+    "cellId": 1279,
+    "who": "zhugeliang",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-168-zhugeliang-2541",
+      "optionId": "survival-reflex:169:5:zhugeliang",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-169-zhugeliang-interrupt-2553",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "诸葛亮暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-169-action-zhugeliang-12",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 169,
+    "orderInMonth": 12,
+    "cellId": 1278,
+    "who": "zhugeliang",
+    "intentId": "intent-169-zhugeliang-interrupt-2553",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 1274,
+      "toZ": 5
+    },
+    "fromCellId": 1279,
+    "toCellId": 1278,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1279,
+      1278
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 6.249999999999999,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 5,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-169-decision-zhugeliang-6-13",
+    "kind": "decision",
+    "atMonth": 169,
+    "orderInMonth": 13,
+    "planningTick": 6,
+    "orderInTick": 0,
+    "cellId": 1278,
+    "who": "zhugeliang",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-168-zhugeliang-2541",
+      "optionId": "survival-reflex:169:6:zhugeliang",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-169-zhugeliang-interrupt-2554",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "诸葛亮暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-169-action-zhugeliang-14",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 169,
+    "orderInMonth": 14,
+    "cellId": 1277,
+    "who": "zhugeliang",
+    "intentId": "intent-169-zhugeliang-interrupt-2554",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 1274,
+      "toZ": 5
+    },
+    "fromCellId": 1278,
+    "toCellId": 1277,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1278,
+      1277
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.1249999999999996,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 6,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-169-decision-zhugeliang-7-15",
+    "kind": "decision",
+    "atMonth": 169,
+    "orderInMonth": 15,
+    "planningTick": 7,
+    "orderInTick": 0,
+    "cellId": 1277,
+    "who": "zhugeliang",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-168-zhugeliang-2541",
+      "optionId": "survival-reflex:169:7:zhugeliang",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-169-zhugeliang-interrupt-2555",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "诸葛亮暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-169-action-zhugeliang-16",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 169,
+    "orderInMonth": 16,
+    "cellId": 1276,
+    "who": "zhugeliang",
+    "intentId": "intent-169-zhugeliang-interrupt-2555",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 1274,
+      "toZ": 5
+    },
+    "fromCellId": 1277,
+    "toCellId": 1276,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1277,
+      1276
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 9.374999999999998,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 7,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-169-decision-zhugeliang-8-17",
+    "kind": "decision",
+    "atMonth": 169,
+    "orderInMonth": 17,
+    "planningTick": 8,
+    "orderInTick": 0,
+    "cellId": 1276,
+    "who": "zhugeliang",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-168-zhugeliang-2541",
+      "optionId": "survival-reflex:169:8:zhugeliang",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-169-zhugeliang-interrupt-2556",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "诸葛亮暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-169-action-zhugeliang-18",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 169,
+    "orderInMonth": 18,
+    "cellId": 1275,
+    "who": "zhugeliang",
+    "intentId": "intent-169-zhugeliang-interrupt-2556",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 1274,
+      "toZ": 5
+    },
+    "fromCellId": 1276,
+    "toCellId": 1275,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1276,
+      1275
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 9.374999999999998,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 8,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-169-decision-zhugeliang-9-19",
+    "kind": "decision",
+    "atMonth": 169,
+    "orderInMonth": 19,
+    "planningTick": 9,
+    "orderInTick": 0,
+    "cellId": 1275,
+    "who": "zhugeliang",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-168-zhugeliang-2541",
+      "optionId": "survival-reflex:169:9:zhugeliang",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-169-zhugeliang-interrupt-2557",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "诸葛亮暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-169-action-zhugeliang-20",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 169,
+    "orderInMonth": 20,
+    "cellId": 1274,
+    "who": "zhugeliang",
+    "intentId": "intent-169-zhugeliang-interrupt-2557",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 1274,
+      "toZ": 5
+    },
+    "fromCellId": 1275,
+    "toCellId": 1274,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1275,
+      1274
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 14, 15 的高度 5",
+    "diff": {
+      "spentWork": 6.249999999999999,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 1274,
+          "z": 4,
+          "from": 2,
+          "to": 15
+        }
+      ]
+    },
+    "planningTick": 9,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-169-decision-zhugeliang-10-21",
+    "kind": "decision",
+    "atMonth": 169,
+    "orderInMonth": 21,
+    "planningTick": 10,
+    "orderInTick": 0,
+    "cellId": 1274,
+    "who": "zhugeliang",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-168-zhugeliang-2541",
+      "optionId": "survival-reflex:169:10:zhugeliang",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-169-zhugeliang-interrupt-2558",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "诸葛亮暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-169-action-zhugeliang-22",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 169,
+    "orderInMonth": 22,
+    "cellId": 1274,
+    "who": "zhugeliang",
+    "intentId": "intent-169-zhugeliang-interrupt-2558",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "act",
+      "operation": "ingest",
+      "targets": [
+        {
+          "kind": "voxel",
+          "position": {
+            "x": 13,
+            "y": 15,
+            "z": 4
+          }
+        }
+      ]
+    },
+    "fromCellId": 1274,
+    "toCellId": 1274,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1274
+    ],
+    "status": "completed",
+    "result": "从地表摄入了冰",
+    "diff": {
+      "materialId": 18,
+      "hydration": 34
+    },
+    "planningTick": 10,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-169-decision-zhugeliang-11-23",
+    "kind": "decision",
+    "atMonth": 169,
+    "orderInMonth": 23,
+    "planningTick": 11,
+    "orderInTick": 0,
+    "cellId": 1274,
+    "who": "zhugeliang",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-168-zhugeliang-2541",
+      "optionId": "survival-reflex:169:11:zhugeliang",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-169-zhugeliang-interrupt-2559",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "诸葛亮暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-169-action-zhugeliang-24",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 169,
+    "orderInMonth": 24,
+    "cellId": 1274,
+    "who": "zhugeliang",
+    "intentId": "intent-169-zhugeliang-interrupt-2559",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "act",
+      "operation": "separate",
+      "targets": [
+        {
+          "kind": "voxel",
+          "position": {
+            "x": 15,
+            "y": 15,
+            "z": 4
+          }
+        }
+      ]
+    },
+    "fromCellId": 1274,
+    "toCellId": 1274,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1274
+    ],
+    "status": "completed",
+    "result": "从结果灌木分离出食物 × 3、种子 × 1",
+    "diff": {
+      "sourceMaterialId": 10,
+      "replacementMaterialId": 9,
+      "outputs": [
+        {
+          "materialId": 21,
+          "quantity": 3
+        },
+        {
+          "materialId": 22,
+          "quantity": 1
+        }
+      ],
+      "productionMultiplier": 1
+    },
+    "planningTick": 11,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-169-decision-zhugeliang-12-25",
+    "kind": "decision",
+    "atMonth": 169,
+    "orderInMonth": 25,
+    "planningTick": 12,
+    "orderInTick": 0,
+    "cellId": 1274,
+    "who": "zhugeliang",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-168-zhugeliang-2541",
+      "optionId": "survival-reflex:169:12:zhugeliang",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-169-zhugeliang-interrupt-2560",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "诸葛亮暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-169-action-zhugeliang-26",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 169,
+    "orderInMonth": 26,
+    "cellId": 1274,
+    "who": "zhugeliang",
+    "intentId": "intent-169-zhugeliang-interrupt-2560",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "transfer",
+      "materialId": 21,
+      "quantity": 1,
+      "from": {
+        "kind": "ground",
+        "cellId": 1274,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "zhugeliang"
+      },
+      "dropId": "drop-169-zhugeliang-separate-441"
+    },
+    "fromCellId": 1274,
+    "toCellId": 1274,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1274
+    ],
+    "status": "completed",
+    "result": "食物 × 1 改变了持有者",
+    "diff": {
+      "materialId": 21,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 1274,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "zhugeliang"
+      },
+      "witnessedBy": [
+        "zhugeliang"
+      ]
+    },
+    "planningTick": 12,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-169-decision-zhugeliang-13-27",
+    "kind": "decision",
+    "atMonth": 169,
+    "orderInMonth": 27,
+    "planningTick": 13,
+    "orderInTick": 0,
+    "cellId": 1274,
+    "who": "zhugeliang",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-168-zhugeliang-2541",
+      "optionId": "survival-reflex:169:13:zhugeliang",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-169-zhugeliang-interrupt-2561",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "诸葛亮暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-169-action-zhugeliang-28",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 169,
+    "orderInMonth": 28,
+    "cellId": 1274,
+    "who": "zhugeliang",
+    "intentId": "intent-169-zhugeliang-interrupt-2561",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "act",
+      "operation": "ingest",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "zhugeliang",
+          "stackId": "stack-zhugeliang-21-169"
+        }
+      ]
+    },
+    "fromCellId": 1274,
+    "toCellId": 1274,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1274
+    ],
+    "status": "completed",
+    "result": "摄入了食物",
+    "diff": {
+      "materialId": 21,
+      "nutrition": 48,
+      "hydration": 4,
+      "health": 0
+    },
+    "planningTick": 13,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-169-decision-zhugeliang-14-29",
+    "kind": "decision",
+    "atMonth": 169,
+    "orderInMonth": 29,
+    "planningTick": 14,
+    "orderInTick": 0,
+    "cellId": 1274,
+    "who": "zhugeliang",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-168-zhugeliang-2541",
+      "optionId": "survival-reflex:169:14:zhugeliang",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-169-zhugeliang-interrupt-2562",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "诸葛亮暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-169-action-zhugeliang-30",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 169,
+    "orderInMonth": 30,
+    "cellId": 1275,
+    "who": "zhugeliang",
+    "intentId": "intent-169-zhugeliang-interrupt-2562",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 1450,
+      "toZ": 5
+    },
+    "fromCellId": 1274,
+    "toCellId": 1275,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1274,
+      1275
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 7.5,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 14,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-169-decision-zhugeliang-15-31",
+    "kind": "decision",
+    "atMonth": 169,
+    "orderInMonth": 31,
+    "planningTick": 15,
+    "orderInTick": 0,
+    "cellId": 1275,
+    "who": "zhugeliang",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-168-zhugeliang-2541",
+      "optionId": "survival-reflex:169:15:zhugeliang",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-169-zhugeliang-interrupt-2563",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "诸葛亮暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-169-action-zhugeliang-32",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 169,
+    "orderInMonth": 32,
+    "cellId": 1276,
+    "who": "zhugeliang",
+    "intentId": "intent-169-zhugeliang-interrupt-2563",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 1450,
+      "toZ": 5
+    },
+    "fromCellId": 1275,
+    "toCellId": 1276,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1275,
+      1276
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 7.5,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 15,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-169-environment-condition-0",
+    "kind": "environment",
+    "atMonth": 169,
+    "orderInMonth": 33,
+    "cellId": 1276,
+    "change": "condition",
+    "who": "zhugeliang",
+    "result": "诸葛亮的寒冷加重",
+    "diff": {
+      "condition": "cold",
+      "stage": 3
+    },
+    "planningTick": 0,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-169-environment-death-1",
+    "kind": "environment",
+    "atMonth": 169,
+    "orderInMonth": 34,
+    "cellId": 1276,
+    "change": "death",
+    "who": "zhugeliang",
+    "result": "诸葛亮在第 169 月死亡，私有背包遗留在原地",
+    "diff": {
+      "personId": "zhugeliang",
+      "ageMonths": 517,
+      "cause": "body-failure",
+      "healthBeforeDeath": 0,
+      "sourceEventIds": [
+        "e-155-environment-condition-0",
+        "e-156-environment-condition-0",
+        "e-158-environment-condition-0",
+        "e-160-environment-condition-0",
+        "e-161-environment-condition-0",
+        "e-162-environment-condition-0",
+        "e-164-environment-condition-0",
+        "e-165-environment-condition-0",
+        "e-166-environment-condition-0",
+        "e-167-environment-condition-0",
+        "e-168-environment-condition-0",
+        "e-169-environment-condition-0"
+      ]
+    },
+    "planningTick": 0,
+    "orderInTick": 4
+  }
+]

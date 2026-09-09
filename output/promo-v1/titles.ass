@@ -1,0 +1,33 @@
+[Script Info]
+Title: ELAND — 宣传片 v1
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+YCbCr Matrix: TV.709
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Wordmark,Avenir Next,29,&H00E6EFF3,&H00E6EFF3,&H00000000,&H00000000,0,0,0,0,100,100,6,0,1,0,0,4,88,88,0,1
+Style: Provenance,Hiragino Sans GB,22,&H0097A39F,&H0097A39F,&H00000000,&H00000000,0,0,0,0,100,100,1,0,1,0,0,6,88,88,0,1
+Style: Narrative,Songti SC,44,&H00E6EFF3,&H00E6EFF3,&H00000000,&H00000000,0,0,0,0,100,100,2,0,1,0,0,5,100,100,0,1
+Style: Opening,Avenir Next,22,&H00B5C7CC,&H00B5C7CC,&H50000000,&H00000000,0,0,0,0,100,100,4,0,1,0.5,0,5,100,100,0,1
+Style: EndTitle,Avenir Next,144,&H00E6EFF3,&H00E6EFF3,&H00000000,&H00000000,0,0,0,0,100,100,18,0,1,0,0,5,100,100,0,1
+Style: EndLine,Songti SC,48,&H00E6EFF3,&H00E6EFF3,&H00000000,&H00000000,0,0,0,0,100,100,5,0,1,0,0,5,100,100,0,1
+Style: EndDetail,Hiragino Sans GB,24,&H0083AABB,&H0083AABB,&H00000000,&H00000000,0,0,0,0,100,100,2,0,1,0,0,5,100,100,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 1,0:00:00.70,0:00:34.60,Wordmark,,0,0,0,,{\pos(88,65)\fad(650,550)}ELAND
+Dialogue: 1,0:00:00.70,0:00:34.60,Provenance,,0,0,0,,{\pos(1832,65)\fad(650,550)}开发中 · 实机画面 / 存档回放
+Dialogue: 1,0:00:00.90,0:00:04.20,Opening,,0,0,0,,{\pos(960,260)\fad(750,650)}A WORLD THAT LIVES ON ITS OWN
+Dialogue: 2,0:00:00.70,0:00:04.60,Narrative,,0,0,0,,{\pos(960,1000)\fad(500,500)}在三颗太阳之下
+Dialogue: 2,0:00:05.40,0:00:09.70,Narrative,,0,0,0,,{\pos(960,1000)\fad(500,500)}从一无所有开始
+Dialogue: 2,0:00:10.80,0:00:15.60,Narrative,,0,0,0,,{\pos(960,1000)\fad(500,500)}一片会自行生长的世界
+Dialogue: 2,0:00:16.40,0:00:22.00,Narrative,,0,0,0,,{\pos(960,1000)\fad(500,550)}采集、制造、修筑居所
+Dialogue: 2,0:00:23.00,0:00:28.40,Narrative,,0,0,0,,{\pos(960,1000)\fad(500,550)}他们称你为「主」，却有自己的主意
+Dialogue: 2,0:00:29.40,0:00:34.10,Narrative,,0,0,0,,{\pos(960,1000)\fad(500,650)}恒纪元与乱纪元，改写文明的命运
+Dialogue: 3,0:00:35.30,0:00:41.70,EndTitle,,0,0,0,,{\pos(960,480)\fad(1100,800)}ELAND
+Dialogue: 3,0:00:35.30,0:00:41.70,EndLine,,0,0,0,,{\pos(960,600)\fad(1450,800)}没有写好的历史
+Dialogue: 3,0:00:35.30,0:00:41.70,EndDetail,,0,0,0,,{\pos(960,694)\fad(1800,800)}Agent 文明模拟 · 开发中

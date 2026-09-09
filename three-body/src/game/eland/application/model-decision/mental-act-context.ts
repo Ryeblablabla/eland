@@ -7,12 +7,14 @@ import {
   type CharacterAgendaProbeCandidates,
   type DecisionProbeHandleMap,
 } from './capability-handles';
-import type { DecisionRequestContext } from './decision-context';
+import { MATERIAL_QUANTITY_SEMANTICS, type DecisionRequestContext } from './decision-context';
 import { MBTI_PERSONA_PRESETS, type MbtiType } from '../../domain/mbti-persona-presets';
 import { materialDefinition, materialHas } from '../../domain/material';
 import { cellId, cellX, cellY } from '../../world/grid';
 import { describeModelPlanCompletion } from './plan-completion';
 import { knownMethodContext } from './method-context';
+import { projectNativeOperations } from './native-operation-context';
+import { NATIVE_ACT_WIRE_DEFINITIONS, nativeActWireDefinition, type NativeActWireKind } from './native-act-wire';
 
 export interface MentalActRequestContext {
   schemaVersion: 'mental-act-context-v5';
@@ -33,7 +35,7 @@ export interface MentalActRequestContext {
   availableSteps: Array<Record<string, unknown> & { handle: string }>;
   continuations: Array<Record<string, unknown> & { handle: string }>;
   actionSpace: {
-    operations: Array<{ kind: 'observe' | 'combine' | 'expose' | 'exert' | 'move'; meaning: string }>;
+    operations: Array<{ kind: 'observe' | 'combine' | 'assemble' | 'expose' | 'move' | NativeActWireKind; meaning: string }>;
     heldObjects: Array<Record<string, unknown> & { ref: string }>;
   };
   /**
@@ -46,6 +48,9 @@ export interface MentalActRequestContext {
   knownMethods?: Array<Record<string, unknown> & { handle: string }>;
   speechReferences?: Array<Record<string, unknown> & { ref: string }>;
   personalityPreset?: Record<string, unknown>;
+  nativeOperations?: Array<Record<string, unknown>>;
+  nativeReferences?: Array<Record<string, unknown>>;
+  knownProjects?: Array<Record<string, unknown>>;
 }
 
 export type MindActionPossibilityKind =
@@ -75,9 +80,14 @@ export interface MindActionPossibility {
   description: string;
 }
 
-/** Mind sees coarse affordance kinds, never prepared choices or entity handles. */
+interface MindActionPossibilities {
+  availableNow: MindActionPossibility[];
+  agency: string;
+}
+
+/** The person chooses an activity from experienced facts, without engine menus. */
 export interface MindIntentionRequestContext {
-  schemaVersion: 'mind-intention-context-v5';
+  schemaVersion: 'mind-intention-context-v7';
   person: MentalActRequestContext['person'];
   situation: MentalActRequestContext['situation'];
   origin?: NonNullable<MentalActRequestContext['origin']>;
@@ -86,10 +96,6 @@ export interface MindIntentionRequestContext {
   recentDialogue: MentalActRequestContext['recentDialogue'];
   visible: MentalActRequestContext['visible'];
   speechReferences?: MentalActRequestContext['speechReferences'];
-  actionPossibilities: {
-    availableNow: MindActionPossibility[];
-    agency: string;
-  };
   personalityPreset?: NonNullable<MentalActRequestContext['personalityPreset']>;
 }
 
@@ -106,8 +112,10 @@ export interface MindIntentionDraft {
   utterance: string;
   delivery: 'whisper' | 'normal' | 'call';
   goal: string;
+  nextAttempt?: string;
+  attempt?: import('../../domain/mental-act').MentalAct['attempt'];
   speechIntent?: import('../../domain/mental-act').MentalSpeechIntent;
-  /** Subjective direction only; Plan still chooses the concrete executable entry. */
+  /** Subjective direction; the selected operation has its own explicit source. */
   orientation?: MindIntentionOrientation;
   /** The person decides whether this goal should survive the current turn. */
   horizon?: 'momentary' | 'ongoing';
@@ -117,12 +125,20 @@ export interface MindIntentionDraft {
 export interface ModelPlanRequestContext {
   schemaVersion: 'model-plan-context-v1';
   intention: MindIntentionDraft;
+  declaration: {
+    delivery: 'with-this-decision' | 'already-delivered';
+    meaning: string;
+  };
+  person: MentalActRequestContext['person'];
+  situation: MentalActRequestContext['situation'];
   mind: MentalActRequestContext['mind'];
   current: MentalActRequestContext['current'];
   recentDialogue: MentalActRequestContext['recentDialogue'];
   visible: MentalActRequestContext['visible'];
-  availableSteps: MentalActRequestContext['availableSteps'];
-  continuations: MentalActRequestContext['continuations'];
+  capabilities: MindActionPossibilities;
+  knownProjects: NonNullable<MentalActRequestContext['knownProjects']>;
+  knownMethods: NonNullable<MentalActRequestContext['knownMethods']>;
+  speechReferences: NonNullable<MentalActRequestContext['speechReferences']>;
   actionSpace: MentalActRequestContext['actionSpace'];
 }
 
@@ -197,8 +213,6 @@ const CAPABILITY_NAMES: Record<string, string> = {
   locomotion: '移动',
   manipulation: '动手操作',
   perception: '观察',
-  communication: '交流',
-  cognition: '思考',
 };
 
 function capabilityBand(value: number): string {
@@ -221,15 +235,8 @@ function capabilitySummary(value: unknown): string[] {
 function semanticCharacter(value: unknown): string[] {
   const person = object(value);
   const soul = object(person.soul);
-  const note = object(person.characterNote);
-  const facet = object(note.activeFacet);
-  const reaction = object(note.activeReaction);
   return uniqueText([
     stringValue(soul.innerVoice),
-    stringValue(facet.attention),
-    stringValue(facet.innerTension),
-    stringValue(reaction.responseTendency),
-    stringValue(note.responseShape),
   ], 4);
 }
 
@@ -242,15 +249,14 @@ function semanticPersonalityPreset(value: unknown): Record<string, unknown> | un
     type: personalityPreset.type,
     name: personalityPreset.name,
     summary: personalityPreset.summary,
-    attention: personalityPreset.attention,
     innerTension: personalityPreset.innerTension,
-    responseTendency: personalityPreset.responseTendency,
     speechTendency: personalityPreset.speechTendency,
   };
 }
 
 function semanticPerson(value: unknown): Record<string, unknown> {
   const person = object(value);
+  const position = object(person.position);
   const relationshipHistory = rows(person.relationshipEpisodes).map((episodeValue) => {
     const episode = object(episodeValue);
     return {
@@ -269,7 +275,8 @@ function semanticPerson(value: unknown): Record<string, unknown> {
   return {
     id: stringValue(person.id),
     name: stringValue(person.name),
-    position: object(person.position),
+    position: { ...position, ...(typeof position.cellId === 'number'
+      ? { x: cellX(position.cellId), y: cellY(position.cellId) } : {}) },
     lifeStage: lifeStage(numberValue(person.ageMonths)),
     physicalState: physicalState(person),
     capabilities: capabilitySummary(person.capacities),
@@ -280,19 +287,12 @@ function semanticPerson(value: unknown): Record<string, unknown> {
 
 function semanticFounderOrigin(
   situationValue: unknown,
-  heldObjects: MentalActRequestContext['actionSpace']['heldObjects'],
 ): MentalActRequestContext['origin'] {
   const situation = object(situationValue);
   if (numberValue(situation.month) !== 1) return undefined;
-  const carried = heldObjects.map((item) => {
-    const quantity = numberValue(item.quantity);
-    const name = stringValue(item.name) || '随身物品';
-    return `${quantity > 0 ? `${quantity} 份` : ''}${name}`;
-  }).filter(Boolean);
   return {
     background: [
       '你与周围的先民刚在这片自然地表共同开始生活，彼此只有共同抵达带来的基本熟悉。',
-      carried.length ? `你随身带着 ${carried.join('、')}。` : '你没有随身物资。',
     ],
   };
 }
@@ -396,11 +396,12 @@ function semanticSituation(value: unknown): Record<string, unknown> {
     decisionInterval: '本月生活的方向与眼前下一步；短动作完成后可以在同月继续决策，月份不是一次观察或一句话的持续时间',
     era: situation.epoch === 'chaotic' ? '乱纪元' : '恒纪元',
     environment: `${climateName}；${weatherName}${intensity >= 3 ? '，影响强烈' : intensity >= 2 ? '，影响明显' : '，影响轻微'}`,
-    urgentPressures: pressures.length ? pressures : ['没有正在伤害身体的紧迫压力'],
+    urgentPressures: pressures,
   };
 }
 
 const AGREEMENT_KINDS: Record<string, string> = {
+  'joint-action': '临时共同事项',
   assist: '协助约定',
   exchange: '交换约定',
   jointProject: '共同项目约定',
@@ -432,6 +433,20 @@ function progressSummary(value: unknown): string {
   return '已经完成';
 }
 
+/** Refer to the already-retained evidence only when it is exactly the same text.
+ * A lossy heard utterance is never completed with the author's full wording. */
+function singleSourceAgreementProposal(agreement: DecisionRequestContext['agreements'][number]): Record<string, unknown> {
+  const proposal = { ...agreement.proposal };
+  const matchingSource = typeof proposal.summary === 'string' && proposal.summary.length
+    ? agreement.sourceFacts.find((source) => source.eventId === agreement.proposalEventId
+      && source.utterance === proposal.summary) : undefined;
+  if (matchingSource) {
+    delete proposal.summary;
+    proposal.summarySourceEventId = matchingSource.eventId;
+  }
+  return proposal;
+}
+
 function semanticCurrent(value: unknown, atMonth: number): Record<string, unknown> {
   const current = object(value);
   const activeIntent = object(current.activeIntent);
@@ -440,31 +455,39 @@ function semanticCurrent(value: unknown, atMonth: number): Record<string, unknow
   const materialPlan = object(activeProject.materialPlan);
   const agreements = rows(current.agreements).map((agreementValue) => {
     const agreement = object(agreementValue);
-    const kind = AGREEMENT_KINDS[stringValue(agreement.kind)] ?? (stringValue(agreement.kind) || '约定');
-    const state = AGREEMENT_STATUS[stringValue(agreement.status)] ?? (stringValue(agreement.status) || '状态未知');
+    const jointAction = agreement.kind === 'joint-action';
+    const hasReplyDeadline = typeof agreement.acceptByMonth === 'number' && Number.isFinite(agreement.acceptByMonth);
     const ownState = agreement.requiresOwnResponse && agreement.status === 'proposed'
       && !agreement.acceptedBySelf && !agreement.rejectedBySelf
-      ? '对方在等待本人的答复'
+      ? jointAction ? '本人尚未回应这次邀请' : '对方在等待本人的答复'
       : agreement.fulfilledBySelf
         ? '本人已经完成自己的部分'
         : agreement.rejectedBySelf
           ? '本人已经明确反对'
         : agreement.acceptedBySelf
-          ? '本人已经接受，但还没有完成自己的部分'
+          ? jointAction ? '本人已明确接受本次邀请' : '本人已经接受，但还没有完成自己的部分'
           : '本人尚未接受';
     return {
-      kind,
-      state,
+      ref: stringValue(agreement.ref),
+      // The complete matter and its heard source live once in speechReferences.
       ownState,
-      proposedAt: `第 ${numberValue(agreement.proposedAtMonth)} 月`,
       elapsedMonths: Math.max(0, atMonth - numberValue(agreement.proposedAtMonth)),
-      awaitingReplies: rows(agreement.pendingResponderNames).map(stringValue),
-      electorate: numberValue(agreement.electorateCount),
-      support: numberValue(agreement.supportCount),
-      opposition: numberValue(agreement.oppositionCount),
-      ...(typeof agreement.dueAtMonth === 'number' ? { due: `第 ${agreement.dueAtMonth} 月` } : {}),
+      ...(jointAction ? {
+        participantCount: numberValue(agreement.electorateCount),
+        acceptedCount: numberValue(agreement.supportCount),
+        rejectedCount: numberValue(agreement.oppositionCount),
+      } : {
+        electorate: numberValue(agreement.electorateCount),
+        support: numberValue(agreement.supportCount),
+        opposition: numberValue(agreement.oppositionCount),
+      }),
+      ...(!jointAction && typeof agreement.dueAtMonth === 'number' ? { due: `第 ${agreement.dueAtMonth} 月` } : {}),
       ...(agreement.status === 'proposed' || agreement.status === 'active' ? {
-        consequence: '可以自行决定是否回应或履行；未回应可能使提议逾期，接受后未履行可能留下违约事实，对方会独立理解这些经历',
+        consequence: jointAction
+          ? `每位受邀者自行决定是否回应，未回应不表示同意，也不妨碍各自行动。${hasReplyDeadline
+            ? '待回应的邀请只按提议者明确声明的回应期限判断是否过期。'
+            : '未指定回应期限，不会因时间流逝自动过期。'}没有默认履约期限或自动违约；没有共同成果判据时，接受或一次动作不会自动标记事项完成。发起人可以撤回邀请，已接受者可以明确结束这份约定。`
+          : '可以自行决定是否回应或履行；未回应可能使提议逾期，接受后未履行可能留下违约事实，对方会独立理解这些经历',
       } : {}),
     };
   });
@@ -486,6 +509,7 @@ function semanticCurrent(value: unknown, atMonth: number): Record<string, unknow
     };
   });
   return {
+    recentExperiences: rows(current.recentExperiences),
     concernHistory: rows(current.characterAgenda).map((value) => {
       const concern = object(value);
       return {
@@ -510,9 +534,10 @@ function semanticCurrent(value: unknown, atMonth: number): Record<string, unknow
         summary: stringValue(work.summary),
         status: stringValue(work.status),
         when: `第 ${numberValue(work.atMonth)} 月`,
-        authoredPlan: rows(object(work.plan).steps).map(stringValue).filter(Boolean),
+        ...(work.plan ? { authoredPlan: rows(object(work.plan).steps).map(stringValue).filter(Boolean) } : {}),
         recentOutcomes: rows(work.recentOutcomes),
-        interpretation: '结束的是已执行的一步；原计划其余部分是否继续、修改或放下，由本人结合实际结果判断',
+        ...(stringValue(work.preflightResult) ? { preflightResult: stringValue(work.preflightResult) } : {}),
+        interpretation: '这次操作已结束，是否实际发生及其结果以回执为准；下一步由本人结合当前目标决定',
       };
     }),
     ...(stringValue(activeIntent.summary) ? {
@@ -528,9 +553,13 @@ function semanticCurrent(value: unknown, atMonth: number): Record<string, unknow
             const outcome = object(outcomeValue);
             return {
               when: `第 ${numberValue(outcome.atMonth)} 月`,
+              ...(stringValue(outcome.sourceEventId) ? { sourceEventId: stringValue(outcome.sourceEventId) } : {}),
               action: stringValue(outcome.execution),
               goal: stringValue(outcome.goalProgress),
               evidence: stringValue(outcome.evidence),
+              actualResult: stringValue(outcome.actualResult),
+              operation: stringValue(outcome.operation),
+              overallGoalAssessment: stringValue(outcome.overallGoalAssessment),
             };
           }),
         } : {}),
@@ -571,9 +600,12 @@ function semanticCurrent(value: unknown, atMonth: number): Record<string, unknow
             const outcome = object(outcomeValue);
             return {
               when: `第 ${numberValue(outcome.atMonth)} 月`,
+              ...(stringValue(outcome.sourceEventId) ? { sourceEventId: stringValue(outcome.sourceEventId) } : {}),
               action: stringValue(outcome.execution),
               goal: stringValue(outcome.goalProgress),
               evidence: stringValue(outcome.evidence),
+              actualResult: stringValue(outcome.actualResult),
+              operation: stringValue(outcome.operation),
             };
           }),
         } : {}),
@@ -590,6 +622,22 @@ function semanticMindCurrent(
 ): Record<string, unknown> {
   const current = object(value);
   const activeWork = object(current.activeWork);
+  const pendingDecisionId = stringValue(object(current.pendingStep).eventId);
+  const pendingFailure = pendingDecisionId ? rows(current.compilationFeedback).map(object)
+    .find((feedback) => feedback.eventId === pendingDecisionId && feedback.status === 'unresolved') : undefined;
+  // A compiler's sufficiency judgment is not something the actor perceived.
+  // Give Mind the attempted operation and its actual receipt; Plan retains the
+  // separate checks and review prose for correcting its executable translation.
+  const experiencedOutcomes = (value: unknown) => rows(value).map((value) => {
+    const outcome = object(value);
+    return {
+      when: stringValue(outcome.when) || `第 ${numberValue(outcome.atMonth)} 月`,
+      ...(stringValue(outcome.sourceEventId) ? { sourceEventId: stringValue(outcome.sourceEventId) } : {}),
+      execution: stringValue(outcome.execution) || stringValue(outcome.action),
+      ...(stringValue(outcome.operation) ? { operation: stringValue(outcome.operation) } : {}),
+      ...(stringValue(outcome.actualResult) ? { actualResult: stringValue(outcome.actualResult) } : {}),
+    };
+  });
   const pressingMatters = availableSteps
     .filter((step) => stringValue(step.priority) !== '可以选择')
     .filter((step, index, all) => all.findIndex((candidate) => (
@@ -602,17 +650,30 @@ function semanticMindCurrent(
       purpose: stringValue(step.purpose),
     }));
   return {
+    recentExperiences: rows(current.recentExperiences),
+    ...(current.reconsideration ? { reconsideration: current.reconsideration } : {}),
+    ...(current.currentIntention ? { currentIntention: current.currentIntention } : {}),
+    ...(current.pendingStep ? { pendingStep: current.pendingStep } : {}),
+    ...(pendingFailure ? { attemptFeedback: {
+      sourceDecisionEventId: pendingDecisionId,
+      message: stringValue(pendingFailure.message),
+      ...(Array.isArray(pendingFailure.fields) ? { fields: pendingFailure.fields } : {}),
+      interpretation: '这是所选操作尚未开始的编译反馈，不是本人亲历或已验证的世界结论',
+    } } : {}),
     ...(stringValue(activeWork.summary) ? {
-      ongoingCommitment: stringValue(activeWork.summary),
+      ongoingActivity: stringValue(activeWork.summary),
       authoredPlan: rows(activeWork.authoredPlan),
-      recentOutcomes: rows(activeWork.recentOutcomes),
+      recentOutcomes: experiencedOutcomes(activeWork.recentOutcomes),
     } : {}),
-    recentlyFinishedWork: rows(current.recentlyFinishedWork),
+    recentlyFinishedWork: rows(current.recentlyFinishedWork).map((value) => {
+      const work = object(value);
+      return { ...work, recentOutcomes: experiencedOutcomes(work.recentOutcomes) };
+    }),
     concernHistory: rows(current.concernHistory),
     ...(pressingMatters.length ? { pressingMatters } : {}),
     suspendedWork: rows(current.suspendedWork).map((workValue) => {
       const { handle: _planOnlyHandle, ...work } = object(workValue);
-      return work;
+      return { ...work, recentOutcomes: experiencedOutcomes(work.recentOutcomes) };
     }),
     agreements: rows(current.agreements),
     collectives: rows(current.collectives),
@@ -662,16 +723,22 @@ const SPECIES_NAMES: Record<string, string> = {
   wolf: '狼',
 };
 
-function relationSummary(person: Record<string, unknown> | undefined): string | undefined {
-  if (!person) return undefined;
-  const fear = numberValue(person.fear);
-  const trust = numberValue(person.trust);
-  const bond = numberValue(person.bond);
-  if (fear >= 45) return '本人明显害怕这个人';
-  if (bond >= 45) return '关系亲近';
-  if (trust >= 25) return '比较信任';
-  if (trust >= 12 || bond >= 12) return '彼此熟悉';
-  return '关系普通';
+function authoredRelationshipInterpretations(context: DecisionRequestContext, handles: DecisionProbeHandleMap) {
+  const result = new Map<string, Record<string, unknown>>();
+  // The request already contains the observer's sourced episodes, newest
+  // first. Scores do not author feelings, and one person's view is not mutual.
+  for (const episode of context.person.relationshipEpisodes) {
+    if (!episode.interpretation.trim() || episode.sourceCount <= 0) continue;
+    const handle = handles.visible.find((item) => item.kind === 'person' && item.personId === episode.otherPersonId)?.handle;
+    if (!handle || result.has(handle)) continue;
+    result.set(handle, {
+      perspective: '本人对既往经历的理解，不代表对方的感受',
+      interpretation: episode.interpretation,
+      atMonth: episode.experiencedAtMonth,
+      sourceCount: episode.sourceCount,
+    });
+  }
+  return result;
 }
 
 function semanticVisible(
@@ -680,6 +747,8 @@ function semanticVisible(
   actorPosition: DecisionRequestContext['person']['position'],
   openWorldFacts: NonNullable<DecisionRequestContext['visibleOpenWorldFacts']>,
   works: NonNullable<DecisionRequestContext['visibleWorks']> = [],
+  materialQuantity = MATERIAL_QUANTITY_SEMANTICS,
+  relationships = new Map<string, Record<string, unknown>>(),
 ): Record<string, unknown> {
   const compactVisible = object(compactVisibleValue);
   const spatialFacts = (value: unknown): Record<string, unknown> => {
@@ -717,7 +786,7 @@ function semanticVisible(
         kind: '人物',
         name: stringValue(item.name),
         lifeStage: lifeStage(numberValue(item.ageMonths)),
-        ...(relationSummary(detail) ? { relation: relationSummary(detail) } : {}),
+        ...(relationships.has(handle) ? { relation: relationships.get(handle) } : {}),
         ...(detail ? { physicalState: physicalState(detail) } : {}),
       };
     }
@@ -738,6 +807,23 @@ function semanticVisible(
       name: stringValue(item.name),
       perceivedAs: perceivedAs(item.properties),
       quantity: numberValue(item.quantity),
+      ...(item.mechanicalCondition ? { mechanicalCondition: item.mechanicalCondition } : {}),
+      ...(item.knownDelivery ? { knownDelivery: item.knownDelivery,
+        deliveryMeaning: '本人知道这批物资曾为此事项交付；这是用途与关系事实，不是无法触碰或取走的物理门禁' } : {}),
+    };
+    if (kind === 'inventory-stack') return {
+      ref: handle,
+      ...spatialFacts(item),
+      kind: '他人持物',
+      name: stringValue(item.name),
+      owner: { ref: stringValue(item.ownerHandle), name: stringValue(item.ownerName) },
+      perceivedAs: perceivedAs(item.properties),
+      quantity: numberValue(item.quantity),
+      ...(item.mechanicalCondition ? { mechanicalCondition: item.mechanicalCondition } : {}),
+      possession: '当前由对方持有；是否能够移交或取走由实际转移动作及对方反应结算',
+    };
+    if (kind === 'remains') return {
+      ref: handle, ...spatialFacts(item), kind: '人的遗体', state: stringValue(item.status),
     };
     if (kind === 'work') return {
       ref: handle,
@@ -747,7 +833,8 @@ function semanticVisible(
       arrangement: stringValue(item.arrangement),
       condition: stringValue(item.condition),
       remainingCondition: numberValue(item.conditionValue),
-      physicalProfile: object(item.profile),
+      // Internal material/arrangement scores are not an observed load test.
+      // Show the actual materials, geometry, wear and use evidence instead.
       components: rows(item.components),
       layout: rows(item.layout),
       createdAtMonth: numberValue(item.createdAtMonth),
@@ -767,20 +854,17 @@ function semanticVisible(
     name: item.name,
     perceivedAs: perceivedAs(item.properties),
   }));
-  const heldPossessions = [...candidates.held.reduce((grouped, item) => {
-    const perceived = perceivedAs(item.properties);
-    const key = `${item.name}\u0000${perceived}`;
-    const current = grouped.get(key);
-    grouped.set(key, {
-      name: item.name,
-      perceivedAs: perceived,
-      quantity: (current?.quantity ?? 0) + item.quantity,
-    });
-    return grouped;
-  }, new Map<string, { name: string; perceivedAs: string; quantity: number }>()).values()];
+  const heldPossessions = candidates.held.map((item) => ({
+    ref: item.handle,
+    name: item.name,
+    perceivedAs: perceivedAs(item.properties),
+    quantity: item.quantity,
+    ...(item.mechanicalCondition ? { mechanicalCondition: item.mechanicalCondition } : {}),
+  }));
   return {
-    // Mind receives a complete, identity-free overview. Exact request-scoped
-    // refs stay in Plan.actionSpace, where a concrete action is chosen.
+    // Keep each real stack's reference shared with actionSpace.heldObjects;
+    // equal names and appearances do not make different possessions identical.
+    materialQuantity,
     heldPossessions,
     nearbyObjects,
     surfaces,
@@ -896,24 +980,41 @@ function semanticContinuation(
   };
 }
 
-function semanticRecentDialogue(value: unknown): unknown[] {
-  return rows(value).slice(0, 2).map((lineValue) => {
+function semanticRecentDialogue(value: unknown, context: DecisionRequestContext, handles: DecisionProbeHandleMap): unknown[] {
+  const referencesBySource = new Map<string, Set<string>>();
+  for (const agreement of context.agreements) {
+    const reference = handles.speechReferences?.find((item) => item.kind === 'agreement' && item.id === agreement.id);
+    if (!reference) continue;
+    for (const fact of agreement.sourceFacts) {
+      for (const source of [fact.eventId, fact.languageSourceEventId].filter((id): id is string => Boolean(id))) {
+        const refs = referencesBySource.get(source) ?? new Set<string>();
+        refs.add(reference.handle);
+        referencesBySource.set(source, refs);
+      }
+    }
+  }
+  return rows(value).map((lineValue) => {
     const line = object(lineValue);
+    const declarationReferences = referencesBySource.get(stringValue(line.sourceEventId));
     return {
-      when: `第 ${numberValue(line.month)} 月`,
+      when: `第 ${numberValue(line.month)} 月${typeof line.planningTick === 'number' ? `，本月第 ${line.planningTick} 个规划时刻` : ''}`,
       speaker: stringValue(line.speaker),
       text: stringValue(line.text),
+      sourceEventId: stringValue(line.sourceEventId),
+      ...(declarationReferences?.size ? { declarationReferences: [...declarationReferences] } : {}),
+      ...(line.currentInput === true ? { currentInput: true } : {}),
       evidenceBoundary: '这里只证明这句话被听见；句中的提议、打算和自述不证明任何行动已经发生',
     };
   });
 }
 
-function semanticActionSpace(candidates: CharacterAgendaProbeCandidates): MentalActRequestContext['actionSpace'] {
+function semanticActionSpace(candidates: CharacterAgendaProbeCandidates, hasVisibleWork: boolean, hasOtherPerson: boolean): MentalActRequestContext['actionSpace'] {
   const heldObjects = candidates.held.map((item) => ({
     ref: item.handle,
     name: item.name,
     perceivedAs: perceivedAs(item.properties),
     quantity: item.quantity,
+    ...(item.mechanicalCondition ? { mechanicalCondition: item.mechanicalCondition } : {}),
   }));
   const operations: MentalActRequestContext['actionSpace']['operations'] = [];
   if (heldObjects.length || candidates.visible.length || candidates.voxels.length) {
@@ -922,11 +1023,19 @@ function semanticActionSpace(candidates: CharacterAgendaProbeCandidates): Mental
   if (heldObjects.length >= 2) {
     operations.push({ kind: 'combine', meaning: '把两到三件本人持有的物品直接结合并观察结果' });
   }
+  if (heldObjects.length && candidates.voxels.length || hasVisibleWork) {
+    operations.push({ kind: 'assemble', meaning: '选择本人投入的材料份数与实际位置排布成实体；也可用空新增投入重排已有造物。用途来自实际形态和使用' });
+  }
   if (heldObjects.length && candidates.voxels.length) {
     operations.push({ kind: 'expose', meaning: '让一件本人持有的物品接触一个当前可见的环境或设施' });
   }
-  if (heldObjects.length >= 2 && candidates.voxels.length) {
-    operations.push({ kind: 'exert', meaning: '用一件本人持有的工具，对另一件物品和当前可见对象施力' });
+  for (const definition of NATIVE_ACT_WIRE_DEFINITIONS) {
+    const available = definition.parameters.every((parameter) => parameter.optional
+      || (parameter.role === 'held' ? heldObjects.length > 0
+        : parameter.role === 'voxel' ? candidates.voxels.length > 0
+          : parameter.role === 'work' ? hasVisibleWork
+            : parameter.role === 'other-person' ? hasOtherPerson : parameter.role === 'person'));
+    if (available) operations.push({ kind: definition.kind, meaning: definition.meaning });
   }
   if (candidates.voxels.length) {
     operations.push({ kind: 'move', meaning: '走向一个当前看得见且可以抵达的地表位置，可用于探索、漫游或寻找他人' });
@@ -961,8 +1070,14 @@ const MIND_OPERATION_POSSIBILITIES: Record<
 > = {
   observe: { kind: 'observe', description: '仔细观察一个本人持有或当前可见的具体对象' },
   combine: { kind: 'combine', description: '把本人持有的两到三件具体物品直接结合并观察结果' },
+  assemble: { kind: 'open-world-interaction', description: '按实际位置排布本人材料，或重排已有造物' },
+  'dismantle-work': { kind: 'acquire', description: nativeActWireDefinition('dismantle-work')!.meaning },
+  'separate-terrain': { kind: 'acquire', description: nativeActWireDefinition('separate-terrain')!.meaning },
+  'release-restraint': { kind: 'care', description: nativeActWireDefinition('release-restraint')!.meaning },
   expose: { kind: 'expose', description: '让一件本人持有的物品接触当前可见的环境或设施' },
-  exert: { kind: 'exert', description: '用一件本人持有的物品，对另一件持有物和可见对象施力' },
+  'strike-person': { kind: 'conflict', description: nativeActWireDefinition('strike-person')!.meaning },
+  'bend-held-material': { kind: 'exert', description: nativeActWireDefinition('bend-held-material')!.meaning },
+  'work-material-with-tool': { kind: 'exert', description: nativeActWireDefinition('work-material-with-tool')!.meaning },
   move: { kind: 'move', description: '走向一个当前看得见且可以抵达的地表位置' },
 };
 
@@ -1015,7 +1130,7 @@ function knownCraftHints(person: Pick<DecisionRequestContext['person'], 'invento
 
 function mindActionPossibilities(
   context: MentalActRequestContext,
-): MindIntentionRequestContext['actionPossibilities'] {
+): MindActionPossibilities {
   const availableNow: MindActionPossibility[] = [];
   const seen = new Set<MindActionPossibilityKind>();
   const add = (possibility: MindActionPossibility | undefined): void => {
@@ -1079,16 +1194,31 @@ export function buildMentalActRequestContext(
     .filter((step) => !isCompilerSelectedOpenTrial(context, step));
   const availableSteps = selectedSteps.map((step) => semanticStep(step, objectNames));
   const followUpIds = new Set(context.followUpOptions.map((option) => option.id));
+  const optionByHandle = new Map(context.options.map((option, index) => [`o${index + 1}`, option]));
   const explicitPhysicalContinuations = availableSteps.filter((step) => {
-    const index = Number(step.handle.slice(1)) - 1;
-    const option = context.options[index];
+    const option = optionByHandle.get(step.handle);
     return option && followUpIds.has(option.id) && !option.communicationKind;
   });
-  const actionSpace = semanticActionSpace(candidates);
-  const origin = semanticFounderOrigin(compact.situation, actionSpace.heldObjects);
+  const actionSpace = semanticActionSpace(candidates, Boolean(context.visibleWorks?.length),
+    context.visiblePeople.some((person) => person.id !== context.person.id));
+  const origin = semanticFounderOrigin(compact.situation);
   const personalityPreset = semanticPersonalityPreset(person);
   const nearbyPeople = context.visiblePeople.filter((candidate) => candidate.id !== context.person.id);
   const sheltered = compact.situation.sheltered === true;
+  const workCompletions = [
+    ...(context.activeIntent?.plan?.completion ? [{ source: 'active-work', summary: context.activeIntent.summary,
+      completion: context.activeIntent.plan.completion }] : []),
+    ...(context.recentCompletedWork ?? []).flatMap((work) => work.plan?.completion ? [{
+      source: 'finished-step', summary: work.summary, completion: work.plan.completion,
+    }] : []),
+  ];
+  const recentCompletionReviews = (workCompletions.length ? workCompletions
+    : context.person.recentMentalActs.flatMap((act) => act.plan?.completion ? [{
+        source: 'prior-intention', summary: act.goal, completion: act.plan.completion,
+      }] : [])).slice(0, 4).map((item) => ({
+        source: item.source, summary: item.summary,
+        completion: describeModelPlanCompletion(item.completion, context, handles),
+      }));
   return {
     schemaVersion: 'mental-act-context-v5',
     person: semanticPerson(person),
@@ -1105,8 +1235,40 @@ export function buildMentalActRequestContext(
     mind: semanticMind(person.mindMarkdown),
     current: {
       ...semanticCurrent(compact.commitments, context.clock.elapsedMonths),
+      ...(context.currentIntention ? { currentIntention: {
+        sourceDecisionEventId: context.currentIntention.sourceDecisionEventId,
+        goal: context.currentIntention.mentalAct.goal,
+        ...(context.currentIntention.mentalAct.orientation ? { orientation: context.currentIntention.mentalAct.orientation } : {}),
+        ...(context.currentIntention.mentalAct.horizon ? { horizon: context.currentIntention.mentalAct.horizon } : {}),
+      } } : {}),
+      ...(recentCompletionReviews.length ? { recentCompletionReviews } : {}),
+      ...(context.recentCompilationFeedback?.length ? { compilationFeedback: context.recentCompilationFeedback } : {}),
+      ...(context.pendingExecutionStep ? { pendingStep: {
+        eventId: context.pendingExecutionStep.eventId,
+        description: context.pendingExecutionStep.description,
+        status: '此前选择的这一步尚未开始',
+      } } : {}),
+      ...(context.reconsideration ? {
+        reconsideration: {
+          ...context.reconsideration,
+          occasion: context.reconsideration.reason === 'heard-language'
+            ? '刚听见新的语言，可以结合本人实际听到的内容重新考虑当前打算'
+            : stringValue(context.reconsideration.reason) === 'compilation-feedback'
+              ? '此前选择的这一步尚未开始，可以保留原目标并重新选择当前尝试'
+            : '刚经历了新的实际结果，可以据此重新考虑当前打算',
+          agency: '本人可以继续自己的事、回应或保持沉默；这次输入只提供思考机会，不替本人作选择',
+        },
+      } : {}),
       ...(context.continuingPlan ? {
         planContinuation: {
+          initialAttemptPerformed: context.continuingPlan.initialAttemptPerformed,
+          ...(context.continuingPlan.compilationFailureEventId ? {
+            uncompiledStep: {
+              feedbackEventId: context.continuingPlan.compilationFailureEventId,
+              description: context.continuingPlan.plan.currentStep?.description ?? context.continuingPlan.plan.steps[0],
+              interpretation: '这一步还没有编译成物理动作；根据本次具体编译反馈调整参数或分解手段，保留本人原目标。没有新增发言或已经执行的动作。',
+            },
+          } : {}),
           authoredPlan: context.continuingPlan.plan.steps,
           completion: describeModelPlanCompletion(context.continuingPlan.plan.completion, context, handles),
           ...(context.continuingPlan.preflightReceipt ? {
@@ -1137,13 +1299,16 @@ export function buildMentalActRequestContext(
             ...(attempt ? { attempt } : {}),
           })),
           recentResults: context.continuingPlan.recentResults,
+          recentActions: context.continuingPlan.recentActions,
+          resultScope: 'localGoalProgress 只说明具体动作的局部目标；总目标只看 overallGoalAssessment。观察材料完成不证明交谈、合作或其它总目标已经推进；unverified 表示没有足够条件证明完成',
           recentEffects: context.continuingPlan.recentEffects,
           language: '这是已形成意图的执行续编；原话已经发出，不再发言，也不产生新的同意、承诺或关系解读',
         },
       } : {}),
     },
-    recentDialogue: semanticRecentDialogue(compact.recentDialogue),
-    visible: semanticVisible(compact.visible, candidates, context.person.position, context.visibleOpenWorldFacts ?? [], context.visibleWorks ?? []),
+    recentDialogue: semanticRecentDialogue(compact.recentDialogue, context, handles),
+    visible: semanticVisible(compact.visible, candidates, context.person.position, context.visibleOpenWorldFacts ?? [], context.visibleWorks ?? [], context.materialQuantity,
+      authoredRelationshipInterpretations(context, handles)),
     availableSteps,
     continuations: [
       ...compact.followUpOptions.map((step) => semanticContinuation(step, objectNames)),
@@ -1151,17 +1316,47 @@ export function buildMentalActRequestContext(
     ],
     actionSpace,
     knownMethods: knownMethodContext(context, handles),
+    nativeOperations: projectNativeOperations(context, handles),
+    nativeReferences: (handles.nativeReferences ?? []).map((reference) => {
+      const fact = context.nativeReferenceFacts?.find((fact) => fact.kind === reference.kind && fact.id === reference.id);
+      return { ref: reference.handle, kind: reference.kind, ...(fact ? { summary: fact.summary, atMonth: fact.atMonth } : {}) };
+    }),
+    knownProjects: (context.knownProjects ?? []).map((project) => ({
+      ref: handles.speechReferences?.find((reference) => reference.kind === 'project' && reference.id === project.id)?.handle,
+      summary: project.summary, state: project.status, desiredFunction: project.desiredFunction,
+    })),
     speechReferences: (handles.speechReferences ?? []).map((reference) => {
       if (reference.kind === 'agreement') {
         const agreement = context.agreements.find((item) => item.id === reference.id)!;
         return { ref: reference.handle, kind: reference.kind, agreementKind: agreement.kind,
+          agreementLabel: AGREEMENT_KINDS[agreement.kind] ?? agreement.kind,
+          proposer: agreement.proposer, parties: agreement.parties, proposal: singleSourceAgreementProposal(agreement),
+          proposalEventId: agreement.proposalEventId, sourceFacts: agreement.sourceFacts,
           state: AGREEMENT_STATUS[agreement.status] ?? agreement.status, proposedAtMonth: agreement.proposedAtMonth,
-          awaitingReplies: agreement.pendingResponderNames, acceptedBySelf: agreement.acceptedByPersonIds.includes(context.person.id) };
+          ...(typeof agreement.acceptByMonth === 'number' && Number.isFinite(agreement.acceptByMonth)
+            ? { acceptByMonth: agreement.acceptByMonth } : {}),
+          replyDeadline: typeof agreement.acceptByMonth === 'number' && Number.isFinite(agreement.acceptByMonth)
+            ? `第 ${agreement.acceptByMonth} 月` : '未指定',
+          ...(agreement.acceptedAtMonth !== undefined ? { acceptedAtMonth: agreement.acceptedAtMonth } : {}),
+          awaitingReplies: agreement.pendingResponderNames, acceptedBySelf: agreement.acceptedByPersonIds.includes(context.person.id),
+          rejectedBySelf: agreement.rejectedByPersonIds.includes(context.person.id),
+          meaning: 'proposal 与原话记录对方提出的事项；等待回应时仍未成立为双方承诺，是否接受、拒绝或不回应由本人决定' };
       }
-      if (reference.kind === 'knowledge') return { ref: reference.handle, kind: reference.kind,
-        summary: context.person.knowledge.find((item) => item.id === reference.id)?.summary };
+      if (reference.kind === 'knowledge') {
+        const knowledge = context.person.knowledge.find((item) => item.id === reference.id);
+        return { ref: reference.handle, kind: reference.kind, summary: knowledge?.summary, knowledgeKind: knowledge?.kind };
+      }
       if (reference.kind === 'collective') return { ref: reference.handle, kind: reference.kind,
         purpose: context.collectives.find((item) => item.id === reference.id)?.purposeSummary };
+      if (reference.kind === 'project') {
+        const project = context.knownProjects?.find((item) => item.id === reference.id);
+        return { ref: reference.handle, kind: reference.kind, summary: project?.summary, state: project?.status, desiredFunction: project?.desiredFunction };
+      }
+      if (reference.kind === 'decision-rule') {
+        const rule = context.collectives.flatMap((item) => item.decisionRules).find((item) => item.id === reference.id);
+        return { ref: reference.handle, kind: reference.kind, method: rule?.method, scope: rule?.scope,
+          ...(rule?.projectDuty ? { projectDuty: rule.projectDuty } : {}) };
+      }
       const permission = context.permissions.find((item) => item.id === reference.id)!;
       return { ref: reference.handle, kind: reference.kind, material: materialDefinition(permission.materialId).name,
         validUntilMonth: permission.validUntilMonth, state: permission.status };
@@ -1174,17 +1369,44 @@ export function buildMentalActRequestContext(
 export function buildMindIntentionRequestContext(
   context: MentalActRequestContext,
 ): MindIntentionRequestContext {
+  const current = semanticMindCurrent(context.current, []);
+  const activity = stringValue(current.ongoingActivity);
+  const retain = (keys: string[]) => Object.fromEntries(keys.flatMap((key) => current[key] === undefined ? [] : [[key, current[key]]]));
+  const feedback = object(current.attemptFeedback);
+  const experienceSourceIds = new Set(rows(current.recentExperiences).map((value) => stringValue(object(value).sourceEventId)));
   return {
-    schemaVersion: 'mind-intention-context-v5',
+    schemaVersion: 'mind-intention-context-v7',
     person: context.person,
     situation: context.situation,
     ...(context.origin ? { origin: context.origin } : {}),
     mind: context.mind,
-    current: semanticMindCurrent(context.current, context.availableSteps),
+    current: {
+      ...retain(['currentIntention', 'reconsideration', 'pendingStep', 'recentExperiences', 'agreements', 'collectives']),
+      ...(rows(current.recentOutcomes).some((outcome) => !experienceSourceIds.has(stringValue(object(outcome).sourceEventId)))
+        ? { recentOutcomes: rows(current.recentOutcomes).filter((outcome) => !experienceSourceIds.has(stringValue(object(outcome).sourceEventId))) } : {}),
+      bodyActivity: { hasCurrentWork: Boolean(activity), ...(activity ? { description: activity } : {}) },
+      ...(feedback.sourceDecisionEventId ? { attemptFeedback: {
+        sourceDecisionEventId: feedback.sourceDecisionEventId, message: feedback.message, interpretation: feedback.interpretation,
+      } } : {}),
+      recentlyFinishedWork: rows(current.recentlyFinishedWork).flatMap((value) => {
+        const work = object(value);
+        const unseenOutcomes = rows(work.recentOutcomes).filter((outcome) => !experienceSourceIds.has(stringValue(object(outcome).sourceEventId)));
+        if (experienceSourceIds.size && !unseenOutcomes.length && !work.preflightResult) return [];
+        return [{ ...Object.fromEntries(['summary', 'status', 'when', 'preflightResult']
+          .flatMap((key) => work[key] === undefined ? [] : [[key, work[key]]])), recentOutcomes: unseenOutcomes }];
+      }),
+      concernHistory: rows(current.concernHistory).map((value) => {
+        const concern = object(value);
+        return {
+          ...Object.fromEntries(['aim', 'since', 'elapsedMonths', 'lastReviewed', 'status']
+            .flatMap((key) => concern[key] === undefined ? [] : [[key, concern[key]]])),
+          recentFeedback: rows(concern.approaches).flatMap((approach) => rows(object(approach).recentFeedback)),
+        };
+      }),
+    },
     recentDialogue: context.recentDialogue,
     visible: context.visible,
     speechReferences: context.speechReferences,
-    actionPossibilities: mindActionPossibilities(context),
     ...(context.personalityPreset ? { personalityPreset: context.personalityPreset } : {}),
   };
 }
@@ -1196,19 +1418,151 @@ export function buildModelPlanRequestContext(
   return {
     schemaVersion: 'model-plan-context-v1',
     intention: {
+      goal: intention.goal,
+      ...(intention.nextAttempt ? { nextAttempt: intention.nextAttempt } : {}),
+      ...(intention.attempt ? { attempt: structuredClone(intention.attempt) } : {}),
       utterance: intention.utterance,
       delivery: intention.delivery,
-      goal: intention.goal,
       ...(intention.orientation ? { orientation: intention.orientation } : {}),
       ...(intention.horizon ? { horizon: intention.horizon } : {}),
       ...(intention.speechIntent ? { speechIntent: intention.speechIntent } : {}),
     },
+    declaration: {
+      delivery: object(context.current).planContinuation ? 'already-delivered' : 'with-this-decision',
+      meaning: '原话及本人声明的语言含义由同一语言事件提交；Plan 只安排此外的实际行动或等待，不重说原话。发出邀请不代表他人已经同意。',
+    },
+    person: Object.fromEntries(Object.entries(context.person).filter(([key]) => key !== 'character')),
+    situation: context.situation,
     mind: context.mind,
     current: context.current,
     recentDialogue: context.recentDialogue,
     visible: context.visible,
-    availableSteps: context.availableSteps,
-    continuations: context.continuations,
+    capabilities: mindActionPossibilities(context),
+    knownProjects: context.knownProjects ?? [],
+    knownMethods: context.knownMethods ?? [],
+    speechReferences: context.speechReferences ?? [],
     actionSpace: context.actionSpace,
+  };
+}
+
+function nativeCapabilityBrief(context: MentalActRequestContext) {
+  const sourceByRef = new Map((context.speechReferences ?? []).map((source) => [source.ref, source]));
+  const nativeReferences = (context.nativeReferences ?? []).map((reference) => {
+    const source = sourceByRef.get(stringValue(reference.ref));
+    // Handles shared with the language domain must not lose their known content
+    // merely because they did not originate in an executable method descriptor.
+    const proposal = object(source?.proposal);
+    const sourceFact = rows(source?.sourceFacts).map(object)
+      .find((fact) => fact.eventId === proposal.summarySourceEventId);
+    const summary = stringValue(source?.summary) || stringValue(proposal.summary)
+      || stringValue(sourceFact?.utterance) || stringValue(reference.summary);
+    return { ...reference,
+      ...(summary ? { summary } : {}),
+      ...(source?.knowledgeKind ? { knowledgeKind: source.knowledgeKind } : {}),
+      ...(source?.state ? { state: source.state } : {}),
+    };
+  });
+  const nativeOperations = (context.nativeOperations ?? []).map((descriptor) => {
+    const { reason: _proposedReason, localGoal: _localGoal, sourceHandles, ...operation } = descriptor;
+    const boundSources = object(operation.methodSources).sourceHandles;
+    const duplicateSources = JSON.stringify(sourceHandles) === JSON.stringify(boundSources);
+    return { ...operation, ...(!duplicateSources && sourceHandles ? { sourceHandles } : {}) };
+  });
+  return { nativeOperations, nativeReferences };
+}
+
+/** Fresh creative compilation receives only the selected activity and grounded inputs. */
+export function buildWorldAttemptRequestContext(
+  context: MentalActRequestContext,
+  intention: MindIntentionDraft,
+): Record<string, unknown> {
+  if (!intention.nextAttempt?.trim()) throw new Error('当前尝试编译需要本人已选择的creative原句，不能从整体目标推断另一个动作');
+  const current = context.current;
+  const outcomes = [
+    ...rows(object(current.activeWork).recentOutcomes),
+    ...rows(current.recentlyFinishedWork).flatMap((work) => rows(object(work).recentOutcomes)),
+  ].map(object).filter((outcome) => stringValue(outcome.sourceEventId) && stringValue(outcome.actualResult));
+  const recentActions = [...new Map(outcomes.map((outcome) => [stringValue(outcome.sourceEventId), {
+    sourceEventId: stringValue(outcome.sourceEventId),
+    execution: stringValue(outcome.execution) || stringValue(outcome.action),
+    operation: stringValue(outcome.operation),
+    actualResult: stringValue(outcome.actualResult),
+    ...(typeof outcome.atMonth === 'number' ? { atMonth: outcome.atMonth }
+      : stringValue(outcome.when) ? { when: stringValue(outcome.when) } : {}),
+  }])).values()];
+  const experiences = rows(current.recentExperiences).map(object);
+  const experienceSourceIds = new Set(experiences.map((entry) => stringValue(entry.sourceEventId)));
+  const knownActions = [
+    ...recentActions.filter((entry) => !experienceSourceIds.has(entry.sourceEventId)),
+    ...experiences,
+  ].sort((left, right) => numberValue(object(left).atMonth) - numberValue(object(right).atMonth)
+    || numberValue(object(left).orderInMonth) - numberValue(object(right).orderInMonth));
+  const capabilities = nativeCapabilityBrief(context);
+  const boundMethods = capabilities.nativeOperations.filter((descriptor) =>
+    object(object(descriptor).request).kind === 'use-method');
+  return {
+    schemaVersion: 'world-attempt-context-v1',
+    actor: Object.fromEntries(['id', 'name', 'position', 'lifeStage', 'physicalState', 'capabilities']
+      .flatMap((key) => context.person[key] === undefined ? [] : [[key, context.person[key]]])),
+    selectedAttempt: intention.nextAttempt,
+    situation: { time: context.situation.time, environment: context.situation.environment },
+    background: {
+      goal: intention.goal,
+      interpretation: '目标只解释本次尝试的用途，不扩张selectedAttempt中本人选择的贡献，也不提供额外任务。',
+    },
+    declaration: intention.utterance.trim()
+      ? { status: 'selected-words', meaning: '本人已选好原话，将随本次决定独立提交；不重写或重复发言。' }
+      : { status: 'not-selected', meaning: '本轮尚未选定原话，没有话语事件。若本次意向包含当前要表达的意思，可用speechHandoff转交言语编译。' },
+    visible: context.visible,
+    // Primitive parameters are authored from selectedAttempt against the API.
+    // Candidate actions from the local planner are alternative choices, not
+    // evidence of what this person selected. Only capabilities that carry a
+    // complete bound method, including instruments, need this table.
+    boundMethods,
+    nativeReferences: capabilities.nativeReferences,
+    knownProjects: context.knownProjects ?? [],
+    knownMethods: context.knownMethods ?? [],
+    // Mind has already considered older compilation feedback when choosing
+    // this attempt. Corrections to this exact request arrive separately.
+    current: { recentActions: knownActions },
+  };
+}
+
+/** The world compiler implements the actor's choice; it does not deliberate again. */
+export function buildWorldPlanRequestContext(
+  context: MentalActRequestContext,
+  intention: MindIntentionDraft,
+): Record<string, unknown> {
+  const current = context.current;
+  return {
+    schemaVersion: 'world-plan-context-v1',
+    actor: Object.fromEntries(Object.entries(context.person).filter(([key]) => key !== 'character')),
+    situation: context.situation,
+    intention: {
+      goal: intention.goal,
+      ...(intention.nextAttempt ? { nextAttempt: intention.nextAttempt } : {}),
+      // Bound identity is retained here; the server maps it to current public handles.
+      ...(intention.attempt ? { attempt: structuredClone(intention.attempt),
+        initialAttemptPerformed: object(current.planContinuation).initialAttemptPerformed === true } : {}),
+      ...(intention.orientation ? { orientation: intention.orientation } : {}),
+      ...(intention.horizon ? { horizon: intention.horizon } : {}),
+    },
+    declaration: {
+      delivery: current.planContinuation ? 'already-delivered' : 'with-this-decision',
+      utterance: intention.utterance,
+      ...(intention.speechIntent ? { speechIntent: intention.speechIntent } : {}),
+      meaning: '本人这句话由决定独立提交，不是待做的身体步骤；邀请或希望不表示他人已经同意或执行。',
+    },
+    visible: context.visible,
+    actionSpace: context.actionSpace,
+    ...nativeCapabilityBrief(context),
+    knownProjects: context.knownProjects ?? [],
+    knownMethods: context.knownMethods ?? [],
+    current: Object.fromEntries([
+      'activeWork', 'pendingStep', 'suspendedWork', 'recentlyFinishedWork',
+      'planContinuation', 'recentCompletionReviews', 'compilationFeedback',
+    ].flatMap((key) => current[key] === undefined ? [] : [[key, current[key]]])),
+    ...(current.planContinuation ? { executionMode: 'continue-existing-plan-without-new-speech' } : {}),
+    interpretation: 'intention是本人已选方向；current中的计划与判据是可错的设想，实际结果由回执说明。本次直接编译本人贡献，不代其他人行动，也不因没有预制名称就换成本人没选的目标。',
   };
 }

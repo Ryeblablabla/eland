@@ -479,7 +479,8 @@ export function recordSocialLearningEvidence(
 /** Reproduction is intentionally outside cooperation reputation. */
 export function proposalCooperationContext(proposal: SocialProposal): CooperationContext | null {
   switch (proposal.kind) {
-    case 'reproduce': return null;
+    case 'reproduce':
+    case 'joint-action': return null;
     case 'assist': return `assist-${proposal.need}`;
     case 'exchange': return 'exchange';
     case 'companion': return 'shared-living';

@@ -1,0 +1,91 @@
+.recorded-memory {
+  position: absolute;
+  z-index: 90;
+  top: 50%;
+  right: clamp(40px, 4.2vw, 108px);
+  box-sizing: border-box;
+  width: min(800px, 36vw);
+  padding: 38px 44px 36px;
+  border: 1px solid rgba(240, 234, 219, 0.19);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(21, 35, 31, 0.96), rgba(11, 19, 17, 0.92));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+  color: #f0eadb;
+  font-family: var(--font-ui, "IBM Plex Sans Variable", "PingFang SC", "Microsoft YaHei UI", sans-serif);
+  pointer-events: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.recorded-memory p,
+.recorded-memory h2 {
+  margin: 0;
+}
+
+.recorded-memory__eyebrow {
+  color: #b4bdad;
+  font-size: 22px;
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+}
+
+.recorded-memory .recorded-memory__title {
+  margin-top: 16px;
+  color: #d6cda3;
+  font-family: var(--font-display, "Noto Serif SC Variable", "Source Han Serif SC", "Songti SC", serif);
+  font-size: 42px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+}
+
+.recorded-memory__body {
+  margin-top: 28px;
+  padding-top: 26px;
+  border-top: 1px solid rgba(240, 234, 219, 0.14);
+}
+
+.recorded-memory__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  color: #b4bdad;
+  font-size: 22px;
+  line-height: 1.5;
+}
+
+.recorded-memory__meta time {
+  color: #94a18e;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.recorded-memory .recorded-memory__quote {
+  margin-top: 24px;
+  font-family: var(--font-display, "Noto Serif SC Variable", "Source Han Serif SC", "Songti SC", serif);
+  font-size: 42px;
+  font-weight: 430;
+  line-height: 1.65;
+  letter-spacing: 0.015em;
+  overflow-wrap: anywhere;
+}
+
+.recorded-memory .recorded-memory__note {
+  margin-top: 22px;
+  color: #94a18e;
+  font-size: 20px;
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 2100px) {
+  .recorded-memory { width: min(660px, 38vw); padding: 30px 34px; }
+  .recorded-memory__eyebrow { font-size: 18px; }
+  .recorded-memory .recorded-memory__title { font-size: 34px; margin-top: 12px; }
+  .recorded-memory__body { margin-top: 22px; padding-top: 20px; }
+  .recorded-memory__meta { font-size: 18px; }
+  .recorded-memory__meta time { font-size: 17px; }
+  .recorded-memory .recorded-memory__quote { font-size: 34px; margin-top: 18px; }
+  .recorded-memory .recorded-memory__note { font-size: 17px; margin-top: 18px; }
+}

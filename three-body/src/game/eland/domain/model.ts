@@ -2,6 +2,7 @@ import { MONTHS_PER_YEAR } from './calendar';
 import type { ActionOption, Intent, IntentDecision, IntentOutcomeReceipt, PlanPreflightReceipt, PrimitiveAction, WorldRef } from './action';
 import type { MentalAct, MentalPlanTranslation, PlanCompletionAssessment, PlanMilestoneReceipt } from './mental-act';
 import type { MaterialId } from './material';
+import type { ItemMechanicalState } from './material-mechanics';
 import type { PersonId, PersonState } from './person';
 import type { VoxelWorld } from '../world/grid';
 import type { Agreement } from './agreement';
@@ -21,6 +22,7 @@ import type { AgentMemoryStoreState } from './agent-memory';
 import type { PersonMindView } from './person-mind';
 import type { LanguageBroadcast } from './language-perception';
 import type { RegionalPopulationState } from './regional-population';
+import type { NativeOperationCompilationProblem, NativeOperationRequest } from './native-operation';
 
 export * from './action';
 export * from './material';
@@ -58,6 +60,7 @@ export interface DropState {
   /** Exact physical sources this drop descended from across transfers. */
   sourceLineageKeys?: string[];
   recordPayloadId?: string;
+  mechanicalState?: ItemMechanicalState;
   /** The deceased owner whose private inventory produced this exact drop. */
   estateOfPersonId?: PersonId;
   /** A request-bound project delivery remains reserved only while its demand is still live. */
@@ -116,11 +119,18 @@ export interface DecisionContext {
   planningTick?: number;
   /** Already-realized facts from the current uncommitted month. */
   currentMonthEvents?: WorldEvent[];
+  /** Real input being offered for reconsideration; it never prescribes a reply. */
+  reconsideration?: {
+    reason: 'heard-language' | 'experienced-outcome' | 'compilation-feedback';
+    sourceEventIds: string[];
+  };
   /** Unified subjective read view; optional only for old fixtures/adapters. */
   mind?: PersonMindView;
   /** An already chosen Mind intention awaiting only translation of its next step. */
   continuingPlan?: {
-    sourceIntentId: string;
+    /** Compilation can fail before an executable Intent exists. */
+    sourceIntentId?: string;
+    compilationFailureEventId?: string;
     sourceDecisionEventId: string;
     mentalAct: MentalAct;
     plan: MentalPlanTranslation;
@@ -237,6 +247,7 @@ export interface DecisionFact extends BaseEvent {
   decision: Decision;
   intentId?: string;
   usedModel: boolean;
+  reconsideration?: DecisionContext['reconsideration'];
   domain?: 'strategic' | 'social';
   /** Missing on older facts means an ordinary review. Edge reviews do not spend the ordinary cadence budget. */
   planningChannel?: 'ordinary' | 'edge';
@@ -244,11 +255,19 @@ export interface DecisionFact extends BaseEvent {
   foresightEvidence?: ForesightDecisionEvidence;
   /** Accepted subjective concerns and their locally compiled disposition. */
   characterAgendaEvidence?: CharacterAgendaDecisionEvidence[];
+  /** A translation problem is a decision fact, never a fabricated physical failure. */
+  executionCompilation?: {
+    status: 'compiled' | 'unresolved' | 'compiled-with-feedback';
+    operation?: NativeOperationRequest;
+    problem?: NativeOperationCompilationProblem;
+    compiledAction?: PrimitiveAction;
+  };
   /** The one outward language wave emitted by a model-authored decision. */
   languageBroadcast?: LanguageBroadcast;
   /** A silent translation of an existing intention, not a new language wave. */
   planContinuation?: {
-    sourceIntentId: string;
+    sourceIntentId?: string;
+    compilationFailureEventId?: string;
     sourceDecisionEventId: string;
     plan: MentalPlanTranslation;
   };
@@ -260,8 +279,13 @@ export interface ActionFact extends BaseEvent {
   actionTick: number;
   who: PersonId;
   intentId?: string;
-  /** The rule path that authorized this action; provenance never relaxes validation. */
-  cause: 'intent' | 'survival-reflex' | 'player-embodiment';
+  /** Frozen at execution; later Intent reuse cannot reattribute this action. */
+  decisionSource?: {
+    executionDecisionEventId: string;
+    intentionDecisionEventId?: string;
+  };
+  /** Action origin; a committed declaration has its own language provenance. */
+  cause: 'intent' | 'survival-reflex' | 'player-embodiment' | 'decision-language';
   action: PrimitiveAction;
   fromCellId: number;
   toCellId: number;
@@ -395,6 +419,9 @@ export interface PhysicalConstructionRecord {
 export interface PhysicalStructureIndex {
   /** Optional only for schema-17 states written before the bounded v2 fold. */
   projectionVersion?: 2;
+  /** Topology/shelter criteria version; omitted caches need rematerialization,
+   * while their authenticated construction provenance remains reusable. */
+  geometryVersion?: 1;
   /** Absolute committed-ledger cursor covered by `constructionRecords`. */
   appliedHistoryEventCount?: number;
   /** Exact event id at `appliedHistoryEventCount - 1`, or null at genesis. */

@@ -216,6 +216,8 @@ export interface AnimalView {
   z: number;
   previousCellId: number;
   previousZ: number;
+  /** Completed movement trace; older snapshots retain endpoint-only playback. */
+  movementPath?: Array<{ cellId: number; z: number }>;
   health: number;
   hunger: number;
   sex?: 'female' | 'male';

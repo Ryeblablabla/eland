@@ -1,0 +1,2716 @@
+[
+  {
+    "id": "e-709-environment-weather-0",
+    "kind": "environment",
+    "atMonth": 709,
+    "orderInMonth": 0,
+    "cellId": 0,
+    "change": "weather",
+    "result": "本月天气转为浓雾",
+    "diff": {
+      "kind": "fog",
+      "intensity": 2
+    },
+    "planningTick": 0,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-709-agreement-fulfilled-offer-companion:684:born-244-potianfeng-13:sun-wu",
+    "kind": "agreement",
+    "atMonth": 709,
+    "orderInMonth": 1,
+    "cellId": 0,
+    "agreementId": "offer-companion:684:born-244-potianfeng-13:sun-wu",
+    "change": "fulfilled",
+    "partyIds": [
+      "born-244-potianfeng-13",
+      "sun-wu"
+    ],
+    "result": "双方在约定期内共同停留了 21 个月",
+    "planningTick": 0,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-709-opportunity-potianfeng",
+    "kind": "decision-opportunity",
+    "atMonth": 709,
+    "orderInMonth": 2,
+    "planningTick": 0,
+    "orderInTick": 2,
+    "who": "potianfeng",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.4284401386976242,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "破天锋本月重新考虑下一步"
+  },
+  {
+    "id": "e-709-opportunity-rei-ayanami",
+    "kind": "decision-opportunity",
+    "atMonth": 709,
+    "orderInMonth": 3,
+    "planningTick": 0,
+    "orderInTick": 3,
+    "who": "rei-ayanami",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.835958058713004,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "绫波丽本月重新考虑下一步"
+  },
+  {
+    "id": "e-709-opportunity-freyja",
+    "kind": "decision-opportunity",
+    "atMonth": 709,
+    "orderInMonth": 4,
+    "planningTick": 0,
+    "orderInTick": 4,
+    "who": "freyja",
+    "cellId": 4050,
+    "probability": 0.045,
+    "sample": 0.45465869829058647,
+    "triggered": true,
+    "reasons": [
+      "每月非零重新考虑概率",
+      "紧急状态需要立即重评"
+    ],
+    "result": "芙蕾雅本月重新考虑下一步"
+  },
+  {
+    "id": "e-709-opportunity-cai-wenji",
+    "kind": "decision-opportunity",
+    "atMonth": 709,
+    "orderInMonth": 5,
+    "planningTick": 0,
+    "orderInTick": 5,
+    "who": "cai-wenji",
+    "cellId": 1443,
+    "probability": 0.645,
+    "sample": 0.15789464465342462,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "蔡文姬本月重新考虑下一步"
+  },
+  {
+    "id": "e-709-opportunity-sun-wu",
+    "kind": "decision-opportunity",
+    "atMonth": 709,
+    "orderInMonth": 6,
+    "planningTick": 0,
+    "orderInTick": 6,
+    "who": "sun-wu",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.8217436447739601,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "紧急状态需要立即重评"
+    ],
+    "result": "孙武本月重新考虑下一步"
+  },
+  {
+    "id": "e-709-opportunity-houyi",
+    "kind": "decision-opportunity",
+    "atMonth": 709,
+    "orderInMonth": 7,
+    "planningTick": 0,
+    "orderInTick": 7,
+    "who": "houyi",
+    "cellId": 1443,
+    "probability": 0.645,
+    "sample": 0.983674013055861,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "后羿本月重新考虑下一步"
+  },
+  {
+    "id": "e-709-opportunity-born-16-cai-wenji-7",
+    "kind": "decision-opportunity",
+    "atMonth": 709,
+    "orderInMonth": 8,
+    "planningTick": 0,
+    "orderInTick": 8,
+    "who": "born-16-cai-wenji-7",
+    "cellId": 3039,
+    "probability": 0.645,
+    "sample": 0.14705061097629368,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "孙疏影本月重新考虑下一步"
+  },
+  {
+    "id": "e-709-opportunity-born-22-potianfeng-8",
+    "kind": "decision-opportunity",
+    "atMonth": 709,
+    "orderInMonth": 9,
+    "planningTick": 0,
+    "orderInTick": 9,
+    "who": "born-22-potianfeng-8",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.5171256267931312,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "孙朝宗本月重新考虑下一步"
+  },
+  {
+    "id": "e-709-opportunity-born-115-cai-wenji-10",
+    "kind": "decision-opportunity",
+    "atMonth": 709,
+    "orderInMonth": 10,
+    "planningTick": 0,
+    "orderInTick": 10,
+    "who": "born-115-cai-wenji-10",
+    "cellId": 1443,
+    "probability": 0.645,
+    "sample": 0.006591196171939373,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "后凌川本月重新考虑下一步"
+  },
+  {
+    "id": "e-709-opportunity-born-159-potianfeng-11",
+    "kind": "decision-opportunity",
+    "atMonth": 709,
+    "orderInMonth": 11,
+    "planningTick": 0,
+    "orderInTick": 11,
+    "who": "born-159-potianfeng-11",
+    "cellId": 605,
+    "probability": 0.645,
+    "sample": 0.054197137942537665,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "孙明哲本月重新考虑下一步"
+  },
+  {
+    "id": "e-709-opportunity-born-193-cai-wenji-12",
+    "kind": "decision-opportunity",
+    "atMonth": 709,
+    "orderInMonth": 12,
+    "planningTick": 0,
+    "orderInTick": 12,
+    "who": "born-193-cai-wenji-12",
+    "cellId": 1443,
+    "probability": 0.645,
+    "sample": 0.14316490176133811,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "后若水本月重新考虑下一步"
+  },
+  {
+    "id": "e-709-opportunity-born-244-potianfeng-13",
+    "kind": "decision-opportunity",
+    "atMonth": 709,
+    "orderInMonth": 13,
+    "planningTick": 0,
+    "orderInTick": 13,
+    "who": "born-244-potianfeng-13",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.5345004678238183,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "孙守一本月重新考虑下一步"
+  },
+  {
+    "id": "e-709-decision-potianfeng-1-14",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 14,
+    "planningTick": 1,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:709:collective:offer-collective:29:houyi:sun-wu:potianfeng:sun-wu:27",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 71%（10 次亲历）"
+    },
+    "intentId": "intent-709-potianfeng-16581",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：允许孙武在需要时取用自己的木制记录板"
+  },
+  {
+    "id": "e-709-decision-rei-ayanami-1-15",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 15,
+    "planningTick": 1,
+    "orderInTick": 1,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:709:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:21",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 60%（1 次亲历）"
+    },
+    "intentId": "intent-709-rei-ayanami-16582",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：允许破天锋在需要时取用自己的食物"
+  },
+  {
+    "id": "e-709-decision-cai-wenji-1-16",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 16,
+    "planningTick": 1,
+    "orderInTick": 2,
+    "cellId": 1443,
+    "who": "cai-wenji",
+    "decision": {
+      "kind": "start",
+      "optionId": "conversation:hardship:709:cai-wenji:born-193-cai-wenji-12",
+      "followUpOptionId": "use-permission:permission:offer-permission:687:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:cai-wenji:21:stack-born-193-cai-wenji-12-21-206",
+      "reason": "本人正在承受有事件来源的身体压力，可以向身边人坦白自己的感受；当前最强需要是belonging；当前可见关系与本人社会接近倾向形成了真实互动机会；本人尚无相似行动经验，使用保守先验"
+    },
+    "intentId": "intent-709-cai-wenji-16583",
+    "domain": "social",
+    "usedModel": false,
+    "result": "蔡文姬决定：与后若水谈自己的难处：向后若水说明自己身体越来越容易疲惫，并邀请对方回应当前困境，随后依据许可从后若水处取用食物"
+  },
+  {
+    "id": "e-709-decision-sun-wu-1-17",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 17,
+    "planningTick": 1,
+    "orderInTick": 3,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:709:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:21",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 69%（9 次亲历）"
+    },
+    "intentId": "intent-709-sun-wu-16584",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：允许破天锋在需要时取用自己的食物"
+  },
+  {
+    "id": "e-709-decision-houyi-1-18",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 18,
+    "planningTick": 1,
+    "orderInTick": 4,
+    "cellId": 1443,
+    "who": "houyi",
+    "decision": {
+      "kind": "start",
+      "optionId": "use-permission:permission:offer-permission:692:collective:offer-collective:29:houyi:sun-wu:cai-wenji:houyi:21:stack-cai-wenji-21-392",
+      "reason": "授权人、被授权人、物质、单次数量与有效期都有可追溯许可；当前最强需要是care；本人可携带的食水缓冲不足；本人对相似行动的成功预期为 78%（5 次亲历）"
+    },
+    "intentId": "intent-709-houyi-16585",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后羿决定：依据许可从蔡文姬处取用食物"
+  },
+  {
+    "id": "e-709-decision-born-16-cai-wenji-7-1-19",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 19,
+    "planningTick": 1,
+    "orderInTick": 5,
+    "cellId": 3039,
+    "who": "born-16-cai-wenji-7",
+    "decision": {
+      "kind": "start",
+      "optionId": "collect:drop-707-born-16-cai-wenji-7-separate-463",
+      "reason": "补充食物储备，缓解饥饿压力",
+      "utterance": "我去拿点吃的。"
+    },
+    "intentId": "intent-709-born-16-cai-wenji-7-16586",
+    "domain": "strategic",
+    "usedModel": true,
+    "result": "孙疏影决定：取得食物"
+  },
+  {
+    "id": "e-709-decision-born-22-potianfeng-8-1-20",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 20,
+    "planningTick": 1,
+    "orderInTick": 6,
+    "cellId": 689,
+    "who": "born-22-potianfeng-8",
+    "decision": {
+      "kind": "start",
+      "optionId": "rejoin-collective:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11",
+      "reason": "双方仍属于以“继续协作完成共同住所与环境改造”为目的的持续共同体；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；当前项目或观察留下了具体未知点"
+    },
+    "intentId": "intent-709-born-22-potianfeng-8-16587",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙朝宗决定：重新与共同体成员孙明哲会合"
+  },
+  {
+    "id": "e-709-decision-born-115-cai-wenji-10-1-21",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 21,
+    "planningTick": 1,
+    "orderInTick": 7,
+    "cellId": 1443,
+    "who": "born-115-cai-wenji-10",
+    "decision": {
+      "kind": "start",
+      "optionId": "use-permission:permission:offer-permission:694:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:born-115-cai-wenji-10:21:stack-born-193-cai-wenji-12-21-206",
+      "reason": "授权人、被授权人、物质、单次数量与有效期都有可追溯许可；当前最强需要是care；本人可携带的食水缓冲不足；本人对相似行动的成功预期为 71%（3 次亲历）"
+    },
+    "intentId": "intent-709-born-115-cai-wenji-10-16588",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后凌川决定：依据许可从后若水处取用食物"
+  },
+  {
+    "id": "e-709-decision-born-159-potianfeng-11-1-22",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 22,
+    "planningTick": 1,
+    "orderInTick": 8,
+    "cellId": 605,
+    "who": "born-159-potianfeng-11",
+    "decision": {
+      "kind": "start",
+      "optionId": "rejoin-collective:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng",
+      "reason": "双方仍属于以“继续协作完成共同住所与环境改造”为目的的持续共同体；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；当前项目或观察留下了具体未知点"
+    },
+    "intentId": "intent-709-born-159-potianfeng-11-16589",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙明哲决定：重新与共同体成员破天锋会合"
+  },
+  {
+    "id": "e-709-decision-born-193-cai-wenji-12-1-23",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 23,
+    "planningTick": 1,
+    "orderInTick": 9,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "predict-era:709:born-193-cai-wenji-12:0",
+      "reason": "对天象、气温和过去纪元节律的观察可以形成一项有误差的预测；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 60%（1 次亲历）"
+    },
+    "intentId": "intent-709-born-193-cai-wenji-12-16590",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "后若水决定：预言第 711 月前后将进入乱纪元"
+  },
+  {
+    "id": "e-709-decision-born-244-potianfeng-13-1-24",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 24,
+    "planningTick": 1,
+    "orderInTick": 10,
+    "cellId": 689,
+    "who": "born-244-potianfeng-13",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-companion:709:born-244-potianfeng-13:sun-wu",
+      "reason": "彼此的信任与羁绊已达到结伴门槛，结伴可能降低长期风险；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 38%（4 次亲历）"
+    },
+    "intentId": "intent-709-born-244-potianfeng-13-16591",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙守一决定：邀请孙武结伴行动"
+  },
+  {
+    "id": "e-709-action-born-22-potianfeng-8-25",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 709,
+    "orderInMonth": 25,
+    "cellId": 605,
+    "who": "born-22-potianfeng-8",
+    "intentId": "intent-709-born-22-potianfeng-8-16587",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 605,
+      "toZ": 5
+    },
+    "fromCellId": 689,
+    "toCellId": 605,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689,
+      605
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 17, 7 的高度 5",
+    "diff": {
+      "spentWork": 1.9138755980861246,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 11
+  },
+  {
+    "id": "e-709-action-born-244-potianfeng-13-26",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 709,
+    "orderInMonth": 26,
+    "cellId": 689,
+    "who": "born-244-potianfeng-13",
+    "intentId": "intent-709-born-244-potianfeng-13-16591",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-companion:709:born-244-potianfeng-13:sun-wu",
+        "kind": "offer",
+        "summary": "希望今后一段时间结伴行动",
+        "proposal": {
+          "kind": "companion",
+          "proposerId": "born-244-potianfeng-13",
+          "partnerId": "sun-wu",
+          "expiresAtMonth": 715,
+          "basis": {
+            "version": "relationship-causal-basis-v1",
+            "subjectKey": "relationship:companion:born-244-potianfeng-13:sun-wu",
+            "basisKey": "relationship-causal-basis-v1|subject=relationship:companion:born-244-potianfeng-13:sun-wu|observer=born-244-potianfeng-13|r=e-633-agreement-fulfilled-offer-companion:608:born-244-potianfeng-13:sun-wu,e-657-action-born-244-potianfeng-13-29,e-658-agreement-fulfilled-offer-companion:633:born-244-potianfeng-13:sun-wu,e-689-action-born-244-potianfeng-13-19,e-689-action-sun-wu-25|b=none",
+            "kind": "companion",
+            "proposerId": "born-244-potianfeng-13",
+            "partnerId": "sun-wu",
+            "relationshipKeys": [
+              "e-633-agreement-fulfilled-offer-companion:608:born-244-potianfeng-13:sun-wu",
+              "e-657-action-born-244-potianfeng-13-29",
+              "e-658-agreement-fulfilled-offer-companion:633:born-244-potianfeng-13:sun-wu",
+              "e-689-action-born-244-potianfeng-13-19",
+              "e-689-action-sun-wu-25"
+            ],
+            "bodyKeys": [],
+            "sourceFactIds": [
+              "e-633-agreement-fulfilled-offer-companion:608:born-244-potianfeng-13:sun-wu",
+              "e-657-action-born-244-potianfeng-13-29",
+              "e-658-agreement-fulfilled-offer-companion:633:born-244-potianfeng-13:sun-wu",
+              "e-689-action-born-244-potianfeng-13-19",
+              "e-689-action-sun-wu-25"
+            ]
+          }
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙守一向孙武表达：希望今后一段时间结伴行动",
+    "diff": {
+      "audience": [
+        "sun-wu"
+      ],
+      "content": {
+        "id": "offer-companion:709:born-244-potianfeng-13:sun-wu",
+        "kind": "offer",
+        "summary": "希望今后一段时间结伴行动",
+        "proposal": {
+          "kind": "companion",
+          "proposerId": "born-244-potianfeng-13",
+          "partnerId": "sun-wu",
+          "expiresAtMonth": 715,
+          "basis": {
+            "version": "relationship-causal-basis-v1",
+            "subjectKey": "relationship:companion:born-244-potianfeng-13:sun-wu",
+            "basisKey": "relationship-causal-basis-v1|subject=relationship:companion:born-244-potianfeng-13:sun-wu|observer=born-244-potianfeng-13|r=e-633-agreement-fulfilled-offer-companion:608:born-244-potianfeng-13:sun-wu,e-657-action-born-244-potianfeng-13-29,e-658-agreement-fulfilled-offer-companion:633:born-244-potianfeng-13:sun-wu,e-689-action-born-244-potianfeng-13-19,e-689-action-sun-wu-25|b=none",
+            "kind": "companion",
+            "proposerId": "born-244-potianfeng-13",
+            "partnerId": "sun-wu",
+            "relationshipKeys": [
+              "e-633-agreement-fulfilled-offer-companion:608:born-244-potianfeng-13:sun-wu",
+              "e-657-action-born-244-potianfeng-13-29",
+              "e-658-agreement-fulfilled-offer-companion:633:born-244-potianfeng-13:sun-wu",
+              "e-689-action-born-244-potianfeng-13-19",
+              "e-689-action-sun-wu-25"
+            ],
+            "bodyKeys": [],
+            "sourceFactIds": [
+              "e-633-agreement-fulfilled-offer-companion:608:born-244-potianfeng-13:sun-wu",
+              "e-657-action-born-244-potianfeng-13-29",
+              "e-658-agreement-fulfilled-offer-companion:633:born-244-potianfeng-13:sun-wu",
+              "e-689-action-born-244-potianfeng-13-19",
+              "e-689-action-sun-wu-25"
+            ]
+          }
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 12
+  },
+  {
+    "id": "e-709-action-cai-wenji-27",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 709,
+    "orderInMonth": 27,
+    "cellId": 1443,
+    "who": "cai-wenji",
+    "intentId": "intent-709-cai-wenji-16583",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "conversation:hardship:709:cai-wenji:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "向后若水说明自己身体越来越容易疲惫，并邀请对方回应当前困境",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "opening",
+          "speakerId": "cai-wenji",
+          "listenerId": "born-193-cai-wenji-12",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ]
+        }
+      },
+      "audience": [
+        "born-193-cai-wenji-12"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "completed",
+    "result": "蔡文姬向后若水表达：向后若水说明自己身体越来越容易疲惫，并邀请对方回应当前困境",
+    "diff": {
+      "audience": [
+        "born-193-cai-wenji-12"
+      ],
+      "content": {
+        "id": "conversation:hardship:709:cai-wenji:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "向后若水说明自己身体越来越容易疲惫，并邀请对方回应当前困境",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "opening",
+          "speakerId": "cai-wenji",
+          "listenerId": "born-193-cai-wenji-12",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ]
+        }
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1,
+      "groundedConversationBasisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+      "groundedConversationTopic": "hardship",
+      "groundedConversationTurn": "opening",
+      "groundedConversationSourceFactIds": [
+        "e-388-environment-condition-0",
+        "e-521-environment-condition-0",
+        "e-669-environment-condition-0"
+      ],
+      "relationTrustDelta": 0,
+      "relationBondDelta": 2
+    },
+    "planningTick": 1,
+    "orderInTick": 13
+  },
+  {
+    "id": "e-709-action-potianfeng-28",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 709,
+    "orderInMonth": 28,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-709-potianfeng-16581",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:709:collective:offer-collective:29:houyi:sun-wu:potianfeng:sun-wu:27",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份木制记录板",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "potianfeng",
+          "partnerId": "sun-wu",
+          "collectiveId": "collective:offer-collective:29:houyi:sun-wu",
+          "grantorId": "potianfeng",
+          "granteeId": "sun-wu",
+          "materialId": 27,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 733,
+          "expiresAtMonth": 715
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "破天锋向孙武表达：你可以在需要时每次取用我的一份木制记录板",
+    "diff": {
+      "audience": [
+        "sun-wu"
+      ],
+      "content": {
+        "id": "offer-permission:709:collective:offer-collective:29:houyi:sun-wu:potianfeng:sun-wu:27",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份木制记录板",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "potianfeng",
+          "partnerId": "sun-wu",
+          "collectiveId": "collective:offer-collective:29:houyi:sun-wu",
+          "grantorId": "potianfeng",
+          "granteeId": "sun-wu",
+          "materialId": 27,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 733,
+          "expiresAtMonth": 715
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 14
+  },
+  {
+    "id": "e-709-action-houyi-29",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 709,
+    "orderInMonth": 29,
+    "cellId": 1443,
+    "who": "houyi",
+    "intentId": "intent-709-houyi-16585",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 21,
+      "quantity": 1,
+      "from": {
+        "kind": "person",
+        "personId": "cai-wenji"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "houyi"
+      },
+      "stackId": "stack-cai-wenji-21-392",
+      "authorizationRef": "permission:offer-permission:692:collective:offer-collective:29:houyi:sun-wu:cai-wenji:houyi:21"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "completed",
+    "result": "食物 × 1 改变了持有者",
+    "diff": {
+      "materialId": 21,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": true,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "person",
+        "personId": "cai-wenji"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "houyi"
+      },
+      "witnessedBy": [
+        "cai-wenji",
+        "houyi",
+        "born-115-cai-wenji-10",
+        "born-193-cai-wenji-12"
+      ],
+      "sourceEventIds": [
+        "e-666-action-cai-wenji-3",
+        "e-617-action-cai-wenji-26",
+        "e-668-action-born-193-cai-wenji-12-9",
+        "e-670-action-born-193-cai-wenji-12-11",
+        "e-671-action-born-193-cai-wenji-12-10",
+        "e-673-action-cai-wenji-9",
+        "e-627-action-born-193-cai-wenji-12-2",
+        "e-628-action-cai-wenji-10",
+        "e-674-action-born-193-cai-wenji-12-26",
+        "e-675-action-born-193-cai-wenji-12-2",
+        "e-688-action-cai-wenji-2",
+        "e-618-action-born-193-cai-wenji-12-3",
+        "e-618-action-cai-wenji-5",
+        "e-322-action-born-193-cai-wenji-12-52",
+        "e-622-action-cai-wenji-6",
+        "e-656-action-cai-wenji-23",
+        "e-698-action-born-193-cai-wenji-12-27",
+        "e-693-action-houyi-30",
+        "e-697-action-houyi-20",
+        "e-699-action-houyi-26",
+        "e-702-action-houyi-30",
+        "e-704-action-houyi-31",
+        "e-706-action-cai-wenji-42",
+        "e-709-action-houyi-29"
+      ],
+      "sourceLineageKeys": [
+        "inventory:cai-wenji:stack-cai-wenji-21-392",
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-21-218",
+        "drop:drop-218-born-115-cai-wenji-10-separate-440",
+        "drop:drop-260-born-115-cai-wenji-10-separate-434",
+        "drop:drop-320-born-159-potianfeng-11-separate-444",
+        "drop:drop-328-born-193-cai-wenji-12-separate-446",
+        "drop:drop-325-born-244-potianfeng-13-separate-444",
+        "drop:drop-327-born-244-potianfeng-13-separate-444",
+        "drop:drop-331-born-244-potianfeng-13-separate-444",
+        "drop:drop-342-born-115-cai-wenji-10-separate-447",
+        "inventory:born-193-cai-wenji-12:stack-born-193-cai-wenji-12-21-206",
+        "drop:drop-206-born-193-cai-wenji-12-separate-437",
+        "drop:drop-210-born-193-cai-wenji-12-separate-438",
+        "drop:drop-212-born-193-cai-wenji-12-separate-441",
+        "drop:drop-214-born-193-cai-wenji-12-separate-441",
+        "drop:drop-216-born-193-cai-wenji-12-separate-443",
+        "drop:drop-273-born-193-cai-wenji-12-separate-432",
+        "drop:drop-308-born-193-cai-wenji-12-separate-434",
+        "drop:drop-310-born-193-cai-wenji-12-separate-435",
+        "drop:drop-316-born-193-cai-wenji-12-separate-439",
+        "drop:drop-317-born-244-potianfeng-13-separate-443",
+        "drop:drop-334-born-193-cai-wenji-12-separate-443",
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-21-557",
+        "drop:drop-373-born-115-cai-wenji-10-separate-450",
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-21-600",
+        "drop:drop-345-born-115-cai-wenji-10-separate-449",
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-21-631",
+        "drop:drop-371-born-115-cai-wenji-10-separate-449",
+        "inventory:houyi:stack-houyi-21-661",
+        "inventory:houyi:stack-houyi-21-634",
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-21-674"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 15
+  },
+  {
+    "id": "e-709-action-sun-wu-30",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 709,
+    "orderInMonth": 30,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-709-sun-wu-16584",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:709:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:21",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份食物",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "sun-wu",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:29:houyi:sun-wu",
+          "grantorId": "sun-wu",
+          "granteeId": "potianfeng",
+          "materialId": 21,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 733,
+          "expiresAtMonth": 715
+        }
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙武向破天锋表达：你可以在需要时每次取用我的一份食物",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "offer-permission:709:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:21",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份食物",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "sun-wu",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:29:houyi:sun-wu",
+          "grantorId": "sun-wu",
+          "granteeId": "potianfeng",
+          "materialId": 21,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 733,
+          "expiresAtMonth": 715
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 16
+  },
+  {
+    "id": "e-709-action-born-159-potianfeng-11-31",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 709,
+    "orderInMonth": 31,
+    "cellId": 689,
+    "who": "born-159-potianfeng-11",
+    "intentId": "intent-709-born-159-potianfeng-11-16589",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 689,
+      "toZ": 5
+    },
+    "fromCellId": 605,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      605,
+      689
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 17, 8 的高度 5",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 17
+  },
+  {
+    "id": "e-709-action-born-16-cai-wenji-7-32",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 709,
+    "orderInMonth": 32,
+    "cellId": 2955,
+    "who": "born-16-cai-wenji-7",
+    "intentId": "intent-709-born-16-cai-wenji-7-16586",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2786,
+      "toZ": 5
+    },
+    "fromCellId": 3039,
+    "toCellId": 2955,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3039,
+      2955
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.652892561983471,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 18
+  },
+  {
+    "id": "e-709-action-born-193-cai-wenji-12-33",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 709,
+    "orderInMonth": 33,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-709-born-193-cai-wenji-12-16590",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "predict-era:709:born-193-cai-wenji-12:0",
+        "kind": "prediction",
+        "summary": "预言第 711 月前后将进入乱纪元",
+        "prediction": {
+          "targetEpoch": "chaotic",
+          "predictedStartMonth": 711,
+          "toleranceMonths": 3,
+          "expiresAtMonth": 714
+        }
+      },
+      "audience": [
+        "cai-wenji",
+        "houyi",
+        "born-115-cai-wenji-10"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "completed",
+    "result": "后若水向蔡文姬、后羿、后凌川表达：预言第 711 月前后将进入乱纪元",
+    "diff": {
+      "audience": [
+        "cai-wenji",
+        "houyi",
+        "born-115-cai-wenji-10"
+      ],
+      "content": {
+        "id": "predict-era:709:born-193-cai-wenji-12:0",
+        "kind": "prediction",
+        "summary": "预言第 711 月前后将进入乱纪元",
+        "prediction": {
+          "targetEpoch": "chaotic",
+          "predictedStartMonth": 711,
+          "toleranceMonths": 3,
+          "expiresAtMonth": 714
+        }
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 3
+    },
+    "planningTick": 1,
+    "orderInTick": 19
+  },
+  {
+    "id": "e-709-action-born-115-cai-wenji-10-34",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 709,
+    "orderInMonth": 34,
+    "cellId": 1443,
+    "who": "born-115-cai-wenji-10",
+    "intentId": "intent-709-born-115-cai-wenji-10-16588",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 21,
+      "quantity": 1,
+      "from": {
+        "kind": "person",
+        "personId": "born-193-cai-wenji-12"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-115-cai-wenji-10"
+      },
+      "stackId": "stack-born-193-cai-wenji-12-21-206",
+      "authorizationRef": "permission:offer-permission:694:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:born-115-cai-wenji-10:21"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "completed",
+    "result": "食物 × 1 改变了持有者",
+    "diff": {
+      "materialId": 21,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": true,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "person",
+        "personId": "born-193-cai-wenji-12"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-115-cai-wenji-10"
+      },
+      "witnessedBy": [
+        "cai-wenji",
+        "houyi",
+        "born-115-cai-wenji-10",
+        "born-193-cai-wenji-12"
+      ],
+      "sourceEventIds": [
+        "e-618-action-cai-wenji-5",
+        "e-660-action-cai-wenji-17",
+        "e-661-action-born-193-cai-wenji-12-30",
+        "e-662-action-cai-wenji-15",
+        "e-665-action-cai-wenji-5",
+        "e-666-action-cai-wenji-3",
+        "e-668-action-born-193-cai-wenji-12-9",
+        "e-627-action-born-193-cai-wenji-12-2",
+        "e-322-action-born-193-cai-wenji-12-52",
+        "e-670-action-born-193-cai-wenji-12-11",
+        "e-628-action-cai-wenji-10",
+        "e-622-action-cai-wenji-6",
+        "e-619-action-cai-wenji-20",
+        "e-671-action-born-193-cai-wenji-12-10",
+        "e-622-action-born-193-cai-wenji-12-10",
+        "e-623-action-cai-wenji-13",
+        "e-334-action-born-193-cai-wenji-12-89",
+        "e-673-action-cai-wenji-9",
+        "e-674-action-born-193-cai-wenji-12-26",
+        "e-656-action-cai-wenji-23",
+        "e-658-action-cai-wenji-26",
+        "e-645-action-cai-wenji-9",
+        "e-675-action-born-193-cai-wenji-12-2",
+        "e-709-action-born-115-cai-wenji-10-34"
+      ],
+      "sourceLineageKeys": [
+        "inventory:born-193-cai-wenji-12:stack-born-193-cai-wenji-12-21-206",
+        "drop:drop-206-born-193-cai-wenji-12-separate-437",
+        "drop:drop-210-born-193-cai-wenji-12-separate-438",
+        "drop:drop-212-born-193-cai-wenji-12-separate-441",
+        "drop:drop-214-born-193-cai-wenji-12-separate-441",
+        "drop:drop-216-born-193-cai-wenji-12-separate-443",
+        "drop:drop-273-born-193-cai-wenji-12-separate-432",
+        "drop:drop-308-born-193-cai-wenji-12-separate-434",
+        "drop:drop-310-born-193-cai-wenji-12-separate-435",
+        "drop:drop-316-born-193-cai-wenji-12-separate-439",
+        "drop:drop-317-born-244-potianfeng-13-separate-443",
+        "drop:drop-328-born-193-cai-wenji-12-separate-446",
+        "drop:drop-334-born-193-cai-wenji-12-separate-443",
+        "inventory:cai-wenji:stack-cai-wenji-21-392",
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-21-218",
+        "drop:drop-218-born-115-cai-wenji-10-separate-440",
+        "drop:drop-260-born-115-cai-wenji-10-separate-434",
+        "drop:drop-320-born-159-potianfeng-11-separate-444",
+        "drop:drop-325-born-244-potianfeng-13-separate-444",
+        "drop:drop-327-born-244-potianfeng-13-separate-444",
+        "drop:drop-331-born-244-potianfeng-13-separate-444",
+        "drop:drop-342-born-115-cai-wenji-10-separate-447",
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-21-557",
+        "drop:drop-373-born-115-cai-wenji-10-separate-450",
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-21-600",
+        "drop:drop-345-born-115-cai-wenji-10-separate-449",
+        "inventory:born-115-cai-wenji-10:stack-born-115-cai-wenji-10-21-631",
+        "drop:drop-371-born-115-cai-wenji-10-separate-449"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 20
+  },
+  {
+    "id": "e-709-action-rei-ayanami-35",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 709,
+    "orderInMonth": 35,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-709-rei-ayanami-16582",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:709:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:21",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份食物",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "rei-ayanami",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "rei-ayanami",
+          "granteeId": "potianfeng",
+          "materialId": 21,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 733,
+          "expiresAtMonth": 715
+        }
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "绫波丽向破天锋表达：你可以在需要时每次取用我的一份食物",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "offer-permission:709:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:21",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份食物",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "rei-ayanami",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "rei-ayanami",
+          "granteeId": "potianfeng",
+          "materialId": 21,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 733,
+          "expiresAtMonth": 715
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 21
+  },
+  {
+    "id": "e-709-decision-sun-wu-2-36",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 36,
+    "planningTick": 2,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:709:collective:offer-collective:29:houyi:sun-wu:potianfeng:sun-wu:27",
+      "reason": "对方刚刚提出了一项需要回应的社会请求；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；一项具体提议、权限或共同体关系正在等待本人表态"
+    },
+    "intentId": "intent-709-sun-wu-16592",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：接受破天锋的物质取用许可"
+  },
+  {
+    "id": "e-709-action-sun-wu-37",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 709,
+    "orderInMonth": 37,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-709-sun-wu-16592",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:709:collective:offer-collective:29:houyi:sun-wu:potianfeng:sun-wu:27:sun-wu",
+        "kind": "accept",
+        "referenceId": "offer-permission:709:collective:offer-collective:29:houyi:sun-wu:potianfeng:sun-wu:27"
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙武向破天锋表达：accept",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "accept:offer-permission:709:collective:offer-collective:29:houyi:sun-wu:potianfeng:sun-wu:27:sun-wu",
+        "kind": "accept",
+        "referenceId": "offer-permission:709:collective:offer-collective:29:houyi:sun-wu:potianfeng:sun-wu:27"
+      }
+    },
+    "planningTick": 2,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-709-decision-potianfeng-2-38",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 38,
+    "planningTick": 2,
+    "orderInTick": 2,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:709:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:21",
+      "reason": "对方刚刚提出了一项需要回应的社会请求；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；一项具体提议、权限或共同体关系正在等待本人表态"
+    },
+    "intentId": "intent-709-potianfeng-16593",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：接受绫波丽的物质取用许可"
+  },
+  {
+    "id": "e-709-action-potianfeng-39",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 709,
+    "orderInMonth": 39,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-709-potianfeng-16593",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:709:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:21:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:709:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:21"
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "破天锋向绫波丽表达：accept",
+    "diff": {
+      "audience": [
+        "rei-ayanami"
+      ],
+      "content": {
+        "id": "accept:offer-permission:709:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:21:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:709:collective:offer-collective:3:potianfeng:rei-ayanami:rei-ayanami:potianfeng:21"
+      }
+    },
+    "planningTick": 2,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-709-decision-born-193-cai-wenji-12-2-40",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 40,
+    "planningTick": 2,
+    "orderInTick": 4,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人尚无相似行动经验，使用保守先验"
+    },
+    "intentId": "intent-709-born-193-cai-wenji-12-16594",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：回应蔡文姬关于自己的难处的话：愿意倾听对方当前的困境，并共同考虑下一步"
+  },
+  {
+    "id": "e-709-action-born-193-cai-wenji-12-41",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 709,
+    "orderInMonth": 41,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-709-born-193-cai-wenji-12-16594",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "愿意倾听对方当前的困境，并共同考虑下一步",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "response",
+          "speakerId": "born-193-cai-wenji-12",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ],
+          "referenceEventId": "e-709-action-cai-wenji-27",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "completed",
+    "result": "后若水向蔡文姬表达：愿意倾听对方当前的困境，并共同考虑下一步",
+    "diff": {
+      "audience": [
+        "cai-wenji"
+      ],
+      "content": {
+        "id": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "愿意倾听对方当前的困境，并共同考虑下一步",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "response",
+          "speakerId": "born-193-cai-wenji-12",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ],
+          "referenceEventId": "e-709-action-cai-wenji-27",
+          "stance": "supportive"
+        }
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1,
+      "groundedConversationBasisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+      "groundedConversationTopic": "hardship",
+      "groundedConversationTurn": "response",
+      "groundedConversationSourceFactIds": [
+        "e-388-environment-condition-0",
+        "e-521-environment-condition-0",
+        "e-669-environment-condition-0"
+      ],
+      "groundedConversationReferenceEventId": "e-709-action-cai-wenji-27",
+      "groundedConversationStance": "supportive",
+      "relationTrustDelta": 1,
+      "relationBondDelta": 2
+    },
+    "planningTick": 2,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-709-action-born-16-cai-wenji-7-42",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 709,
+    "orderInMonth": 42,
+    "cellId": 2954,
+    "who": "born-16-cai-wenji-7",
+    "intentId": "intent-709-born-16-cai-wenji-7-16586",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2786,
+      "toZ": 5
+    },
+    "fromCellId": 2955,
+    "toCellId": 2954,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2955,
+      2954
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.652892561983471,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-709-decision-born-193-cai-wenji-12-3-43",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 43,
+    "planningTick": 3,
+    "orderInTick": 0,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 60%（1 次亲历）"
+    },
+    "intentId": "intent-709-born-193-cai-wenji-12-16595",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：回应蔡文姬关于自己的难处的话：愿意倾听对方当前的困境，并共同考虑下一步"
+  },
+  {
+    "id": "e-709-action-born-193-cai-wenji-12-44",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 709,
+    "orderInMonth": 44,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-709-born-193-cai-wenji-12-16595",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "愿意倾听对方当前的困境，并共同考虑下一步",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "response",
+          "speakerId": "born-193-cai-wenji-12",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ],
+          "referenceEventId": "e-709-action-cai-wenji-27",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 3,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-709-action-born-16-cai-wenji-7-45",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 709,
+    "orderInMonth": 45,
+    "cellId": 2870,
+    "who": "born-16-cai-wenji-7",
+    "intentId": "intent-709-born-16-cai-wenji-7-16586",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2786,
+      "toZ": 5
+    },
+    "fromCellId": 2954,
+    "toCellId": 2870,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2954,
+      2870
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.305785123966942,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-709-decision-potianfeng-3-46",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 46,
+    "planningTick": 3,
+    "orderInTick": 3,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:709:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:21",
+      "reason": "对方刚刚提出了一项需要回应的社会请求；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；一项具体提议、权限或共同体关系正在等待本人表态"
+    },
+    "intentId": "intent-709-potianfeng-16596",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：接受孙武的物质取用许可"
+  },
+  {
+    "id": "e-709-action-potianfeng-47",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 709,
+    "orderInMonth": 47,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-709-potianfeng-16596",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:709:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:21:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:709:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:21"
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "破天锋向孙武表达：accept",
+    "diff": {
+      "audience": [
+        "sun-wu"
+      ],
+      "content": {
+        "id": "accept:offer-permission:709:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:21:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:709:collective:offer-collective:29:houyi:sun-wu:sun-wu:potianfeng:21"
+      }
+    },
+    "planningTick": 3,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-709-decision-sun-wu-3-48",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 48,
+    "planningTick": 3,
+    "orderInTick": 5,
+    "cellId": 689,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-companion:offer-companion:709:born-244-potianfeng-13:sun-wu",
+      "reason": "对方刚刚提出了一项需要回应的社会请求；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；一项具体提议、权限或共同体关系正在等待本人表态"
+    },
+    "intentId": "intent-709-sun-wu-16597",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：接受孙守一的结伴提议"
+  },
+  {
+    "id": "e-709-action-sun-wu-49",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 709,
+    "orderInMonth": 49,
+    "cellId": 689,
+    "who": "sun-wu",
+    "intentId": "intent-709-sun-wu-16597",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-companion:709:born-244-potianfeng-13:sun-wu:sun-wu",
+        "kind": "accept",
+        "referenceId": "offer-companion:709:born-244-potianfeng-13:sun-wu"
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙武向孙守一表达：accept",
+    "diff": {
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "content": {
+        "id": "accept:offer-companion:709:born-244-potianfeng-13:sun-wu:sun-wu",
+        "kind": "accept",
+        "referenceId": "offer-companion:709:born-244-potianfeng-13:sun-wu"
+      }
+    },
+    "planningTick": 3,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-709-action-born-16-cai-wenji-7-50",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 709,
+    "orderInMonth": 50,
+    "cellId": 2786,
+    "who": "born-16-cai-wenji-7",
+    "intentId": "intent-709-born-16-cai-wenji-7-16586",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2786,
+      "toZ": 5
+    },
+    "fromCellId": 2870,
+    "toCellId": 2786,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2870,
+      2786
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 14, 33 的高度 5",
+    "diff": {
+      "spentWork": 4.958677685950413,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 4,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-709-decision-born-193-cai-wenji-12-4-51",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 51,
+    "planningTick": 4,
+    "orderInTick": 1,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 50%（2 次亲历）"
+    },
+    "intentId": "intent-709-born-193-cai-wenji-12-16598",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：回应蔡文姬关于自己的难处的话：愿意倾听对方当前的困境，并共同考虑下一步"
+  },
+  {
+    "id": "e-709-action-born-193-cai-wenji-12-52",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 709,
+    "orderInMonth": 52,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-709-born-193-cai-wenji-12-16598",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "愿意倾听对方当前的困境，并共同考虑下一步",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "response",
+          "speakerId": "born-193-cai-wenji-12",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ],
+          "referenceEventId": "e-709-action-cai-wenji-27",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 4,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-709-decision-born-193-cai-wenji-12-5-53",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 53,
+    "planningTick": 5,
+    "orderInTick": 0,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 43%（3 次亲历）"
+    },
+    "intentId": "intent-709-born-193-cai-wenji-12-16599",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：回应蔡文姬关于自己的难处的话：愿意倾听对方当前的困境，并共同考虑下一步"
+  },
+  {
+    "id": "e-709-action-born-193-cai-wenji-12-54",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 709,
+    "orderInMonth": 54,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-709-born-193-cai-wenji-12-16599",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "愿意倾听对方当前的困境，并共同考虑下一步",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "response",
+          "speakerId": "born-193-cai-wenji-12",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ],
+          "referenceEventId": "e-709-action-cai-wenji-27",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 5,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-709-action-born-16-cai-wenji-7-55",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 709,
+    "orderInMonth": 55,
+    "cellId": 2786,
+    "who": "born-16-cai-wenji-7",
+    "intentId": "intent-709-born-16-cai-wenji-7-16586",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 21,
+      "quantity": 2,
+      "from": {
+        "kind": "ground",
+        "cellId": 2786,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-16-cai-wenji-7"
+      },
+      "dropId": "drop-707-born-16-cai-wenji-7-separate-463"
+    },
+    "fromCellId": 2786,
+    "toCellId": 2786,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2786
+    ],
+    "status": "completed",
+    "result": "食物 × 2 改变了持有者",
+    "diff": {
+      "materialId": 21,
+      "quantity": 2,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 2786,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-16-cai-wenji-7"
+      },
+      "witnessedBy": [
+        "born-16-cai-wenji-7"
+      ],
+      "sourceEventIds": [
+        "e-707-action-born-16-cai-wenji-7-56",
+        "e-709-action-born-16-cai-wenji-7-55"
+      ],
+      "sourceLineageKeys": [
+        "drop:drop-707-born-16-cai-wenji-7-separate-463"
+      ]
+    },
+    "planningTick": 5,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-709-decision-born-193-cai-wenji-12-6-56",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 56,
+    "planningTick": 6,
+    "orderInTick": 0,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 38%（4 次亲历）"
+    },
+    "intentId": "intent-709-born-193-cai-wenji-12-16600",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：回应蔡文姬关于自己的难处的话：愿意倾听对方当前的困境，并共同考虑下一步"
+  },
+  {
+    "id": "e-709-action-born-193-cai-wenji-12-57",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 709,
+    "orderInMonth": 57,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-709-born-193-cai-wenji-12-16600",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "愿意倾听对方当前的困境，并共同考虑下一步",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "response",
+          "speakerId": "born-193-cai-wenji-12",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ],
+          "referenceEventId": "e-709-action-cai-wenji-27",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 6,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-709-decision-born-193-cai-wenji-12-7-58",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 58,
+    "planningTick": 7,
+    "orderInTick": 0,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 33%（5 次亲历）"
+    },
+    "intentId": "intent-709-born-193-cai-wenji-12-16601",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：回应蔡文姬关于自己的难处的话：愿意倾听对方当前的困境，并共同考虑下一步"
+  },
+  {
+    "id": "e-709-action-born-193-cai-wenji-12-59",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 709,
+    "orderInMonth": 59,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-709-born-193-cai-wenji-12-16601",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "愿意倾听对方当前的困境，并共同考虑下一步",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "response",
+          "speakerId": "born-193-cai-wenji-12",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ],
+          "referenceEventId": "e-709-action-cai-wenji-27",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 7,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-709-decision-born-193-cai-wenji-12-8-60",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 60,
+    "planningTick": 8,
+    "orderInTick": 0,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 30%（6 次亲历）"
+    },
+    "intentId": "intent-709-born-193-cai-wenji-12-16602",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：回应蔡文姬关于自己的难处的话：愿意倾听对方当前的困境，并共同考虑下一步"
+  },
+  {
+    "id": "e-709-action-born-193-cai-wenji-12-61",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 709,
+    "orderInMonth": 61,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-709-born-193-cai-wenji-12-16602",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "愿意倾听对方当前的困境，并共同考虑下一步",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "response",
+          "speakerId": "born-193-cai-wenji-12",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ],
+          "referenceEventId": "e-709-action-cai-wenji-27",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 8,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-709-decision-born-193-cai-wenji-12-9-62",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 62,
+    "planningTick": 9,
+    "orderInTick": 0,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 27%（7 次亲历）"
+    },
+    "intentId": "intent-709-born-193-cai-wenji-12-16603",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：回应蔡文姬关于自己的难处的话：愿意倾听对方当前的困境，并共同考虑下一步"
+  },
+  {
+    "id": "e-709-action-born-193-cai-wenji-12-63",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 709,
+    "orderInMonth": 63,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-709-born-193-cai-wenji-12-16603",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "愿意倾听对方当前的困境，并共同考虑下一步",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "response",
+          "speakerId": "born-193-cai-wenji-12",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ],
+          "referenceEventId": "e-709-action-cai-wenji-27",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 9,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-709-decision-born-193-cai-wenji-12-10-64",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 64,
+    "planningTick": 10,
+    "orderInTick": 0,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 25%（8 次亲历）"
+    },
+    "intentId": "intent-709-born-193-cai-wenji-12-16604",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：回应蔡文姬关于自己的难处的话：愿意倾听对方当前的困境，并共同考虑下一步"
+  },
+  {
+    "id": "e-709-action-born-193-cai-wenji-12-65",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 709,
+    "orderInMonth": 65,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-709-born-193-cai-wenji-12-16604",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "愿意倾听对方当前的困境，并共同考虑下一步",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "response",
+          "speakerId": "born-193-cai-wenji-12",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ],
+          "referenceEventId": "e-709-action-cai-wenji-27",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 10,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-709-decision-born-193-cai-wenji-12-11-66",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 66,
+    "planningTick": 11,
+    "orderInTick": 0,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 23%（9 次亲历）"
+    },
+    "intentId": "intent-709-born-193-cai-wenji-12-16605",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：回应蔡文姬关于自己的难处的话：愿意倾听对方当前的困境，并共同考虑下一步"
+  },
+  {
+    "id": "e-709-action-born-193-cai-wenji-12-67",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 709,
+    "orderInMonth": 67,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-709-born-193-cai-wenji-12-16605",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "愿意倾听对方当前的困境，并共同考虑下一步",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "response",
+          "speakerId": "born-193-cai-wenji-12",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ],
+          "referenceEventId": "e-709-action-cai-wenji-27",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 11,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-709-decision-born-193-cai-wenji-12-12-68",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 68,
+    "planningTick": 12,
+    "orderInTick": 0,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 21%（10 次亲历）"
+    },
+    "intentId": "intent-709-born-193-cai-wenji-12-16606",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：回应蔡文姬关于自己的难处的话：愿意倾听对方当前的困境，并共同考虑下一步"
+  },
+  {
+    "id": "e-709-action-born-193-cai-wenji-12-69",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 709,
+    "orderInMonth": 69,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-709-born-193-cai-wenji-12-16606",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "愿意倾听对方当前的困境，并共同考虑下一步",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "response",
+          "speakerId": "born-193-cai-wenji-12",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ],
+          "referenceEventId": "e-709-action-cai-wenji-27",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 12,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-709-decision-born-193-cai-wenji-12-13-70",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 70,
+    "planningTick": 13,
+    "orderInTick": 0,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 20%（11 次亲历）"
+    },
+    "intentId": "intent-709-born-193-cai-wenji-12-16607",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：回应蔡文姬关于自己的难处的话：愿意倾听对方当前的困境，并共同考虑下一步"
+  },
+  {
+    "id": "e-709-action-born-193-cai-wenji-12-71",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 709,
+    "orderInMonth": 71,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-709-born-193-cai-wenji-12-16607",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "愿意倾听对方当前的困境，并共同考虑下一步",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "response",
+          "speakerId": "born-193-cai-wenji-12",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ],
+          "referenceEventId": "e-709-action-cai-wenji-27",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 13,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-709-decision-born-193-cai-wenji-12-14-72",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 72,
+    "planningTick": 14,
+    "orderInTick": 0,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 19%（12 次亲历）"
+    },
+    "intentId": "intent-709-born-193-cai-wenji-12-16608",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：回应蔡文姬关于自己的难处的话：愿意倾听对方当前的困境，并共同考虑下一步"
+  },
+  {
+    "id": "e-709-action-born-193-cai-wenji-12-73",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 709,
+    "orderInMonth": 73,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-709-born-193-cai-wenji-12-16608",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "愿意倾听对方当前的困境，并共同考虑下一步",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "response",
+          "speakerId": "born-193-cai-wenji-12",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ],
+          "referenceEventId": "e-709-action-cai-wenji-27",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 14,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-709-decision-born-193-cai-wenji-12-15-74",
+    "kind": "decision",
+    "atMonth": 709,
+    "orderInMonth": 74,
+    "planningTick": 15,
+    "orderInTick": 0,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 18%（13 次亲历）"
+    },
+    "intentId": "intent-709-born-193-cai-wenji-12-16609",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：回应蔡文姬关于自己的难处的话：愿意倾听对方当前的困境，并共同考虑下一步"
+  },
+  {
+    "id": "e-709-action-born-193-cai-wenji-12-75",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 709,
+    "orderInMonth": 75,
+    "cellId": 1443,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-709-born-193-cai-wenji-12-16609",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-709-action-cai-wenji-27:born-193-cai-wenji-12",
+        "kind": "claim",
+        "summary": "愿意倾听对方当前的困境，并共同考虑下一步",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=hardship|speaker=cai-wenji|listener=born-193-cai-wenji-12|sources=e-388-environment-condition-0,e-521-environment-condition-0,e-669-environment-condition-0",
+          "topic": "hardship",
+          "turn": "response",
+          "speakerId": "born-193-cai-wenji-12",
+          "listenerId": "cai-wenji",
+          "sourceFactIds": [
+            "e-388-environment-condition-0",
+            "e-521-environment-condition-0",
+            "e-669-environment-condition-0"
+          ],
+          "referenceEventId": "e-709-action-cai-wenji-27",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 15,
+    "orderInTick": 1
+  }
+]

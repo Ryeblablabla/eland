@@ -1,4 +1,5 @@
 import { materialDefinition } from './material';
+import { outwardDeclaration } from './mental-act';
 import type { ActionFact, DecisionFact, SimulationState } from './model';
 import type {
   GoalOutcomeBelief,
@@ -780,8 +781,9 @@ export function writeLanguageMemory(state: SimulationState, input: LanguageMemor
 /** Persist the one outward language wave produced by a model decision. */
 export function rememberDecisionLanguage(state: SimulationState, fact: DecisionFact): string[] {
   const broadcast = fact.languageBroadcast;
-  const mentalAct = 'mentalAct' in fact.decision ? fact.decision.mentalAct : undefined;
-  if (!broadcast || !mentalAct?.utterance.trim()) return [];
+  const mentalAct = fact.decision.mentalAct;
+  const declaration = outwardDeclaration(fact.decision);
+  if (!broadcast || !declaration?.utterance.trim()) return [];
   const store = ensureAgentMemoryStore(state);
   const ownerIds = uniqueStrings(
     broadcast.perceivedByPersonIds.filter((personId) => personId !== fact.who),
@@ -819,7 +821,7 @@ export function rememberDecisionLanguage(state: SimulationState, fact: DecisionF
       salience: ownerId === fact.who ? 58 : 52,
       emotionalValence: 0,
       personIds: ownerId === fact.who ? broadcast.perceivedByPersonIds : [fact.who],
-      topicKeys: ['language:decision', `mental-act:${mentalAct.kind}`],
+      topicKeys: ['language:decision', mentalAct ? `mental-act:${mentalAct.kind}` : 'language:retained-arrangement'],
       sourceEventIds: [fact.id],
       sourceMemoryIds: [`speech:${fact.id}:${ownerId}`],
       unresolved: false,

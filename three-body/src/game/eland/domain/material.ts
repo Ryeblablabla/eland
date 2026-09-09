@@ -54,6 +54,9 @@ export interface MaterialDefinition {
   mass: number;
   color: readonly [number, number, number];
   perceptual?: { form: MaterialPerceptualForm };
+  /** Coherent full voxels of this material retain water across a closed face.
+   * This is a macroscopic material abstraction, not a vessel/facility label. */
+  retainsWater?: boolean;
   consume?: { nutrition?: number; hydration?: number; health?: number };
 }
 
@@ -138,7 +141,7 @@ export const Material = {
 
 export const MATERIAL_PALETTE: readonly MaterialDefinition[] = [
   { id: Material.Air, key: 'air', name: '空气', phase: 'gas', tags: ['air'], hardness: 0, mass: 0, color: [13, 20, 24] },
-  { id: Material.Stone, key: 'stone', name: '石', phase: 'solid', tags: ['solid', 'ground', 'building', 'tool-material'], hardness: 8, mass: 2.4, color: [111, 108, 102], perceptual: { form: 'compact-body' } },
+  { id: Material.Stone, key: 'stone', name: '石', phase: 'solid', tags: ['solid', 'ground', 'building', 'tool-material'], hardness: 8, mass: 2.4, color: [111, 108, 102], perceptual: { form: 'compact-body' }, retainsWater: true },
   { id: Material.Soil, key: 'soil', name: '土', phase: 'solid', tags: ['solid', 'ground'], hardness: 2, mass: 1.5, color: [105, 78, 53] },
   { id: Material.WetSoil, key: 'wet_soil', name: '湿土', phase: 'solid', tags: ['solid', 'ground', 'fertile'], hardness: 2, mass: 1.7, color: [96, 82, 63] },
   { id: Material.RichSoil, key: 'rich_soil', name: '沃土', phase: 'solid', tags: ['solid', 'ground', 'fertile'], hardness: 2, mass: 1.5, color: [90, 77, 55] },
@@ -174,7 +177,7 @@ export const MATERIAL_PALETTE: readonly MaterialDefinition[] = [
   { id: Material.HerbalMedicine, key: 'herbal_medicine', name: '草药', phase: 'solid', tags: ['edible'], hardness: 1, mass: 0.12, color: [88, 125, 71], consume: { nutrition: 2, health: 12 } },
   { id: Material.Charcoal, key: 'charcoal', name: '木炭', phase: 'solid', tags: ['solid', 'fuel'], hardness: 2, mass: 0.35, color: [48, 47, 45] },
   { id: Material.BoneTool, key: 'bone_tool', name: '骨制工具', phase: 'solid', tags: ['solid', 'tool'], hardness: 5, mass: 0.55, color: [194, 185, 154] },
-  { id: Material.Clay, key: 'clay', name: '黏土', phase: 'solid', tags: ['solid', 'ground'], hardness: 2, mass: 1.5, color: [151, 91, 64] },
+  { id: Material.Clay, key: 'clay', name: '黏土', phase: 'solid', tags: ['solid', 'ground'], hardness: 2, mass: 1.5, color: [151, 91, 64], retainsWater: true },
   { id: Material.CopperOre, key: 'copper_ore', name: '铜矿石', phase: 'solid', tags: ['solid', 'ore', 'tool-material'], hardness: 6, mass: 2.3, color: [92, 125, 105] },
   { id: Material.TinOre, key: 'tin_ore', name: '锡矿石', phase: 'solid', tags: ['solid', 'ore', 'tool-material'], hardness: 6, mass: 2.2, color: [126, 138, 145] },
   { id: Material.IronOre, key: 'iron_ore', name: '铁矿石', phase: 'solid', tags: ['solid', 'ore', 'tool-material'], hardness: 7, mass: 2.7, color: [111, 79, 66] },

@@ -99,27 +99,6 @@ function protectedByCoLocatedParent(
     && candidate.position.z === person.position.z);
 }
 
-/**
- * The exact animals that started the person's still-active escape episode.
- * This is short-lived intent evidence, not remote tracking: an animal must
- * still be physically visible from the person's new position to continue the
- * episode.
- */
-function continuingThreatAnimalIds(state: SimulationState, person: PersonState): Set<string> {
-  const intent = person.activeIntentId ? intentById(state, person.activeIntentId) : undefined;
-  if (intent?.status !== 'active'
-    || intent.interruptionKind !== 'survival-reflex'
-    || intent.nextAction.kind !== 'move'
-    || !intent.nextAction.wildlifeThreatBasis
-    // A completed hold has no escape route to continue. On the next planning
-    // tick the animal must independently remain inside its alarm radius or be
-    // visibly pursuing a protected person. Otherwise an old animal identity
-    // can monopolize every later survival action while the person starves in
-    // place despite carrying food.
-    || intent.nextAction.wildlifeThreatBasis.response === 'hold') return new Set();
-  return new Set(intent.nextAction.wildlifeThreatBasis.threats.map((threat) => threat.animalId));
-}
-
 function continuingShelterChoice(
   state: SimulationState,
   person: PersonState,
@@ -146,7 +125,6 @@ export function visibleWildlifeThreats(
   const radius = personVisibleRadius(person);
   const visible = new Set(cellsInRadius(person.position.cellId, radius));
   const protectedIds = new Set(protectedPersonIds(state, person));
-  const continuingThreats = continuingThreatAnimalIds(state, person);
   return state.world.animals
     .filter((animal) => isAnimalAlive(animal)
       && visible.has(animal.position.cellId)
@@ -157,9 +135,9 @@ export function visibleWildlifeThreats(
       const distance = standingDistance(person.position, animal.position);
       const targetingPersonId = behaviorTargetPerson(animal, atMonth);
       const targetsProtectedPerson = targetingPersonId !== undefined && protectedIds.has(targetingPersonId);
-      if (!targetsProtectedPerson
-        && distance > species.alarmRadius
-        && !continuingThreats.has(animal.id)) return [];
+      // A past alarm does not keep a foraging animal dangerous at every
+      // visible distance. Recheck present proximity or a current pursuit.
+      if (!targetsProtectedPerson && distance > species.alarmRadius) return [];
       return [{
         animalId: animal.id,
         speciesId: animal.speciesId,

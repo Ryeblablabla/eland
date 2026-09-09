@@ -38,7 +38,7 @@ import {
   isRequiredSocialOption,
   RulePlanner,
 } from '../rule-planner';
-import { activeIntent, applyDecision, decisionPlanningChannel } from './intent-execution';
+import { activeIntent, commitDecision, decisionPlanningChannel } from './intent-execution';
 import { actionOptionSemantics } from '../../domain/action-option-semantics';
 
 function personCanDecide(
@@ -424,15 +424,15 @@ export function planLocallyForTick(
     if (person.lastActionAtMonth !== atMonth) person.currentActionText = decision.reason;
     return;
   }
-  events.push(applyDecision(
+  commitDecision(
     state,
     person,
     context,
     decision,
     false,
     atMonth,
-    events.length,
+    events,
     planningTick,
     planningChannel,
-  ));
+  );
 }

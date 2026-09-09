@@ -12,7 +12,6 @@ import type {
   ProjectState,
 } from '../../domain/project';
 import { worldEventById } from '../../domain/event-index';
-import { canPersonPlanToCollectProjectMaterialDrop } from '../../domain/project-material-request';
 import { visibleWildlifeThreatsGuardingPosition } from '../../domain/wildlife-threat';
 import {
   cellX,
@@ -722,15 +721,6 @@ function dropEpisodeStep(
     && drop.materialId === materialId
     && drop.cellId === episode.target.cellId
     && drop.z === episode.target.z);
-  if (source && !canPersonPlanToCollectProjectMaterialDrop(
-    state,
-    person.id,
-    source,
-    state.clock.elapsedMonths + 1,
-  )) {
-    endLogisticsEpisode(project, episode, state.clock.elapsedMonths + 1, 'invalidated', 'source-invalidated');
-    return null;
-  }
   const targetVisible = visibleCellsFor(person).includes(episode.target.cellId);
   if (targetVisible && !source) {
     endLogisticsEpisode(project, episode, state.clock.elapsedMonths + 1, 'invalidated', 'source-invalidated');

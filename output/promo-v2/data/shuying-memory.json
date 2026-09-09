@@ -1,0 +1,140 @@
+{
+  "version": "eland-promo-recorded-memory-v1",
+  "source": {
+    "manualSaveId": "save-mt1m7vkc-1014f920",
+    "runId": "threebody-mt1b1rdl-xg1bp290",
+    "civilizationId": 16,
+    "branchId": "root-1166699014-16",
+    "readMode": "SQLite readOnly; recorded person.memories without hydration or generated summaries"
+  },
+  "displayMemoryId": "memory:intent-action-failed:intent-390-born-16-cai-wenji-7-9042:391",
+  "memories": [
+    {
+      "snapshotMonth": 397,
+      "memoryId": "memory:intent-action-failed:intent-390-born-16-cai-wenji-7-9042:391",
+      "agentId": "born-16-cai-wenji-7",
+      "name": "孙疏影",
+      "id": "memory:intent-action-failed:intent-390-born-16-cai-wenji-7-9042:391",
+      "kind": "failure",
+      "summary": "尝试复现“石与木材可结合为石制工具”失败：背包中的结合材料已经不存在",
+      "importance": 78,
+      "createdAtMonth": 391,
+      "lastRecalledAtMonth": 391,
+      "personIds": [],
+      "sourceEventIds": [
+        "e-391-action-born-16-cai-wenji-7-23"
+      ],
+      "sourceEvents": [
+        {
+          "id": "e-391-action-born-16-cai-wenji-7-23",
+          "kind": "action",
+          "actionTick": 1,
+          "atMonth": 391,
+          "orderInMonth": 23,
+          "cellId": 2950,
+          "who": "born-16-cai-wenji-7",
+          "intentId": "intent-390-born-16-cai-wenji-7-9042",
+          "cause": "intent",
+          "action": {
+            "kind": "act",
+            "operation": "combine",
+            "targets": [
+              {
+                "kind": "inventory-stack",
+                "personId": "born-16-cai-wenji-7",
+                "stackId": "stack-born-16-cai-wenji-7-1-372"
+              },
+              {
+                "kind": "inventory-stack",
+                "personId": "born-16-cai-wenji-7",
+                "stackId": "stack-born-16-cai-wenji-7-13-388"
+              }
+            ]
+          },
+          "fromCellId": 2950,
+          "toCellId": 2950,
+          "fromZ": 5,
+          "toZ": 5,
+          "pathSegment": [
+            2950
+          ],
+          "status": "blocked",
+          "result": "背包中的结合材料已经不存在",
+          "diff": {},
+          "planningTick": 1,
+          "orderInTick": 21
+        }
+      ]
+    },
+    {
+      "snapshotMonth": 528,
+      "memoryId": "memory:intent-action-failed:intent-527-born-16-cai-wenji-7-12345:527",
+      "agentId": "born-16-cai-wenji-7",
+      "name": "孙疏影",
+      "id": "memory:intent-action-failed:intent-527-born-16-cai-wenji-7-12345:527",
+      "kind": "failure",
+      "summary": "尝试让绳暴露于邻近陶窑失败：这些物质当前没有可发生的暴露响应",
+      "importance": 78,
+      "createdAtMonth": 527,
+      "lastRecalledAtMonth": 527,
+      "personIds": [],
+      "sourceEventIds": [
+        "e-527-action-born-16-cai-wenji-7-20"
+      ],
+      "sourceEvents": [
+        {
+          "id": "e-527-action-born-16-cai-wenji-7-20",
+          "kind": "action",
+          "actionTick": 1,
+          "atMonth": 527,
+          "orderInMonth": 20,
+          "cellId": 3122,
+          "who": "born-16-cai-wenji-7",
+          "intentId": "intent-527-born-16-cai-wenji-7-12345",
+          "cause": "intent",
+          "action": {
+            "kind": "act",
+            "operation": "expose",
+            "targets": [
+              {
+                "kind": "inventory-stack",
+                "personId": "born-16-cai-wenji-7",
+                "stackId": "stack-born-16-cai-wenji-7-23-329"
+              },
+              {
+                "kind": "voxel",
+                "position": {
+                  "x": 15,
+                  "y": 37,
+                  "z": 5
+                }
+              }
+            ]
+          },
+          "fromCellId": 3122,
+          "toCellId": 3122,
+          "fromZ": 5,
+          "toZ": 5,
+          "pathSegment": [
+            3122
+          ],
+          "status": "blocked",
+          "result": "这些物质当前没有可发生的暴露响应",
+          "diff": {
+            "inputMaterialId": 23,
+            "targetMaterialId": 58
+          },
+          "planningTick": 1,
+          "orderInTick": 18
+        }
+      ]
+    }
+  ],
+  "display": {
+    "title": "孙疏影的记忆",
+    "label": "一次制作尝试 · 失败",
+    "excerpt": "尝试复现“石与木材可结合为石制工具”失败",
+    "excerptNotice": "记忆原文节选",
+    "recommendedSeconds": 6
+  }
+}

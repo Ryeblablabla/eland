@@ -1,9 +1,9 @@
 import { materialDefinition, materialHas, type MaterialId } from './material';
 import type { ActionFact, EnvironmentFact, PhysicalStructure } from './model';
 import type { PersonId } from './person';
-import { physicalActionUseEvidencePaths, workAt, type WorkState } from './works';
+import { workAt, type WorkState } from './works';
+import { rootedSolidPath } from './solid-support';
 import {
-  cellId,
   cellX,
   cellY,
   isStandingPosition,
@@ -44,60 +44,32 @@ export interface StructureUseReceipt {
   evidencePaths: string[];
 }
 
-function structuredWitnessIds(value: unknown): PersonId[] {
-  const result = new Set<PersonId>();
-  const collect = (candidate: unknown, parentKey = '', depth = 0): void => {
-    if (!candidate || typeof candidate !== 'object' || depth > 4) return;
-    if (Array.isArray(candidate)) {
-      if (/(?:witness|observer|perceived|interpreter).*ids?$/iu.test(parentKey)) {
-        candidate.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
-          .forEach((entry) => result.add(entry));
-      } else candidate.forEach((entry) => collect(entry, parentKey, depth + 1));
-      return;
-    }
-    Object.entries(candidate).forEach(([key, entry]) => collect(entry, key, depth + 1));
-  };
-  collect(value);
-  return [...result];
-}
-
-function actionFunctionKey(event: ActionFact): string {
-  if (event.action.kind === 'act') return `act:${event.action.operation}`;
-  if (event.action.kind === 'talk') return `talk:${event.action.speakerMeaning.kind}`;
-  return event.action.kind;
-}
-
-function targetCells(event: ActionFact): number[] {
-  if (event.action.kind === 'act') return event.action.targets.flatMap((target) => (
-    target.kind === 'voxel' ? [cellId(target.position.x, target.position.y)] : []
-  ));
-  if (event.action.kind === 'world-interact') return event.action.adjudication.targets.flatMap((target) => (
-    target.kind === 'voxel' ? [cellId(target.position.x, target.position.y)] : []
-  ));
-  return [];
+/** Captured by real exposure settlement, never reconstructed from later geometry. */
+export interface PhysicalStructureUseBasis {
+  structureId: string;
+  constructionSourceEventIds: string[];
 }
 
 /**
- * 通过真实行为的发生地回放结构使用。同一结构的建造事件被明确排除；
- * “打算建一座工坊”或结构的名字都不会产生这种回执。
+ * 使用依据来自功能执行当时的回执。当前结构即使损坏，也不改变过去的
+ * 实际减负；同位置取材、建造、观察或通行不能被追认为设施使用。
  */
 export function observePhysicalStructureUseReceipts(
   structure: PhysicalStructure,
   events: readonly (ActionFact | EnvironmentFact)[],
 ): StructureUseReceipt[] {
-  if (!structure.complete || structure.capacity <= 0) return [];
-  const usableCells = new Set(structure.interiorCells.length
-    ? structure.interiorCells
-    : structure.occupiedCells);
   return events.flatMap((event) => {
     if (event.kind === 'environment') {
       const use = event.diff.shelterUse as {
-        position?: { cellId?: number; z?: number };
+        structures?: PhysicalStructureUseBasis[];
         coldLoadWithoutShelter?: number; coldLoad?: number;
         heatLoadWithoutShelter?: number; heatLoad?: number;
       } | undefined;
-      if (event.change !== 'body' || !event.who || !use?.position
-        || !structure.interiorPositions.some((position) => position.cellId === use.position?.cellId && position.z === use.position.z)) return [];
+      if (event.change !== 'body' || !event.who || !Array.isArray(use?.structures)) return [];
+      const captured = use.structures.some((basis) => basis.structureId === structure.id
+        && Array.isArray(basis.constructionSourceEventIds)
+        && basis.constructionSourceEventIds.some((id) => structure.sourceEventIds.includes(id)));
+      if (!captured) return [];
       const reduced = (typeof use.coldLoadWithoutShelter === 'number' && typeof use.coldLoad === 'number' && use.coldLoadWithoutShelter > use.coldLoad)
         || (typeof use.heatLoadWithoutShelter === 'number' && typeof use.heatLoad === 'number' && use.heatLoadWithoutShelter > use.heatLoad);
       if (!reduced) return [];
@@ -106,30 +78,10 @@ export function observePhysicalStructureUseReceipts(
         id: `structure-use:${structure.id}:${event.id}`,
         structureId: structure.id, kind: 'use' as const, functionKey: 'thermal-protection',
         actorId: event.who, witnessIds: [], atMonth: event.atMonth,
-        sourceEventId: event.id, evidencePaths: ['diff.shelterUse'],
+        sourceEventId: event.id, evidencePaths: ['diff.shelterUse', 'diff.shelterUse.structures'],
       }];
     }
-    if (event.status !== 'completed' || structure.sourceEventIds.includes(event.id)) return [];
-    const touched = usableCells.has(event.toCellId)
-      || (event.action.kind !== 'move' && usableCells.has(event.cellId))
-      || targetCells(event).some((candidate) => usableCells.has(candidate));
-    if (!touched) return [];
-    const evidencePaths = physicalActionUseEvidencePaths(event);
-    if (!evidencePaths.length) return [];
-    const witnessIds = structuredWitnessIds(event.diff).filter((personId) => personId !== event.who);
-    const kind = witnessIds.length ? 'demonstration' as const : 'use' as const;
-    return [{
-      version: STRUCTURE_USE_RECEIPT_VERSION,
-      id: `structure-use:${structure.id}:${event.id}`,
-      structureId: structure.id,
-      kind,
-      functionKey: actionFunctionKey(event),
-      actorId: event.who,
-      witnessIds,
-      atMonth: event.atMonth,
-      sourceEventId: event.id,
-      evidencePaths,
-    }];
+    return [];
   });
 }
 
@@ -146,21 +98,26 @@ export function shelterHeatRelief(shelter: ShelterGeometry | null | undefined): 
 
 function solidBuildingAt(world: VoxelWorld, cell: number, z: number): boolean {
   const materialId = voxelAt(world, cellX(cell), cellY(cell), z);
-  return materialHas(materialId, 'solid') && (materialHas(materialId, 'building') || materialHas(materialId, 'ground'));
+  return materialHas(materialId, 'solid') && (materialHas(materialId, 'building') || materialHas(materialId, 'ground'))
+    && Boolean(rootedSolidPath(world, { x: cellX(cell), y: cellY(cell), z }));
 }
 
 /** 结构效果只来自人物所在体素周围的真实物质拓扑，不读取结构标签或预设蓝图。 */
 export function shelterGeometryAt(world: VoxelWorld, position: StandingPosition): ShelterGeometry | null {
-  if (!isStandingPosition(world, position)) return null;  const x = cellX(position.cellId);
+  if (!isStandingPosition(world, position)) return null;
+  const x = cellX(position.cellId);
   const y = cellY(position.cellId);
   const overheadMaterialId = voxelAt(world, x, y, position.z + 2);
-  if (!materialHas(overheadMaterialId, 'solid')) return null;
+  if (!materialHas(overheadMaterialId, 'solid')
+    || !rootedSolidPath(world, { x, y, z: position.z - 1 })
+    || !rootedSolidPath(world, { x, y, z: position.z + 2 })) return null;
   let enclosedSides = 0;
   let openSides = 0;
   for (const neighbor of neighbors4(position.cellId)) {
     const enclosed = solidBuildingAt(world, neighbor, position.z) || solidBuildingAt(world, neighbor, position.z + 1);
     if (enclosed) enclosedSides += 1;
-    else if (standingPositions(world, neighbor).some((candidate) => Math.abs(candidate.z - position.z) <= 1)) openSides += 1;
+    else if (standingPositions(world, neighbor).some((candidate) => Math.abs(candidate.z - position.z) <= 1
+      && rootedSolidPath(world, { x: cellX(neighbor), y: cellY(neighbor), z: candidate.z - 1 }))) openSides += 1;
   }
   // 至少保留一个能由身体通过的侧向开口；完全封死的空腔不算可用住所。
   if (openSides < 1) return null;

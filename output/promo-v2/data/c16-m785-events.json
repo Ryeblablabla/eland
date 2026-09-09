@@ -1,0 +1,1673 @@
+[
+  {
+    "id": "e-785-environment-prediction-0",
+    "kind": "environment",
+    "atMonth": 785,
+    "orderInMonth": 0,
+    "cellId": 689,
+    "change": "prediction",
+    "who": "born-22-potianfeng-8",
+    "result": "孙朝宗对乱纪元的预言失误",
+    "diff": {
+      "predictionId": "predict-era:779:born-22-potianfeng-8:0",
+      "correct": false,
+      "errorMonths": 4,
+      "predictorId": "born-22-potianfeng-8"
+    },
+    "planningTick": 0,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-785-environment-weather-0",
+    "kind": "environment",
+    "atMonth": 785,
+    "orderInMonth": 1,
+    "cellId": 0,
+    "change": "weather",
+    "result": "本月天气转为降雨",
+    "diff": {
+      "kind": "rain",
+      "intensity": 3
+    },
+    "planningTick": 0,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-785-environment-material-0",
+    "kind": "environment",
+    "atMonth": 785,
+    "orderInMonth": 2,
+    "cellId": 0,
+    "change": "material",
+    "result": "1 个格子的物质因自然过程发生变化",
+    "diff": {
+      "changes": [
+        {
+          "cellId": 768,
+          "from": 2,
+          "to": 3,
+          "process": "rain-soak"
+        }
+      ]
+    },
+    "planningTick": 0,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-785-permission-expired-permission:offer-permission:760:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:houyi:27",
+    "kind": "permission",
+    "atMonth": 785,
+    "orderInMonth": 3,
+    "cellId": 0,
+    "permissionId": "permission:offer-permission:760:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:houyi:27",
+    "change": "expired",
+    "partyIds": [
+      "cai-wenji",
+      "houyi"
+    ],
+    "result": "一项物质取用许可已到期",
+    "planningTick": 0,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-785-permission-expired-permission:offer-permission:760:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:29",
+    "kind": "permission",
+    "atMonth": 785,
+    "orderInMonth": 4,
+    "cellId": 0,
+    "permissionId": "permission:offer-permission:760:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:potianfeng:29",
+    "change": "expired",
+    "partyIds": [
+      "born-159-potianfeng-11",
+      "potianfeng"
+    ],
+    "result": "一项物质取用许可已到期",
+    "planningTick": 0,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-785-permission-expired-permission:offer-permission:760:collective:offer-collective:3:potianfeng:rei-ayanami:born-244-potianfeng-13:potianfeng:21",
+    "kind": "permission",
+    "atMonth": 785,
+    "orderInMonth": 5,
+    "cellId": 0,
+    "permissionId": "permission:offer-permission:760:collective:offer-collective:3:potianfeng:rei-ayanami:born-244-potianfeng-13:potianfeng:21",
+    "change": "expired",
+    "partyIds": [
+      "born-244-potianfeng-13",
+      "potianfeng"
+    ],
+    "result": "一项物质取用许可已到期",
+    "planningTick": 0,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-785-opportunity-potianfeng",
+    "kind": "decision-opportunity",
+    "atMonth": 785,
+    "orderInMonth": 6,
+    "planningTick": 0,
+    "orderInTick": 6,
+    "who": "potianfeng",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.2663857771549374,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "破天锋本月重新考虑下一步"
+  },
+  {
+    "id": "e-785-opportunity-rei-ayanami",
+    "kind": "decision-opportunity",
+    "atMonth": 785,
+    "orderInMonth": 7,
+    "planningTick": 0,
+    "orderInTick": 7,
+    "who": "rei-ayanami",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.2847577868960798,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "绫波丽本月重新考虑下一步"
+  },
+  {
+    "id": "e-785-opportunity-cai-wenji",
+    "kind": "decision-opportunity",
+    "atMonth": 785,
+    "orderInMonth": 8,
+    "planningTick": 0,
+    "orderInTick": 8,
+    "who": "cai-wenji",
+    "cellId": 1443,
+    "probability": 0.645,
+    "sample": 0.23654032964259386,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "蔡文姬本月重新考虑下一步"
+  },
+  {
+    "id": "e-785-opportunity-houyi",
+    "kind": "decision-opportunity",
+    "atMonth": 785,
+    "orderInMonth": 9,
+    "planningTick": 0,
+    "orderInTick": 9,
+    "who": "houyi",
+    "cellId": 1443,
+    "probability": 0.645,
+    "sample": 0.25157836824655533,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "后羿本月重新考虑下一步"
+  },
+  {
+    "id": "e-785-opportunity-born-16-cai-wenji-7",
+    "kind": "decision-opportunity",
+    "atMonth": 785,
+    "orderInMonth": 10,
+    "planningTick": 0,
+    "orderInTick": 10,
+    "who": "born-16-cai-wenji-7",
+    "cellId": 3211,
+    "probability": 0.045,
+    "sample": 0.8092040286865085,
+    "triggered": false,
+    "reasons": [
+      "每月非零重新考虑概率"
+    ],
+    "result": "孙疏影本月延续已有意图"
+  },
+  {
+    "id": "e-785-opportunity-born-22-potianfeng-8",
+    "kind": "decision-opportunity",
+    "atMonth": 785,
+    "orderInMonth": 11,
+    "planningTick": 0,
+    "orderInTick": 11,
+    "who": "born-22-potianfeng-8",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.8634368316270411,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "孙朝宗本月重新考虑下一步"
+  },
+  {
+    "id": "e-785-opportunity-born-115-cai-wenji-10",
+    "kind": "decision-opportunity",
+    "atMonth": 785,
+    "orderInMonth": 12,
+    "planningTick": 0,
+    "orderInTick": 12,
+    "who": "born-115-cai-wenji-10",
+    "cellId": 1528,
+    "probability": 0.645,
+    "sample": 0.5798910886514932,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "后凌川本月重新考虑下一步"
+  },
+  {
+    "id": "e-785-opportunity-born-159-potianfeng-11",
+    "kind": "decision-opportunity",
+    "atMonth": 785,
+    "orderInMonth": 13,
+    "planningTick": 0,
+    "orderInTick": 13,
+    "who": "born-159-potianfeng-11",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.6051788937766105,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "孙明哲本月重新考虑下一步"
+  },
+  {
+    "id": "e-785-opportunity-born-193-cai-wenji-12",
+    "kind": "decision-opportunity",
+    "atMonth": 785,
+    "orderInMonth": 14,
+    "planningTick": 0,
+    "orderInTick": 14,
+    "who": "born-193-cai-wenji-12",
+    "cellId": 1528,
+    "probability": 0.645,
+    "sample": 0.41856018966063857,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "后若水本月重新考虑下一步"
+  },
+  {
+    "id": "e-785-opportunity-born-244-potianfeng-13",
+    "kind": "decision-opportunity",
+    "atMonth": 785,
+    "orderInMonth": 15,
+    "planningTick": 0,
+    "orderInTick": 15,
+    "who": "born-244-potianfeng-13",
+    "cellId": 689,
+    "probability": 0.645,
+    "sample": 0.6580349237192422,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会",
+      "已有承诺或职责等待履行"
+    ],
+    "result": "孙守一本月重新考虑下一步"
+  },
+  {
+    "id": "e-785-decision-potianfeng-1-16",
+    "kind": "decision",
+    "atMonth": 785,
+    "orderInMonth": 16,
+    "planningTick": 1,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:785:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:rei-ayanami:21",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 72%（64 次亲历）"
+    },
+    "intentId": "intent-785-potianfeng-18093",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：允许绫波丽在需要时取用自己的食物"
+  },
+  {
+    "id": "e-785-decision-rei-ayanami-1-17",
+    "kind": "decision",
+    "atMonth": 785,
+    "orderInMonth": 17,
+    "planningTick": 1,
+    "orderInTick": 1,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "use-permission:permission:offer-permission:772:collective:offer-collective:3:potianfeng:rei-ayanami:born-244-potianfeng-13:rei-ayanami:21:stack-born-244-potianfeng-13-21-270",
+      "reason": "授权人、被授权人、物质、单次数量与有效期都有可追溯许可；当前最强需要是care；本人可携带的食水缓冲不足；本人对相似行动的成功预期为 94%（31 次亲历）"
+    },
+    "intentId": "intent-785-rei-ayanami-18094",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：依据许可从孙守一处取用食物"
+  },
+  {
+    "id": "e-785-decision-cai-wenji-1-18",
+    "kind": "decision",
+    "atMonth": 785,
+    "orderInMonth": 18,
+    "planningTick": 1,
+    "orderInTick": 2,
+    "cellId": 1443,
+    "who": "cai-wenji",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:785:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:houyi:27",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 96%（49 次亲历）"
+    },
+    "intentId": "intent-785-cai-wenji-18095",
+    "domain": "social",
+    "usedModel": false,
+    "result": "蔡文姬决定：允许后羿在需要时取用自己的木制记录板"
+  },
+  {
+    "id": "e-785-decision-houyi-1-19",
+    "kind": "decision",
+    "atMonth": 785,
+    "orderInMonth": 19,
+    "planningTick": 1,
+    "orderInTick": 3,
+    "cellId": 1443,
+    "who": "houyi",
+    "decision": {
+      "kind": "start",
+      "optionId": "rejoin-collective:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-115-cai-wenji-10",
+      "reason": "双方仍属于以“持续交换物质并互相履约”为目的的持续共同体；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；当前项目或观察留下了具体未知点"
+    },
+    "intentId": "intent-785-houyi-18096",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后羿决定：重新与共同体成员后凌川会合"
+  },
+  {
+    "id": "e-785-decision-born-22-potianfeng-8-1-20",
+    "kind": "decision",
+    "atMonth": 785,
+    "orderInMonth": 20,
+    "planningTick": 1,
+    "orderInTick": 4,
+    "cellId": 689,
+    "who": "born-22-potianfeng-8",
+    "decision": {
+      "kind": "start",
+      "optionId": "predict-era:785:born-22-potianfeng-8:0",
+      "reason": "对天象、气温和过去纪元节律的观察可以形成一项有误差的预测；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 89%（14 次亲历）"
+    },
+    "intentId": "intent-785-born-22-potianfeng-8-18097",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "孙朝宗决定：预言第 787 月前后将进入乱纪元"
+  },
+  {
+    "id": "e-785-decision-born-115-cai-wenji-10-1-21",
+    "kind": "decision",
+    "atMonth": 785,
+    "orderInMonth": 21,
+    "planningTick": 1,
+    "orderInTick": 5,
+    "cellId": 1528,
+    "who": "born-115-cai-wenji-10",
+    "decision": {
+      "kind": "start",
+      "optionId": "rejoin-collective:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji",
+      "reason": "双方仍属于以“持续交换物质并互相履约”为目的的持续共同体；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；当前项目或观察留下了具体未知点"
+    },
+    "intentId": "intent-785-born-115-cai-wenji-10-18098",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后凌川决定：重新与共同体成员蔡文姬会合"
+  },
+  {
+    "id": "e-785-decision-born-159-potianfeng-11-1-22",
+    "kind": "decision",
+    "atMonth": 785,
+    "orderInMonth": 22,
+    "planningTick": 1,
+    "orderInTick": 6,
+    "cellId": 689,
+    "who": "born-159-potianfeng-11",
+    "decision": {
+      "kind": "start",
+      "optionId": "contribute-mandate:mandate:offer-mandate:784:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:born-244-potianfeng-13:decision-rule:offer-decision-rule:691:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:21:stack-born-159-potianfeng-11-21-173",
+      "reason": "共同体已一致授权协调者，但私人持有物仍需本人逐次选择是否交付；当前最强需要是care；本人可携带的食水缓冲不足；hydration低于本人舒适储备"
+    },
+    "intentId": "intent-785-born-159-potianfeng-11-18099",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙明哲决定：按共同授权自愿交给孙守一一份食物"
+  },
+  {
+    "id": "e-785-decision-born-193-cai-wenji-12-1-23",
+    "kind": "decision",
+    "atMonth": 785,
+    "orderInMonth": 23,
+    "planningTick": 1,
+    "orderInTick": 7,
+    "cellId": 1528,
+    "who": "born-193-cai-wenji-12",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:785:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:born-115-cai-wenji-10:21",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 91%（19 次亲历）"
+    },
+    "intentId": "intent-785-born-193-cai-wenji-12-18100",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后若水决定：允许后凌川在需要时取用自己的食物"
+  },
+  {
+    "id": "e-785-decision-born-244-potianfeng-13-1-24",
+    "kind": "decision",
+    "atMonth": 785,
+    "orderInMonth": 24,
+    "planningTick": 1,
+    "orderInTick": 8,
+    "cellId": 689,
+    "who": "born-244-potianfeng-13",
+    "decision": {
+      "kind": "start",
+      "optionId": "offer-permission:785:collective:offer-collective:3:potianfeng:rei-ayanami:born-244-potianfeng-13:potianfeng:21",
+      "reason": "彼此已有持续成员身份，可以明确协商具体物质的取用边界；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；本人对相似行动的成功预期为 91%（18 次亲历）"
+    },
+    "intentId": "intent-785-born-244-potianfeng-13-18101",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙守一决定：允许破天锋在需要时取用自己的食物"
+  },
+  {
+    "id": "e-785-action-born-115-cai-wenji-10-25",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 785,
+    "orderInMonth": 25,
+    "cellId": 1444,
+    "who": "born-115-cai-wenji-10",
+    "intentId": "intent-785-born-115-cai-wenji-10-18098",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1443,
+      "toZ": 5
+    },
+    "fromCellId": 1528,
+    "toCellId": 1444,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1528,
+      1444
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 0.9090909090909091,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 9
+  },
+  {
+    "id": "e-785-action-born-22-potianfeng-8-26",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 785,
+    "orderInMonth": 26,
+    "cellId": 689,
+    "who": "born-22-potianfeng-8",
+    "intentId": "intent-785-born-22-potianfeng-8-18097",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "predict-era:785:born-22-potianfeng-8:0",
+        "kind": "prediction",
+        "summary": "预言第 787 月前后将进入乱纪元",
+        "prediction": {
+          "targetEpoch": "chaotic",
+          "predictedStartMonth": 787,
+          "toleranceMonths": 3,
+          "expiresAtMonth": 790
+        }
+      },
+      "audience": [
+        "potianfeng",
+        "rei-ayanami",
+        "born-159-potianfeng-11",
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙朝宗向破天锋、绫波丽、孙明哲、孙守一表达：预言第 787 月前后将进入乱纪元",
+    "diff": {
+      "audience": [
+        "potianfeng",
+        "rei-ayanami",
+        "born-159-potianfeng-11",
+        "born-244-potianfeng-13"
+      ],
+      "content": {
+        "id": "predict-era:785:born-22-potianfeng-8:0",
+        "kind": "prediction",
+        "summary": "预言第 787 月前后将进入乱纪元",
+        "prediction": {
+          "targetEpoch": "chaotic",
+          "predictedStartMonth": 787,
+          "toleranceMonths": 3,
+          "expiresAtMonth": 790
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 10
+  },
+  {
+    "id": "e-785-action-born-244-potianfeng-13-27",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 785,
+    "orderInMonth": 27,
+    "cellId": 689,
+    "who": "born-244-potianfeng-13",
+    "intentId": "intent-785-born-244-potianfeng-13-18101",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:785:collective:offer-collective:3:potianfeng:rei-ayanami:born-244-potianfeng-13:potianfeng:21",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份食物",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "born-244-potianfeng-13",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "born-244-potianfeng-13",
+          "granteeId": "potianfeng",
+          "materialId": 21,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 809,
+          "expiresAtMonth": 791
+        }
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "孙守一向破天锋表达：你可以在需要时每次取用我的一份食物",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "offer-permission:785:collective:offer-collective:3:potianfeng:rei-ayanami:born-244-potianfeng-13:potianfeng:21",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份食物",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "born-244-potianfeng-13",
+          "partnerId": "potianfeng",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "born-244-potianfeng-13",
+          "granteeId": "potianfeng",
+          "materialId": 21,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 809,
+          "expiresAtMonth": 791
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 11
+  },
+  {
+    "id": "e-785-action-born-159-potianfeng-11-28",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 785,
+    "orderInMonth": 28,
+    "cellId": 689,
+    "who": "born-159-potianfeng-11",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "act",
+      "operation": "ingest",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "born-159-potianfeng-11",
+          "stackId": "stack-born-159-potianfeng-11-21-173"
+        }
+      ]
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "摄入了食物",
+    "diff": {
+      "materialId": 21,
+      "nutrition": 48,
+      "hydration": 4,
+      "health": 0,
+      "consumedStackId": "stack-born-159-potianfeng-11-21-173",
+      "consumedSourceEventIds": [
+        "e-361-action-born-244-potianfeng-13-51",
+        "e-364-action-born-244-potianfeng-13-33",
+        "e-410-action-born-244-potianfeng-13-35",
+        "e-410-action-born-244-potianfeng-13-36",
+        "e-373-action-born-115-cai-wenji-10-38",
+        "e-543-action-born-244-potianfeng-13-44",
+        "e-597-action-potianfeng-20",
+        "e-598-action-born-159-potianfeng-11-25",
+        "e-331-action-born-244-potianfeng-13-67",
+        "e-599-action-born-159-potianfeng-11-24",
+        "e-720-action-born-159-potianfeng-11-44",
+        "e-720-action-born-159-potianfeng-11-49",
+        "e-757-action-born-159-potianfeng-11-54",
+        "e-757-action-born-159-potianfeng-11-55",
+        "e-694-action-born-244-potianfeng-13-66",
+        "e-717-action-rei-ayanami-32",
+        "e-683-action-potianfeng-7",
+        "e-719-action-rei-ayanami-33",
+        "e-720-action-rei-ayanami-30",
+        "e-684-action-potianfeng-10",
+        "e-721-action-rei-ayanami-42",
+        "e-733-action-rei-ayanami-44",
+        "e-738-action-rei-ayanami-33",
+        "e-783-action-born-159-potianfeng-11-28"
+      ],
+      "consumedSourceLineageKeys": [
+        "drop:drop-42-rei-ayanami-separate-396",
+        "drop:drop-76-rei-ayanami-separate-412",
+        "drop:drop-138-rei-ayanami-separate-427",
+        "drop:drop-210-rei-ayanami-separate-439",
+        "drop:drop-279-rei-ayanami-separate-432",
+        "drop:drop-281-rei-ayanami-separate-433",
+        "inventory:born-244-potianfeng-13:stack-born-244-potianfeng-13-21-270",
+        "drop:drop-285-born-159-potianfeng-11-separate-430",
+        "drop:drop-287-born-244-potianfeng-13-separate-430",
+        "drop:drop-310-born-193-cai-wenji-12-separate-435",
+        "drop:drop-317-born-244-potianfeng-13-separate-443",
+        "drop:drop-308-born-193-cai-wenji-12-separate-434",
+        "drop:drop-325-born-244-potianfeng-13-separate-444",
+        "drop:drop-327-born-244-potianfeng-13-separate-444",
+        "drop:drop-331-born-244-potianfeng-13-separate-444",
+        "drop:drop-334-born-193-cai-wenji-12-separate-443",
+        "drop:drop-336-born-115-cai-wenji-10-separate-445",
+        "drop:drop-345-born-115-cai-wenji-10-separate-451",
+        "drop:drop-352-born-244-potianfeng-13-separate-451",
+        "drop:drop-357-born-115-cai-wenji-10-separate-451",
+        "drop:drop-361-born-244-potianfeng-13-separate-451",
+        "drop:drop-410-born-244-potianfeng-13-separate-447",
+        "drop:drop-373-born-115-cai-wenji-10-separate-450",
+        "drop:drop-221-born-159-potianfeng-11-separate-441",
+        "drop:drop-720-born-159-potianfeng-11-separate-477",
+        "drop:drop-757-born-159-potianfeng-11-separate-478",
+        "drop:drop-202-born-159-potianfeng-11-separate-435",
+        "drop:drop-219-born-159-potianfeng-11-separate-439",
+        "drop:drop-225-born-159-potianfeng-11-separate-434",
+        "drop:drop-252-born-159-potianfeng-11-separate-433",
+        "drop:drop-254-born-159-potianfeng-11-separate-434",
+        "inventory:rei-ayanami:stack-rei-ayanami-21-707"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 12
+  },
+  {
+    "id": "e-785-action-cai-wenji-29",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 785,
+    "orderInMonth": 29,
+    "cellId": 1443,
+    "who": "cai-wenji",
+    "intentId": "intent-785-cai-wenji-18095",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:785:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:houyi:27",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份木制记录板",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "cai-wenji",
+          "partnerId": "houyi",
+          "collectiveId": "collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10",
+          "grantorId": "cai-wenji",
+          "granteeId": "houyi",
+          "materialId": 27,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 809,
+          "expiresAtMonth": 791
+        }
+      },
+      "audience": [
+        "houyi"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "completed",
+    "result": "蔡文姬向后羿表达：你可以在需要时每次取用我的一份木制记录板",
+    "diff": {
+      "audience": [
+        "houyi"
+      ],
+      "content": {
+        "id": "offer-permission:785:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:houyi:27",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份木制记录板",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "cai-wenji",
+          "partnerId": "houyi",
+          "collectiveId": "collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10",
+          "grantorId": "cai-wenji",
+          "granteeId": "houyi",
+          "materialId": 27,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 809,
+          "expiresAtMonth": 791
+        }
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 1,
+    "orderInTick": 13
+  },
+  {
+    "id": "e-785-action-houyi-30",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 785,
+    "orderInMonth": 30,
+    "cellId": 1444,
+    "who": "houyi",
+    "intentId": "intent-785-houyi-18096",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1444,
+      "toZ": 5
+    },
+    "fromCellId": 1443,
+    "toCellId": 1444,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443,
+      1444
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 16, 17 的高度 5",
+    "diff": {
+      "spentWork": 1.1363636363636362,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 14
+  },
+  {
+    "id": "e-785-action-born-16-cai-wenji-7-31",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 785,
+    "orderInMonth": 31,
+    "cellId": 3211,
+    "who": "born-16-cai-wenji-7",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "act",
+      "operation": "ingest",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "born-16-cai-wenji-7",
+          "stackId": "stack-born-16-cai-wenji-7-21-57"
+        }
+      ]
+    },
+    "fromCellId": 3211,
+    "toCellId": 3211,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3211
+    ],
+    "status": "completed",
+    "result": "摄入了食物",
+    "diff": {
+      "materialId": 21,
+      "nutrition": 48,
+      "hydration": 4,
+      "health": 0,
+      "consumedStackId": "stack-born-16-cai-wenji-7-21-57",
+      "consumedSourceEventIds": [
+        "e-743-action-born-16-cai-wenji-7-91",
+        "e-746-action-born-16-cai-wenji-7-51",
+        "e-746-action-born-16-cai-wenji-7-55",
+        "e-748-action-born-16-cai-wenji-7-38",
+        "e-750-action-born-16-cai-wenji-7-50",
+        "e-750-action-born-16-cai-wenji-7-53",
+        "e-752-action-born-16-cai-wenji-7-35",
+        "e-755-action-born-16-cai-wenji-7-60",
+        "e-755-action-born-16-cai-wenji-7-61",
+        "e-757-action-born-16-cai-wenji-7-45",
+        "e-759-action-born-16-cai-wenji-7-55",
+        "e-759-action-born-16-cai-wenji-7-60",
+        "e-761-action-born-16-cai-wenji-7-42",
+        "e-763-action-born-16-cai-wenji-7-60",
+        "e-763-action-born-16-cai-wenji-7-63",
+        "e-766-action-born-16-cai-wenji-7-37",
+        "e-769-action-born-16-cai-wenji-7-72",
+        "e-769-action-born-16-cai-wenji-7-73",
+        "e-772-action-born-16-cai-wenji-7-47",
+        "e-775-action-born-16-cai-wenji-7-44",
+        "e-775-action-born-16-cai-wenji-7-45",
+        "e-778-action-born-16-cai-wenji-7-44",
+        "e-783-action-born-16-cai-wenji-7-54",
+        "e-783-action-born-16-cai-wenji-7-55"
+      ],
+      "consumedSourceLineageKeys": [
+        "drop:drop-128-born-16-cai-wenji-7-separate-421",
+        "drop:drop-34-aphrodite-separate-388",
+        "drop:drop-32-aphrodite-separate-389",
+        "drop:drop-203-born-16-cai-wenji-7-separate-439",
+        "drop:drop-205-born-16-cai-wenji-7-separate-437",
+        "drop:drop-235-born-16-cai-wenji-7-separate-432",
+        "drop:drop-265-born-16-cai-wenji-7-separate-429",
+        "drop:drop-288-born-16-cai-wenji-7-separate-431",
+        "drop:drop-399-born-16-cai-wenji-7-separate-449",
+        "drop:drop-428-born-16-cai-wenji-7-separate-448",
+        "drop:drop-460-born-16-cai-wenji-7-separate-447",
+        "drop:drop-494-born-16-cai-wenji-7-separate-449",
+        "drop:drop-528-born-16-cai-wenji-7-separate-450",
+        "drop:drop-559-born-16-cai-wenji-7-separate-448",
+        "drop:drop-664-born-16-cai-wenji-7-separate-459",
+        "drop:drop-695-born-16-cai-wenji-7-separate-459",
+        "drop:drop-700-born-16-cai-wenji-7-separate-462",
+        "drop:drop-707-born-16-cai-wenji-7-separate-463",
+        "drop:drop-712-born-16-cai-wenji-7-separate-466",
+        "drop:drop-718-born-16-cai-wenji-7-separate-467",
+        "drop:drop-724-born-16-cai-wenji-7-separate-478",
+        "drop:drop-729-born-16-cai-wenji-7-separate-478",
+        "drop:drop-733-born-16-cai-wenji-7-separate-477",
+        "drop:drop-739-born-16-cai-wenji-7-separate-478",
+        "drop:drop-746-born-16-cai-wenji-7-separate-478",
+        "drop:drop-750-born-16-cai-wenji-7-separate-478",
+        "drop:drop-755-born-16-cai-wenji-7-separate-477",
+        "drop:drop-759-born-16-cai-wenji-7-separate-480",
+        "drop:drop-763-born-16-cai-wenji-7-separate-480",
+        "drop:drop-769-born-16-cai-wenji-7-separate-494",
+        "drop:drop-775-born-16-cai-wenji-7-separate-494",
+        "drop:drop-783-born-16-cai-wenji-7-separate-494"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 15
+  },
+  {
+    "id": "e-785-action-born-193-cai-wenji-12-32",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 785,
+    "orderInMonth": 32,
+    "cellId": 1528,
+    "who": "born-193-cai-wenji-12",
+    "intentId": "intent-785-born-193-cai-wenji-12-18100",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:785:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:born-193-cai-wenji-12:born-115-cai-wenji-10:21",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份食物",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "born-193-cai-wenji-12",
+          "partnerId": "born-115-cai-wenji-10",
+          "collectiveId": "collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10",
+          "grantorId": "born-193-cai-wenji-12",
+          "granteeId": "born-115-cai-wenji-10",
+          "materialId": 21,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 809,
+          "expiresAtMonth": 791
+        }
+      },
+      "audience": [
+        "born-115-cai-wenji-10"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1528,
+    "toCellId": 1528,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1528
+    ],
+    "status": "blocked",
+    "result": "受众不在当前沟通范围",
+    "diff": {},
+    "planningTick": 1,
+    "orderInTick": 16
+  },
+  {
+    "id": "e-785-action-potianfeng-33",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 785,
+    "orderInMonth": 33,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-785-potianfeng-18093",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "offer-permission:785:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:rei-ayanami:21",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份食物",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "potianfeng",
+          "partnerId": "rei-ayanami",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "potianfeng",
+          "granteeId": "rei-ayanami",
+          "materialId": 21,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 809,
+          "expiresAtMonth": 791
+        }
+      },
+      "audience": [
+        "rei-ayanami"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "破天锋向绫波丽表达：你可以在需要时每次取用我的一份食物",
+    "diff": {
+      "audience": [
+        "rei-ayanami"
+      ],
+      "content": {
+        "id": "offer-permission:785:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:rei-ayanami:21",
+        "kind": "offer",
+        "summary": "你可以在需要时每次取用我的一份食物",
+        "proposal": {
+          "kind": "permission",
+          "proposerId": "potianfeng",
+          "partnerId": "rei-ayanami",
+          "collectiveId": "collective:offer-collective:3:potianfeng:rei-ayanami",
+          "grantorId": "potianfeng",
+          "granteeId": "rei-ayanami",
+          "materialId": 21,
+          "maxQuantityPerTransfer": 1,
+          "validUntilMonth": 809,
+          "expiresAtMonth": 791
+        }
+      }
+    },
+    "planningTick": 1,
+    "orderInTick": 17
+  },
+  {
+    "id": "e-785-action-rei-ayanami-34",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 785,
+    "orderInMonth": 34,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-785-rei-ayanami-18094",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 21,
+      "quantity": 1,
+      "from": {
+        "kind": "person",
+        "personId": "born-244-potianfeng-13"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "stackId": "stack-born-244-potianfeng-13-21-270",
+      "authorizationRef": "permission:offer-permission:772:collective:offer-collective:3:potianfeng:rei-ayanami:born-244-potianfeng-13:rei-ayanami:21"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "食物 × 1 改变了持有者",
+    "diff": {
+      "materialId": 21,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": true,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "person",
+        "personId": "born-244-potianfeng-13"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "witnessedBy": [
+        "potianfeng",
+        "rei-ayanami",
+        "born-22-potianfeng-8",
+        "born-159-potianfeng-11",
+        "born-244-potianfeng-13"
+      ],
+      "sourceEventIds": [
+        "e-352-action-born-244-potianfeng-13-33",
+        "e-352-action-born-244-potianfeng-13-48",
+        "e-355-action-born-244-potianfeng-13-25",
+        "e-357-action-born-115-cai-wenji-10-93",
+        "e-358-action-born-244-potianfeng-13-41",
+        "e-360-action-born-244-potianfeng-13-37",
+        "e-361-action-born-244-potianfeng-13-31",
+        "e-361-action-born-244-potianfeng-13-51",
+        "e-364-action-born-244-potianfeng-13-33",
+        "e-410-action-born-244-potianfeng-13-35",
+        "e-410-action-born-244-potianfeng-13-36",
+        "e-373-action-born-115-cai-wenji-10-38",
+        "e-543-action-born-244-potianfeng-13-44",
+        "e-694-action-born-244-potianfeng-13-66",
+        "e-717-action-rei-ayanami-32",
+        "e-683-action-potianfeng-7",
+        "e-719-action-rei-ayanami-33",
+        "e-720-action-rei-ayanami-30",
+        "e-684-action-potianfeng-10",
+        "e-721-action-rei-ayanami-42",
+        "e-720-action-born-159-potianfeng-11-44",
+        "e-733-action-rei-ayanami-44",
+        "e-738-action-rei-ayanami-33",
+        "e-785-action-rei-ayanami-34"
+      ],
+      "sourceLineageKeys": [
+        "inventory:born-244-potianfeng-13:stack-born-244-potianfeng-13-21-270",
+        "drop:drop-202-born-159-potianfeng-11-separate-435",
+        "drop:drop-219-born-159-potianfeng-11-separate-439",
+        "drop:drop-221-born-159-potianfeng-11-separate-441",
+        "drop:drop-225-born-159-potianfeng-11-separate-434",
+        "drop:drop-252-born-159-potianfeng-11-separate-433",
+        "drop:drop-254-born-159-potianfeng-11-separate-434",
+        "drop:drop-285-born-159-potianfeng-11-separate-430",
+        "drop:drop-287-born-244-potianfeng-13-separate-430",
+        "drop:drop-310-born-193-cai-wenji-12-separate-435",
+        "drop:drop-317-born-244-potianfeng-13-separate-443",
+        "drop:drop-308-born-193-cai-wenji-12-separate-434",
+        "drop:drop-325-born-244-potianfeng-13-separate-444",
+        "drop:drop-327-born-244-potianfeng-13-separate-444",
+        "drop:drop-331-born-244-potianfeng-13-separate-444",
+        "drop:drop-334-born-193-cai-wenji-12-separate-443",
+        "drop:drop-336-born-115-cai-wenji-10-separate-445",
+        "drop:drop-345-born-115-cai-wenji-10-separate-451",
+        "drop:drop-352-born-244-potianfeng-13-separate-451",
+        "drop:drop-357-born-115-cai-wenji-10-separate-451",
+        "drop:drop-361-born-244-potianfeng-13-separate-451",
+        "drop:drop-410-born-244-potianfeng-13-separate-447",
+        "drop:drop-373-born-115-cai-wenji-10-separate-450",
+        "inventory:rei-ayanami:stack-rei-ayanami-21-707",
+        "drop:drop-210-rei-ayanami-separate-439",
+        "inventory:potianfeng:stack-potianfeng-21-399",
+        "drop:drop-320-born-159-potianfeng-11-separate-444",
+        "inventory:sun-wu:stack-sun-wu-21-380",
+        "inventory:rei-ayanami:stack-rei-ayanami-ration",
+        "drop:drop-14-rei-ayanami-separate-352",
+        "drop:drop-42-rei-ayanami-separate-396",
+        "drop:drop-720-born-159-potianfeng-11-separate-477"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 18
+  },
+  {
+    "id": "e-785-decision-rei-ayanami-2-35",
+    "kind": "decision",
+    "atMonth": 785,
+    "orderInMonth": 35,
+    "planningTick": 2,
+    "orderInTick": 0,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:785:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:rei-ayanami:21",
+      "reason": "对方刚刚提出了一项需要回应的社会请求；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；一项具体提议、权限或共同体关系正在等待本人表态"
+    },
+    "intentId": "intent-785-rei-ayanami-18102",
+    "domain": "social",
+    "usedModel": false,
+    "result": "绫波丽决定：接受破天锋的物质取用许可"
+  },
+  {
+    "id": "e-785-action-rei-ayanami-36",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 785,
+    "orderInMonth": 36,
+    "cellId": 689,
+    "who": "rei-ayanami",
+    "intentId": "intent-785-rei-ayanami-18102",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:785:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:rei-ayanami:21:rei-ayanami",
+        "kind": "accept",
+        "referenceId": "offer-permission:785:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:rei-ayanami:21"
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "绫波丽向破天锋表达：accept",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "accept:offer-permission:785:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:rei-ayanami:21:rei-ayanami",
+        "kind": "accept",
+        "referenceId": "offer-permission:785:collective:offer-collective:3:potianfeng:rei-ayanami:potianfeng:rei-ayanami:21"
+      }
+    },
+    "planningTick": 2,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-785-action-born-159-potianfeng-11-37",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 785,
+    "orderInMonth": 37,
+    "cellId": 689,
+    "who": "born-159-potianfeng-11",
+    "intentId": "intent-785-born-159-potianfeng-11-18099",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 21,
+      "quantity": 1,
+      "from": {
+        "kind": "person",
+        "personId": "born-159-potianfeng-11"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-244-potianfeng-13"
+      },
+      "stackId": "stack-born-159-potianfeng-11-21-173",
+      "authorizationRef": "mandate:offer-mandate:784:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:born-244-potianfeng-13:decision-rule:offer-decision-rule:691:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:21"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "食物 × 1 改变了持有者",
+    "diff": {
+      "materialId": 21,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": true,
+      "mandateUse": "contribution",
+      "from": {
+        "kind": "person",
+        "personId": "born-159-potianfeng-11"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-244-potianfeng-13"
+      },
+      "witnessedBy": [
+        "potianfeng",
+        "rei-ayanami",
+        "born-22-potianfeng-8",
+        "born-159-potianfeng-11",
+        "born-244-potianfeng-13"
+      ],
+      "sourceEventIds": [
+        "e-364-action-born-244-potianfeng-13-33",
+        "e-410-action-born-244-potianfeng-13-35",
+        "e-410-action-born-244-potianfeng-13-36",
+        "e-373-action-born-115-cai-wenji-10-38",
+        "e-543-action-born-244-potianfeng-13-44",
+        "e-597-action-potianfeng-20",
+        "e-598-action-born-159-potianfeng-11-25",
+        "e-331-action-born-244-potianfeng-13-67",
+        "e-599-action-born-159-potianfeng-11-24",
+        "e-720-action-born-159-potianfeng-11-44",
+        "e-720-action-born-159-potianfeng-11-49",
+        "e-757-action-born-159-potianfeng-11-54",
+        "e-757-action-born-159-potianfeng-11-55",
+        "e-694-action-born-244-potianfeng-13-66",
+        "e-717-action-rei-ayanami-32",
+        "e-683-action-potianfeng-7",
+        "e-719-action-rei-ayanami-33",
+        "e-720-action-rei-ayanami-30",
+        "e-684-action-potianfeng-10",
+        "e-721-action-rei-ayanami-42",
+        "e-733-action-rei-ayanami-44",
+        "e-738-action-rei-ayanami-33",
+        "e-783-action-born-159-potianfeng-11-28",
+        "e-785-action-born-159-potianfeng-11-37"
+      ],
+      "sourceLineageKeys": [
+        "drop:drop-42-rei-ayanami-separate-396",
+        "drop:drop-76-rei-ayanami-separate-412",
+        "drop:drop-138-rei-ayanami-separate-427",
+        "drop:drop-210-rei-ayanami-separate-439",
+        "drop:drop-279-rei-ayanami-separate-432",
+        "drop:drop-281-rei-ayanami-separate-433",
+        "inventory:born-244-potianfeng-13:stack-born-244-potianfeng-13-21-270",
+        "drop:drop-285-born-159-potianfeng-11-separate-430",
+        "drop:drop-287-born-244-potianfeng-13-separate-430",
+        "drop:drop-310-born-193-cai-wenji-12-separate-435",
+        "drop:drop-317-born-244-potianfeng-13-separate-443",
+        "drop:drop-308-born-193-cai-wenji-12-separate-434",
+        "drop:drop-325-born-244-potianfeng-13-separate-444",
+        "drop:drop-327-born-244-potianfeng-13-separate-444",
+        "drop:drop-331-born-244-potianfeng-13-separate-444",
+        "drop:drop-334-born-193-cai-wenji-12-separate-443",
+        "drop:drop-336-born-115-cai-wenji-10-separate-445",
+        "drop:drop-345-born-115-cai-wenji-10-separate-451",
+        "drop:drop-352-born-244-potianfeng-13-separate-451",
+        "drop:drop-357-born-115-cai-wenji-10-separate-451",
+        "drop:drop-361-born-244-potianfeng-13-separate-451",
+        "drop:drop-410-born-244-potianfeng-13-separate-447",
+        "drop:drop-373-born-115-cai-wenji-10-separate-450",
+        "drop:drop-221-born-159-potianfeng-11-separate-441",
+        "drop:drop-720-born-159-potianfeng-11-separate-477",
+        "drop:drop-757-born-159-potianfeng-11-separate-478",
+        "drop:drop-202-born-159-potianfeng-11-separate-435",
+        "drop:drop-219-born-159-potianfeng-11-separate-439",
+        "drop:drop-225-born-159-potianfeng-11-separate-434",
+        "drop:drop-252-born-159-potianfeng-11-separate-433",
+        "drop:drop-254-born-159-potianfeng-11-separate-434",
+        "inventory:rei-ayanami:stack-rei-ayanami-21-707"
+      ]
+    },
+    "planningTick": 2,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-785-action-born-115-cai-wenji-10-38",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 785,
+    "orderInMonth": 38,
+    "cellId": 1443,
+    "who": "born-115-cai-wenji-10",
+    "intentId": "intent-785-born-115-cai-wenji-10-18098",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1443,
+      "toZ": 5
+    },
+    "fromCellId": 1444,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1444,
+      1443
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 15, 17 的高度 5",
+    "diff": {
+      "spentWork": 2.727272727272727,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-785-decision-potianfeng-2-39",
+    "kind": "decision",
+    "atMonth": 785,
+    "orderInMonth": 39,
+    "planningTick": 2,
+    "orderInTick": 4,
+    "cellId": 689,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:785:collective:offer-collective:3:potianfeng:rei-ayanami:born-244-potianfeng-13:potianfeng:21",
+      "reason": "对方刚刚提出了一项需要回应的社会请求；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；一项具体提议、权限或共同体关系正在等待本人表态"
+    },
+    "intentId": "intent-785-potianfeng-18103",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：接受孙守一的物质取用许可"
+  },
+  {
+    "id": "e-785-action-potianfeng-40",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 785,
+    "orderInMonth": 40,
+    "cellId": 689,
+    "who": "potianfeng",
+    "intentId": "intent-785-potianfeng-18103",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:785:collective:offer-collective:3:potianfeng:rei-ayanami:born-244-potianfeng-13:potianfeng:21:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:785:collective:offer-collective:3:potianfeng:rei-ayanami:born-244-potianfeng-13:potianfeng:21"
+      },
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "破天锋向孙守一表达：accept",
+    "diff": {
+      "audience": [
+        "born-244-potianfeng-13"
+      ],
+      "content": {
+        "id": "accept:offer-permission:785:collective:offer-collective:3:potianfeng:rei-ayanami:born-244-potianfeng-13:potianfeng:21:potianfeng",
+        "kind": "accept",
+        "referenceId": "offer-permission:785:collective:offer-collective:3:potianfeng:rei-ayanami:born-244-potianfeng-13:potianfeng:21"
+      }
+    },
+    "planningTick": 2,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-785-decision-houyi-2-41",
+    "kind": "decision",
+    "atMonth": 785,
+    "orderInMonth": 41,
+    "planningTick": 2,
+    "orderInTick": 6,
+    "cellId": 1444,
+    "who": "houyi",
+    "decision": {
+      "kind": "start",
+      "optionId": "accept-permission:offer-permission:785:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:houyi:27",
+      "reason": "对方刚刚提出了一项需要回应的社会请求；当前最强需要是care；当前可见关系与本人社会接近倾向形成了真实互动机会；一项具体提议、权限或共同体关系正在等待本人表态"
+    },
+    "intentId": "intent-785-houyi-18104",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后羿决定：接受蔡文姬的物质取用许可"
+  },
+  {
+    "id": "e-785-action-houyi-42",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 785,
+    "orderInMonth": 42,
+    "cellId": 1443,
+    "who": "houyi",
+    "intentId": "intent-785-houyi-18104",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1443,
+      "toZ": 5
+    },
+    "fromCellId": 1444,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1444,
+      1443
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 15, 17 的高度 5",
+    "diff": {
+      "spentWork": 3.4090909090909087,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 7
+  },
+  {
+    "id": "e-785-action-houyi-43",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 785,
+    "orderInMonth": 43,
+    "cellId": 1443,
+    "who": "houyi",
+    "intentId": "intent-785-houyi-18104",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "accept:offer-permission:785:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:houyi:27:houyi",
+        "kind": "accept",
+        "referenceId": "offer-permission:785:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:houyi:27"
+      },
+      "audience": [
+        "cai-wenji"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 1443,
+    "toCellId": 1443,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1443
+    ],
+    "status": "completed",
+    "result": "后羿向蔡文姬表达：accept",
+    "diff": {
+      "audience": [
+        "cai-wenji"
+      ],
+      "content": {
+        "id": "accept:offer-permission:785:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:houyi:27:houyi",
+        "kind": "accept",
+        "referenceId": "offer-permission:785:collective:offer-collective:385:born-193-cai-wenji-12:born-115-cai-wenji-10:cai-wenji:houyi:27"
+      },
+      "facilityMaterialId": 54,
+      "coordinationAudienceCapacity": 1
+    },
+    "planningTick": 3,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-785-action-born-159-potianfeng-11-44",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 785,
+    "orderInMonth": 44,
+    "cellId": 689,
+    "who": "born-159-potianfeng-11",
+    "intentId": "intent-785-born-159-potianfeng-11-18099",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 21,
+      "quantity": 1,
+      "from": {
+        "kind": "person",
+        "personId": "born-159-potianfeng-11"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-244-potianfeng-13"
+      },
+      "stackId": "stack-born-159-potianfeng-11-21-173",
+      "authorizationRef": "mandate:offer-mandate:784:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:born-244-potianfeng-13:decision-rule:offer-decision-rule:691:collective:offer-collective:3:potianfeng:rei-ayanami:born-159-potianfeng-11:21"
+    },
+    "fromCellId": 689,
+    "toCellId": 689,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      689
+    ],
+    "status": "completed",
+    "result": "食物 × 1 改变了持有者",
+    "diff": {
+      "materialId": 21,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": true,
+      "mandateUse": "contribution",
+      "from": {
+        "kind": "person",
+        "personId": "born-159-potianfeng-11"
+      },
+      "to": {
+        "kind": "person",
+        "personId": "born-244-potianfeng-13"
+      },
+      "witnessedBy": [
+        "potianfeng",
+        "rei-ayanami",
+        "born-22-potianfeng-8",
+        "born-159-potianfeng-11",
+        "born-244-potianfeng-13"
+      ],
+      "sourceEventIds": [
+        "e-364-action-born-244-potianfeng-13-33",
+        "e-410-action-born-244-potianfeng-13-35",
+        "e-410-action-born-244-potianfeng-13-36",
+        "e-373-action-born-115-cai-wenji-10-38",
+        "e-543-action-born-244-potianfeng-13-44",
+        "e-597-action-potianfeng-20",
+        "e-598-action-born-159-potianfeng-11-25",
+        "e-331-action-born-244-potianfeng-13-67",
+        "e-599-action-born-159-potianfeng-11-24",
+        "e-720-action-born-159-potianfeng-11-44",
+        "e-720-action-born-159-potianfeng-11-49",
+        "e-757-action-born-159-potianfeng-11-54",
+        "e-757-action-born-159-potianfeng-11-55",
+        "e-694-action-born-244-potianfeng-13-66",
+        "e-717-action-rei-ayanami-32",
+        "e-683-action-potianfeng-7",
+        "e-719-action-rei-ayanami-33",
+        "e-720-action-rei-ayanami-30",
+        "e-684-action-potianfeng-10",
+        "e-721-action-rei-ayanami-42",
+        "e-733-action-rei-ayanami-44",
+        "e-738-action-rei-ayanami-33",
+        "e-783-action-born-159-potianfeng-11-28",
+        "e-785-action-born-159-potianfeng-11-44"
+      ],
+      "sourceLineageKeys": [
+        "drop:drop-42-rei-ayanami-separate-396",
+        "drop:drop-76-rei-ayanami-separate-412",
+        "drop:drop-138-rei-ayanami-separate-427",
+        "drop:drop-210-rei-ayanami-separate-439",
+        "drop:drop-279-rei-ayanami-separate-432",
+        "drop:drop-281-rei-ayanami-separate-433",
+        "inventory:born-244-potianfeng-13:stack-born-244-potianfeng-13-21-270",
+        "drop:drop-285-born-159-potianfeng-11-separate-430",
+        "drop:drop-287-born-244-potianfeng-13-separate-430",
+        "drop:drop-310-born-193-cai-wenji-12-separate-435",
+        "drop:drop-317-born-244-potianfeng-13-separate-443",
+        "drop:drop-308-born-193-cai-wenji-12-separate-434",
+        "drop:drop-325-born-244-potianfeng-13-separate-444",
+        "drop:drop-327-born-244-potianfeng-13-separate-444",
+        "drop:drop-331-born-244-potianfeng-13-separate-444",
+        "drop:drop-334-born-193-cai-wenji-12-separate-443",
+        "drop:drop-336-born-115-cai-wenji-10-separate-445",
+        "drop:drop-345-born-115-cai-wenji-10-separate-451",
+        "drop:drop-352-born-244-potianfeng-13-separate-451",
+        "drop:drop-357-born-115-cai-wenji-10-separate-451",
+        "drop:drop-361-born-244-potianfeng-13-separate-451",
+        "drop:drop-410-born-244-potianfeng-13-separate-447",
+        "drop:drop-373-born-115-cai-wenji-10-separate-450",
+        "drop:drop-221-born-159-potianfeng-11-separate-441",
+        "drop:drop-720-born-159-potianfeng-11-separate-477",
+        "drop:drop-757-born-159-potianfeng-11-separate-478",
+        "drop:drop-202-born-159-potianfeng-11-separate-435",
+        "drop:drop-219-born-159-potianfeng-11-separate-439",
+        "drop:drop-225-born-159-potianfeng-11-separate-434",
+        "drop:drop-252-born-159-potianfeng-11-separate-433",
+        "drop:drop-254-born-159-potianfeng-11-separate-434",
+        "inventory:rei-ayanami:stack-rei-ayanami-21-707"
+      ]
+    },
+    "planningTick": 3,
+    "orderInTick": 1
+  }
+]

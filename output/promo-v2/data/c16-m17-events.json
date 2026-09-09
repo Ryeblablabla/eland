@@ -1,0 +1,4226 @@
+[
+  {
+    "id": "e-17-environment-weather-0",
+    "kind": "environment",
+    "atMonth": 17,
+    "orderInMonth": 0,
+    "cellId": 0,
+    "change": "weather",
+    "result": "本月天气转为风暴",
+    "diff": {
+      "kind": "storm",
+      "intensity": 1
+    },
+    "planningTick": 0,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-17-environment-material-0",
+    "kind": "environment",
+    "atMonth": 17,
+    "orderInMonth": 1,
+    "cellId": 0,
+    "change": "material",
+    "result": "4 个格子的物质因自然过程发生变化",
+    "diff": {
+      "changes": [
+        {
+          "cellId": 113,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 889,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 2097,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        },
+        {
+          "cellId": 2711,
+          "from": 9,
+          "to": 10,
+          "process": "berry-growth"
+        }
+      ]
+    },
+    "planningTick": 0,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-17-opportunity-potianfeng",
+    "kind": "decision-opportunity",
+    "atMonth": 17,
+    "orderInMonth": 2,
+    "planningTick": 0,
+    "orderInTick": 2,
+    "who": "potianfeng",
+    "cellId": 2962,
+    "probability": 0.645,
+    "sample": 0.6766283495817333,
+    "triggered": false,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "破天锋本月延续已有意图"
+  },
+  {
+    "id": "e-17-opportunity-rei-ayanami",
+    "kind": "decision-opportunity",
+    "atMonth": 17,
+    "orderInMonth": 3,
+    "planningTick": 0,
+    "orderInTick": 3,
+    "who": "rei-ayanami",
+    "cellId": 1115,
+    "probability": 0.045,
+    "sample": 0.38051635515876114,
+    "triggered": false,
+    "reasons": [
+      "每月非零重新考虑概率"
+    ],
+    "result": "绫波丽本月延续已有意图"
+  },
+  {
+    "id": "e-17-opportunity-freyja",
+    "kind": "decision-opportunity",
+    "atMonth": 17,
+    "orderInMonth": 4,
+    "planningTick": 0,
+    "orderInTick": 4,
+    "who": "freyja",
+    "cellId": 2388,
+    "probability": 0.045,
+    "sample": 0.7342822505161166,
+    "triggered": false,
+    "reasons": [
+      "每月非零重新考虑概率"
+    ],
+    "result": "芙蕾雅本月延续已有意图"
+  },
+  {
+    "id": "e-17-opportunity-cai-wenji",
+    "kind": "decision-opportunity",
+    "atMonth": 17,
+    "orderInMonth": 5,
+    "planningTick": 0,
+    "orderInTick": 5,
+    "who": "cai-wenji",
+    "cellId": 2557,
+    "probability": 0.045,
+    "sample": 0.4308418200816959,
+    "triggered": false,
+    "reasons": [
+      "每月非零重新考虑概率"
+    ],
+    "result": "蔡文姬本月延续已有意图"
+  },
+  {
+    "id": "e-17-opportunity-sun-wu",
+    "kind": "decision-opportunity",
+    "atMonth": 17,
+    "orderInMonth": 6,
+    "planningTick": 0,
+    "orderInTick": 6,
+    "who": "sun-wu",
+    "cellId": 2962,
+    "probability": 0.645,
+    "sample": 0.5423154316376895,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "孙武本月重新考虑下一步"
+  },
+  {
+    "id": "e-17-opportunity-aphrodite",
+    "kind": "decision-opportunity",
+    "atMonth": 17,
+    "orderInMonth": 7,
+    "planningTick": 0,
+    "orderInTick": 7,
+    "who": "aphrodite",
+    "cellId": 2807,
+    "probability": 0.525,
+    "sample": 0.7128137801773846,
+    "triggered": false,
+    "reasons": [
+      "未完成的生产目标已经停滞"
+    ],
+    "result": "阿佛洛狄忒本月延续已有意图"
+  },
+  {
+    "id": "e-17-opportunity-houyi",
+    "kind": "decision-opportunity",
+    "atMonth": 17,
+    "orderInMonth": 8,
+    "planningTick": 0,
+    "orderInTick": 8,
+    "who": "houyi",
+    "cellId": 3043,
+    "probability": 0.645,
+    "sample": 0.06975052668713033,
+    "triggered": true,
+    "reasons": [
+      "当前没有持续目标",
+      "空闲时存在可执行的生产或探索机会"
+    ],
+    "result": "后羿本月重新考虑下一步"
+  },
+  {
+    "id": "e-17-opportunity-born-16-cai-wenji-7",
+    "kind": "decision-opportunity",
+    "atMonth": 17,
+    "orderInMonth": 9,
+    "planningTick": 0,
+    "orderInTick": 9,
+    "who": "born-16-cai-wenji-7",
+    "cellId": 2557,
+    "probability": 0.45,
+    "sample": 0.6872301418334246,
+    "triggered": false,
+    "reasons": [
+      "当前没有持续目标"
+    ],
+    "result": "孙疏影本月延续已有意图"
+  },
+  {
+    "id": "e-17-decision-sun-wu-1-10",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 10,
+    "planningTick": 1,
+    "orderInTick": 0,
+    "cellId": 2962,
+    "who": "sun-wu",
+    "decision": {
+      "kind": "start",
+      "optionId": "conversation:failure:17:sun-wu:potianfeng",
+      "reason": "本人记得一次真实失败，可以向身边人表达挫折并寻求理解"
+    },
+    "intentId": "intent-17-sun-wu-312",
+    "domain": "social",
+    "usedModel": false,
+    "result": "孙武决定：与破天锋谈失败与挫折：向破天锋说明本人记得的失败“去找破天锋，回应关于共同劳动的话失败：这段生活对话已经回应过”，并邀请对方一起复盘"
+  },
+  {
+    "id": "e-17-decision-houyi-1-11",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 11,
+    "planningTick": 1,
+    "orderInTick": 1,
+    "cellId": 3043,
+    "who": "houyi",
+    "decision": {
+      "kind": "start",
+      "optionId": "meet:sun-wu",
+      "reason": "看见另一个人，接近后才能沟通、求助或共同做事"
+    },
+    "intentId": "intent-17-houyi-313",
+    "domain": "social",
+    "usedModel": false,
+    "result": "后羿决定：去与孙武会合"
+  },
+  {
+    "id": "e-17-action-rei-ayanami-12",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 17,
+    "orderInMonth": 12,
+    "cellId": 1115,
+    "who": "rei-ayanami",
+    "intentId": "intent-16-rei-ayanami-285",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "combine",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "rei-ayanami",
+          "stackId": "stack-rei-ayanami-13-2"
+        },
+        {
+          "kind": "inventory-stack",
+          "personId": "rei-ayanami",
+          "stackId": "stack-rei-ayanami-23-13"
+        }
+      ]
+    },
+    "fromCellId": 1115,
+    "toCellId": 1115,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1115
+    ],
+    "status": "blocked",
+    "result": "背包中的结合材料已经不存在",
+    "diff": {},
+    "planningTick": 1,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-17-action-houyi-13",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 17,
+    "orderInMonth": 13,
+    "cellId": 3044,
+    "who": "houyi",
+    "intentId": "intent-17-houyi-313",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2962,
+      "toZ": 5
+    },
+    "fromCellId": 3043,
+    "toCellId": 3044,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3043,
+      3044
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-17-action-freyja-14",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 17,
+    "orderInMonth": 14,
+    "cellId": 2472,
+    "who": "freyja",
+    "intentId": "intent-15-freyja-250",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2807,
+      "toZ": 5
+    },
+    "fromCellId": 2388,
+    "toCellId": 2472,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2388,
+      2472
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-17-action-cai-wenji-15",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 17,
+    "orderInMonth": 15,
+    "cellId": 2641,
+    "who": "cai-wenji",
+    "intentId": "intent-15-cai-wenji-251",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2807,
+      "toZ": 5
+    },
+    "fromCellId": 2557,
+    "toCellId": 2641,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2557,
+      2641
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.3310023310023307,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 1,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-17-decision-aphrodite-1-16",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 16,
+    "planningTick": 1,
+    "orderInTick": 6,
+    "cellId": 2807,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-14-aphrodite-232",
+      "optionId": "survival-reflex:17:1:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-17-aphrodite-interrupt-314",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-17-action-aphrodite-17",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 17,
+    "orderInMonth": 17,
+    "cellId": 2891,
+    "who": "aphrodite",
+    "intentId": "intent-17-aphrodite-interrupt-314",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3227,
+      "toZ": 5
+    },
+    "fromCellId": 2807,
+    "toCellId": 2891,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2807,
+      2891
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 1,
+    "orderInTick": 7
+  },
+  {
+    "id": "e-17-action-sun-wu-18",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 17,
+    "orderInMonth": 18,
+    "cellId": 2962,
+    "who": "sun-wu",
+    "intentId": "intent-17-sun-wu-312",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "conversation:failure:17:sun-wu:potianfeng",
+        "kind": "claim",
+        "summary": "向破天锋说明本人记得的失败“去找破天锋，回应关于共同劳动的话失败：这段生活对话已经回应过”，并邀请对方一起复盘",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "opening",
+          "speakerId": "sun-wu",
+          "listenerId": "potianfeng",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ]
+        }
+      },
+      "audience": [
+        "potianfeng"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "completed",
+    "result": "孙武向破天锋表达：向破天锋说明本人记得的失败“去找破天锋，回应关于共同劳动的话失败：这段生活对话已经回应过”，并邀请对方一起复盘",
+    "diff": {
+      "audience": [
+        "potianfeng"
+      ],
+      "content": {
+        "id": "conversation:failure:17:sun-wu:potianfeng",
+        "kind": "claim",
+        "summary": "向破天锋说明本人记得的失败“去找破天锋，回应关于共同劳动的话失败：这段生活对话已经回应过”，并邀请对方一起复盘",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "opening",
+          "speakerId": "sun-wu",
+          "listenerId": "potianfeng",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ]
+        }
+      },
+      "groundedConversationBasisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+      "groundedConversationTopic": "failure",
+      "groundedConversationTurn": "opening",
+      "groundedConversationSourceFactIds": [
+        "e-7-action-sun-wu-33"
+      ],
+      "relationTrustDelta": 0,
+      "relationBondDelta": 2
+    },
+    "planningTick": 1,
+    "orderInTick": 8
+  },
+  {
+    "id": "e-17-action-potianfeng-19",
+    "kind": "action",
+    "actionTick": 1,
+    "atMonth": 17,
+    "orderInMonth": 19,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "act",
+      "operation": "ingest",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "potianfeng",
+          "stackId": "stack-potianfeng-ration"
+        }
+      ]
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "completed",
+    "result": "摄入了食物",
+    "diff": {
+      "materialId": 21,
+      "nutrition": 48,
+      "hydration": 4,
+      "health": 0,
+      "consumedStackId": "stack-potianfeng-ration",
+      "consumedSourceEventIds": [],
+      "consumedSourceLineageKeys": []
+    },
+    "planningTick": 1,
+    "orderInTick": 9
+  },
+  {
+    "id": "e-17-action-cai-wenji-20",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 17,
+    "orderInMonth": 20,
+    "cellId": 2640,
+    "who": "cai-wenji",
+    "intentId": "intent-15-cai-wenji-251",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2891,
+      "toZ": 5
+    },
+    "fromCellId": 2641,
+    "toCellId": 2640,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2641,
+      2640
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.3310023310023307,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 2,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-17-decision-rei-ayanami-2-21",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 21,
+    "planningTick": 2,
+    "orderInTick": 1,
+    "cellId": 1115,
+    "who": "rei-ayanami",
+    "decision": {
+      "kind": "start",
+      "optionId": "project:project-2-rei-ayanami-coordination-capacity:locked-drop-project-logistics:project-2-rei-ayanami-coordination-capacity:36:drop:drop-13-rei-ayanami-separate-349",
+      "reason": "该地面来源已经由本人亲眼确认；其他更近来源不会替换尚未结算的项目目标"
+    },
+    "intentId": "intent-17-rei-ayanami-315",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "绫波丽决定：继续前往已锁定的木材来源"
+  },
+  {
+    "id": "e-17-action-rei-ayanami-22",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 17,
+    "orderInMonth": 22,
+    "cellId": 1114,
+    "who": "rei-ayanami",
+    "intentId": "intent-17-rei-ayanami-315",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1112,
+      "toZ": 5
+    },
+    "fromCellId": 1115,
+    "toCellId": 1114,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1115,
+      1114
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-17-action-freyja-23",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 17,
+    "orderInMonth": 23,
+    "cellId": 2473,
+    "who": "freyja",
+    "intentId": "intent-15-freyja-250",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2891,
+      "toZ": 5
+    },
+    "fromCellId": 2472,
+    "toCellId": 2473,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2472,
+      2473
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2473,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 2,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-17-decision-aphrodite-2-24",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 24,
+    "planningTick": 2,
+    "orderInTick": 4,
+    "cellId": 2891,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-14-aphrodite-232",
+      "optionId": "survival-reflex:17:2:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-17-aphrodite-interrupt-316",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-17-action-aphrodite-25",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 17,
+    "orderInMonth": 25,
+    "cellId": 2975,
+    "who": "aphrodite",
+    "intentId": "intent-17-aphrodite-interrupt-316",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3226,
+      "toZ": 5
+    },
+    "fromCellId": 2891,
+    "toCellId": 2975,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2891,
+      2975
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-17-decision-potianfeng-2-26",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 26,
+    "planningTick": 2,
+    "orderInTick": 6,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-17-potianfeng-317",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙武关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-17-action-potianfeng-27",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 17,
+    "orderInMonth": 27,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "intentId": "intent-17-potianfeng-317",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ],
+          "referenceEventId": "e-17-action-sun-wu-18",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "completed",
+    "result": "破天锋向孙武表达：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+    "diff": {
+      "audience": [
+        "sun-wu"
+      ],
+      "content": {
+        "id": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ],
+          "referenceEventId": "e-17-action-sun-wu-18",
+          "stance": "supportive"
+        }
+      },
+      "groundedConversationBasisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+      "groundedConversationTopic": "failure",
+      "groundedConversationTurn": "response",
+      "groundedConversationSourceFactIds": [
+        "e-7-action-sun-wu-33"
+      ],
+      "groundedConversationReferenceEventId": "e-17-action-sun-wu-18",
+      "groundedConversationStance": "supportive",
+      "relationTrustDelta": 1,
+      "relationBondDelta": 2
+    },
+    "planningTick": 2,
+    "orderInTick": 7
+  },
+  {
+    "id": "e-17-action-houyi-28",
+    "kind": "action",
+    "actionTick": 2,
+    "atMonth": 17,
+    "orderInMonth": 28,
+    "cellId": 3045,
+    "who": "houyi",
+    "intentId": "intent-17-houyi-313",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2962,
+      "toZ": 5
+    },
+    "fromCellId": 3044,
+    "toCellId": 3045,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3044,
+      3045
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 2,
+    "orderInTick": 8
+  },
+  {
+    "id": "e-17-action-freyja-29",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 17,
+    "orderInMonth": 29,
+    "cellId": 2557,
+    "who": "freyja",
+    "intentId": "intent-15-freyja-250",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2975,
+      "toZ": 5
+    },
+    "fromCellId": 2473,
+    "toCellId": 2557,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2473,
+      2557
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2557,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 3,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-17-action-cai-wenji-30",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 17,
+    "orderInMonth": 30,
+    "cellId": 2724,
+    "who": "cai-wenji",
+    "intentId": "intent-15-cai-wenji-251",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2975,
+      "toZ": 5
+    },
+    "fromCellId": 2640,
+    "toCellId": 2724,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2640,
+      2724
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.3310023310023307,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 3,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-17-action-rei-ayanami-31",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 17,
+    "orderInMonth": 31,
+    "cellId": 1113,
+    "who": "rei-ayanami",
+    "intentId": "intent-17-rei-ayanami-315",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1112,
+      "toZ": 5
+    },
+    "fromCellId": 1114,
+    "toCellId": 1113,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1114,
+      1113
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-17-action-houyi-32",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 17,
+    "orderInMonth": 32,
+    "cellId": 2961,
+    "who": "houyi",
+    "intentId": "intent-17-houyi-313",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2962,
+      "toZ": 5
+    },
+    "fromCellId": 3045,
+    "toCellId": 2961,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3045,
+      2961
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-17-decision-aphrodite-3-33",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 33,
+    "planningTick": 3,
+    "orderInTick": 4,
+    "cellId": 2975,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-14-aphrodite-232",
+      "optionId": "survival-reflex:17:3:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-17-aphrodite-interrupt-318",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-17-action-aphrodite-34",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 17,
+    "orderInMonth": 34,
+    "cellId": 2976,
+    "who": "aphrodite",
+    "intentId": "intent-17-aphrodite-interrupt-318",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3395,
+      "toZ": 5
+    },
+    "fromCellId": 2975,
+    "toCellId": 2976,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2975,
+      2976
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 3,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-17-decision-potianfeng-3-35",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 35,
+    "planningTick": 3,
+    "orderInTick": 6,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-17-potianfeng-319",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙武关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-17-action-potianfeng-36",
+    "kind": "action",
+    "actionTick": 3,
+    "atMonth": 17,
+    "orderInMonth": 36,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "intentId": "intent-17-potianfeng-319",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ],
+          "referenceEventId": "e-17-action-sun-wu-18",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 3,
+    "orderInTick": 7
+  },
+  {
+    "id": "e-17-action-houyi-37",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 17,
+    "orderInMonth": 37,
+    "cellId": 2962,
+    "who": "houyi",
+    "intentId": "intent-17-houyi-313",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2962,
+      "toZ": 5
+    },
+    "fromCellId": 2961,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2961,
+      2962
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 22, 35 的高度 5",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2962,
+          "z": 4,
+          "from": 2,
+          "to": 15
+        }
+      ]
+    },
+    "planningTick": 4,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-17-action-rei-ayanami-38",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 17,
+    "orderInMonth": 38,
+    "cellId": 1112,
+    "who": "rei-ayanami",
+    "intentId": "intent-17-rei-ayanami-315",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1112,
+      "toZ": 5
+    },
+    "fromCellId": 1113,
+    "toCellId": 1112,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1113,
+      1112
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 20, 13 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 4,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-17-action-cai-wenji-39",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 17,
+    "orderInMonth": 39,
+    "cellId": 2723,
+    "who": "cai-wenji",
+    "intentId": "intent-15-cai-wenji-251",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 2976,
+      "toZ": 5
+    },
+    "fromCellId": 2724,
+    "toCellId": 2723,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2724,
+      2723
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.3310023310023307,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 4,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-17-decision-aphrodite-4-40",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 40,
+    "planningTick": 4,
+    "orderInTick": 3,
+    "cellId": 2976,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-14-aphrodite-232",
+      "optionId": "survival-reflex:17:4:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-17-aphrodite-interrupt-320",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-17-action-aphrodite-41",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 17,
+    "orderInMonth": 41,
+    "cellId": 3060,
+    "who": "aphrodite",
+    "intentId": "intent-17-aphrodite-interrupt-320",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3396,
+      "toZ": 5
+    },
+    "fromCellId": 2976,
+    "toCellId": 3060,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2976,
+      3060
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 4,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-17-decision-potianfeng-4-42",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 42,
+    "planningTick": 4,
+    "orderInTick": 5,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-17-potianfeng-321",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙武关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-17-action-potianfeng-43",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 17,
+    "orderInMonth": 43,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "intentId": "intent-17-potianfeng-321",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ],
+          "referenceEventId": "e-17-action-sun-wu-18",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 4,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-17-action-freyja-44",
+    "kind": "action",
+    "actionTick": 4,
+    "atMonth": 17,
+    "orderInMonth": 44,
+    "cellId": 2641,
+    "who": "freyja",
+    "intentId": "intent-15-freyja-250",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3060,
+      "toZ": 5
+    },
+    "fromCellId": 2557,
+    "toCellId": 2641,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2557,
+      2641
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2641,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 4,
+    "orderInTick": 7
+  },
+  {
+    "id": "e-17-action-rei-ayanami-45",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 17,
+    "orderInMonth": 45,
+    "cellId": 1112,
+    "who": "rei-ayanami",
+    "intentId": "intent-17-rei-ayanami-315",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 13,
+      "quantity": 1,
+      "from": {
+        "kind": "ground",
+        "cellId": 1112,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "dropId": "drop-13-rei-ayanami-separate-349"
+    },
+    "fromCellId": 1112,
+    "toCellId": 1112,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1112
+    ],
+    "status": "completed",
+    "result": "木材 × 1 改变了持有者",
+    "diff": {
+      "materialId": 13,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 1112,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "witnessedBy": [
+        "rei-ayanami"
+      ],
+      "sourceEventIds": [
+        "e-13-action-rei-ayanami-54",
+        "e-17-action-rei-ayanami-45"
+      ],
+      "sourceLineageKeys": [
+        "drop:drop-13-rei-ayanami-separate-349"
+      ]
+    },
+    "planningTick": 5,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-17-decision-aphrodite-5-46",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 46,
+    "planningTick": 5,
+    "orderInTick": 1,
+    "cellId": 3060,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-14-aphrodite-232",
+      "optionId": "survival-reflex:17:5:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-17-aphrodite-interrupt-322",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-17-action-aphrodite-47",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 17,
+    "orderInMonth": 47,
+    "cellId": 3144,
+    "who": "aphrodite",
+    "intentId": "intent-17-aphrodite-interrupt-322",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3480,
+      "toZ": 5
+    },
+    "fromCellId": 3060,
+    "toCellId": 3144,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3060,
+      3144
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 5,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-17-decision-potianfeng-5-48",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 48,
+    "planningTick": 5,
+    "orderInTick": 3,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-17-potianfeng-323",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙武关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-17-action-potianfeng-49",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 17,
+    "orderInMonth": 49,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "intentId": "intent-17-potianfeng-323",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ],
+          "referenceEventId": "e-17-action-sun-wu-18",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 5,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-17-action-cai-wenji-50",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 17,
+    "orderInMonth": 50,
+    "cellId": 2807,
+    "who": "cai-wenji",
+    "intentId": "intent-15-cai-wenji-251",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3144,
+      "toZ": 5
+    },
+    "fromCellId": 2723,
+    "toCellId": 2807,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2723,
+      2807
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.3310023310023307,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 5,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-17-action-freyja-51",
+    "kind": "action",
+    "actionTick": 5,
+    "atMonth": 17,
+    "orderInMonth": 51,
+    "cellId": 2640,
+    "who": "freyja",
+    "intentId": "intent-15-freyja-250",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3144,
+      "toZ": 5
+    },
+    "fromCellId": 2641,
+    "toCellId": 2640,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2641,
+      2640
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 5,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-17-action-rei-ayanami-52",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 17,
+    "orderInMonth": 52,
+    "cellId": 1028,
+    "who": "rei-ayanami",
+    "intentId": "intent-17-rei-ayanami-315",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1029,
+      "toZ": 5
+    },
+    "fromCellId": 1112,
+    "toCellId": 1028,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1112,
+      1028
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 6,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-17-decision-aphrodite-6-53",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 53,
+    "planningTick": 6,
+    "orderInTick": 1,
+    "cellId": 3144,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-14-aphrodite-232",
+      "optionId": "survival-reflex:17:6:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-17-aphrodite-interrupt-324",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-17-action-aphrodite-54",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 17,
+    "orderInMonth": 54,
+    "cellId": 3228,
+    "who": "aphrodite",
+    "intentId": "intent-17-aphrodite-interrupt-324",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3564,
+      "toZ": 5
+    },
+    "fromCellId": 3144,
+    "toCellId": 3228,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3144,
+      3228
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 6,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-17-action-cai-wenji-55",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 17,
+    "orderInMonth": 55,
+    "cellId": 2891,
+    "who": "cai-wenji",
+    "intentId": "intent-15-cai-wenji-251",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3228,
+      "toZ": 5
+    },
+    "fromCellId": 2807,
+    "toCellId": 2891,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2807,
+      2891
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.3310023310023307,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 6,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-17-decision-potianfeng-6-56",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 56,
+    "planningTick": 6,
+    "orderInTick": 4,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-17-potianfeng-325",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙武关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-17-action-potianfeng-57",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 17,
+    "orderInMonth": 57,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "intentId": "intent-17-potianfeng-325",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ],
+          "referenceEventId": "e-17-action-sun-wu-18",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 6,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-17-action-freyja-58",
+    "kind": "action",
+    "actionTick": 6,
+    "atMonth": 17,
+    "orderInMonth": 58,
+    "cellId": 2724,
+    "who": "freyja",
+    "intentId": "intent-15-freyja-250",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3228,
+      "toZ": 5
+    },
+    "fromCellId": 2640,
+    "toCellId": 2724,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2640,
+      2724
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 6,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-17-action-rei-ayanami-59",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 17,
+    "orderInMonth": 59,
+    "cellId": 1029,
+    "who": "rei-ayanami",
+    "intentId": "intent-17-rei-ayanami-315",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1029,
+      "toZ": 5
+    },
+    "fromCellId": 1028,
+    "toCellId": 1029,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1028,
+      1029
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 21, 12 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 7,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-17-action-cai-wenji-60",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 17,
+    "orderInMonth": 60,
+    "cellId": 2975,
+    "who": "cai-wenji",
+    "intentId": "intent-15-cai-wenji-251",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3228,
+      "toZ": 5
+    },
+    "fromCellId": 2891,
+    "toCellId": 2975,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2891,
+      2975
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.3310023310023307,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 7,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-17-decision-aphrodite-7-61",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 61,
+    "planningTick": 7,
+    "orderInTick": 2,
+    "cellId": 3228,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-14-aphrodite-232",
+      "optionId": "survival-reflex:17:7:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-17-aphrodite-interrupt-326",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-17-action-aphrodite-62",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 17,
+    "orderInMonth": 62,
+    "cellId": 3312,
+    "who": "aphrodite",
+    "intentId": "intent-17-aphrodite-interrupt-326",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3648,
+      "toZ": 5
+    },
+    "fromCellId": 3228,
+    "toCellId": 3312,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3228,
+      3312
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 7,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-17-decision-potianfeng-7-63",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 63,
+    "planningTick": 7,
+    "orderInTick": 4,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-17-potianfeng-327",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙武关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-17-action-potianfeng-64",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 17,
+    "orderInMonth": 64,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "intentId": "intent-17-potianfeng-327",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ],
+          "referenceEventId": "e-17-action-sun-wu-18",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 7,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-17-action-freyja-65",
+    "kind": "action",
+    "actionTick": 7,
+    "atMonth": 17,
+    "orderInMonth": 65,
+    "cellId": 2723,
+    "who": "freyja",
+    "intentId": "intent-15-freyja-250",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3312,
+      "toZ": 5
+    },
+    "fromCellId": 2724,
+    "toCellId": 2723,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2724,
+      2723
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 7,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-17-action-freyja-66",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 17,
+    "orderInMonth": 66,
+    "cellId": 2807,
+    "who": "freyja",
+    "intentId": "intent-15-freyja-250",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3312,
+      "toZ": 5
+    },
+    "fromCellId": 2723,
+    "toCellId": 2807,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2723,
+      2807
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2807,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 8,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-17-action-rei-ayanami-67",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 17,
+    "orderInMonth": 67,
+    "cellId": 1029,
+    "who": "rei-ayanami",
+    "intentId": "intent-17-rei-ayanami-315",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "separate",
+      "targets": [
+        {
+          "kind": "voxel",
+          "position": {
+            "x": 22,
+            "y": 12,
+            "z": 6
+          }
+        }
+      ],
+      "toolStackId": "stack-rei-ayanami-41-2"
+    },
+    "fromCellId": 1029,
+    "toCellId": 1029,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1029
+    ],
+    "status": "completed",
+    "result": "从树叶分离出木材 × 3、纤维 × 1",
+    "diff": {
+      "sourceMaterialId": 14,
+      "replacementMaterialId": 0,
+      "outputs": [
+        {
+          "materialId": 13,
+          "quantity": 3
+        },
+        {
+          "materialId": 20,
+          "quantity": 1
+        }
+      ],
+      "productionMultiplier": 1.25,
+      "toolMaterialId": 41,
+      "toolStackId": "stack-rei-ayanami-41-2"
+    },
+    "planningTick": 8,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-17-decision-potianfeng-8-68",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 68,
+    "planningTick": 8,
+    "orderInTick": 2,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-17-potianfeng-328",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙武关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-17-action-potianfeng-69",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 17,
+    "orderInMonth": 69,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "intentId": "intent-17-potianfeng-328",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ],
+          "referenceEventId": "e-17-action-sun-wu-18",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 8,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-17-action-cai-wenji-70",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 17,
+    "orderInMonth": 70,
+    "cellId": 2976,
+    "who": "cai-wenji",
+    "intentId": "intent-15-cai-wenji-251",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3312,
+      "toZ": 5
+    },
+    "fromCellId": 2975,
+    "toCellId": 2976,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2975,
+      2976
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.3310023310023307,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 8,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-17-decision-aphrodite-8-71",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 71,
+    "planningTick": 8,
+    "orderInTick": 5,
+    "cellId": 3312,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-14-aphrodite-232",
+      "optionId": "survival-reflex:17:8:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-17-aphrodite-interrupt-329",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-17-action-aphrodite-72",
+    "kind": "action",
+    "actionTick": 8,
+    "atMonth": 17,
+    "orderInMonth": 72,
+    "cellId": 3396,
+    "who": "aphrodite",
+    "intentId": "intent-17-aphrodite-interrupt-329",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3732,
+      "toZ": 5
+    },
+    "fromCellId": 3312,
+    "toCellId": 3396,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3312,
+      3396
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 8,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-17-decision-aphrodite-9-73",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 73,
+    "planningTick": 9,
+    "orderInTick": 0,
+    "cellId": 3396,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-14-aphrodite-232",
+      "optionId": "survival-reflex:17:9:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-17-aphrodite-interrupt-330",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-17-action-aphrodite-74",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 17,
+    "orderInMonth": 74,
+    "cellId": 3480,
+    "who": "aphrodite",
+    "intentId": "intent-17-aphrodite-interrupt-330",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3816,
+      "toZ": 5
+    },
+    "fromCellId": 3396,
+    "toCellId": 3480,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3396,
+      3480
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 9,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-17-decision-potianfeng-9-75",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 75,
+    "planningTick": 9,
+    "orderInTick": 2,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-17-potianfeng-331",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙武关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-17-action-potianfeng-76",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 17,
+    "orderInMonth": 76,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "intentId": "intent-17-potianfeng-331",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ],
+          "referenceEventId": "e-17-action-sun-wu-18",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 9,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-17-action-freyja-77",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 17,
+    "orderInMonth": 77,
+    "cellId": 2891,
+    "who": "freyja",
+    "intentId": "intent-15-freyja-250",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3480,
+      "toZ": 5
+    },
+    "fromCellId": 2807,
+    "toCellId": 2891,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2807,
+      2891
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2891,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 9,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-17-action-cai-wenji-78",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 17,
+    "orderInMonth": 78,
+    "cellId": 3060,
+    "who": "cai-wenji",
+    "intentId": "intent-15-cai-wenji-251",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3480,
+      "toZ": 5
+    },
+    "fromCellId": 2976,
+    "toCellId": 3060,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2976,
+      3060
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.3310023310023307,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 9,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-17-action-rei-ayanami-79",
+    "kind": "action",
+    "actionTick": 9,
+    "atMonth": 17,
+    "orderInMonth": 79,
+    "cellId": 1029,
+    "who": "rei-ayanami",
+    "intentId": "intent-17-rei-ayanami-315",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 20,
+      "quantity": 1,
+      "from": {
+        "kind": "ground",
+        "cellId": 1029,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "dropId": "drop-17-rei-ayanami-separate-358"
+    },
+    "fromCellId": 1029,
+    "toCellId": 1029,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1029
+    ],
+    "status": "completed",
+    "result": "纤维 × 1 改变了持有者",
+    "diff": {
+      "materialId": 20,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 1029,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "witnessedBy": [
+        "rei-ayanami"
+      ],
+      "sourceEventIds": [
+        "e-17-action-rei-ayanami-67",
+        "e-17-action-rei-ayanami-79"
+      ],
+      "sourceLineageKeys": [
+        "drop:drop-17-rei-ayanami-separate-358"
+      ]
+    },
+    "planningTick": 9,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-17-action-freyja-80",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 17,
+    "orderInMonth": 80,
+    "cellId": 2975,
+    "who": "freyja",
+    "intentId": "intent-15-freyja-250",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3480,
+      "toZ": 5
+    },
+    "fromCellId": 2891,
+    "toCellId": 2975,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2891,
+      2975
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2975,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 10,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-17-decision-potianfeng-10-81",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 81,
+    "planningTick": 10,
+    "orderInTick": 1,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-17-potianfeng-332",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙武关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-17-action-potianfeng-82",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 17,
+    "orderInMonth": 82,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "intentId": "intent-17-potianfeng-332",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ],
+          "referenceEventId": "e-17-action-sun-wu-18",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 10,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-17-action-rei-ayanami-83",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 17,
+    "orderInMonth": 83,
+    "cellId": 1030,
+    "who": "rei-ayanami",
+    "intentId": "intent-17-rei-ayanami-315",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1031,
+      "toZ": 5
+    },
+    "fromCellId": 1029,
+    "toCellId": 1030,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1029,
+      1030
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 10,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-17-action-cai-wenji-84",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 17,
+    "orderInMonth": 84,
+    "cellId": 3144,
+    "who": "cai-wenji",
+    "intentId": "intent-15-cai-wenji-251",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3480,
+      "toZ": 5
+    },
+    "fromCellId": 3060,
+    "toCellId": 3144,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3060,
+      3144
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.3310023310023307,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 10,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-17-decision-aphrodite-10-85",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 85,
+    "planningTick": 10,
+    "orderInTick": 5,
+    "cellId": 3480,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-14-aphrodite-232",
+      "optionId": "survival-reflex:17:10:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-17-aphrodite-interrupt-333",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-17-action-aphrodite-86",
+    "kind": "action",
+    "actionTick": 10,
+    "atMonth": 17,
+    "orderInMonth": 86,
+    "cellId": 3564,
+    "who": "aphrodite",
+    "intentId": "intent-17-aphrodite-interrupt-333",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3900,
+      "toZ": 5
+    },
+    "fromCellId": 3480,
+    "toCellId": 3564,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3480,
+      3564
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 10,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-17-action-rei-ayanami-87",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 17,
+    "orderInMonth": 87,
+    "cellId": 1031,
+    "who": "rei-ayanami",
+    "intentId": "intent-17-rei-ayanami-315",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 1031,
+      "toZ": 5
+    },
+    "fromCellId": 1030,
+    "toCellId": 1031,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1030,
+      1031
+    ],
+    "status": "completed",
+    "result": "沿可容身空间到达格 23, 12 的高度 5",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 11,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-17-action-cai-wenji-88",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 17,
+    "orderInMonth": 88,
+    "cellId": 3228,
+    "who": "cai-wenji",
+    "intentId": "intent-15-cai-wenji-251",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3564,
+      "toZ": 5
+    },
+    "fromCellId": 3144,
+    "toCellId": 3228,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3144,
+      3228
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.3310023310023307,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 11,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-17-action-freyja-89",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 17,
+    "orderInMonth": 89,
+    "cellId": 2976,
+    "who": "freyja",
+    "intentId": "intent-15-freyja-250",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3564,
+      "toZ": 5
+    },
+    "fromCellId": 2975,
+    "toCellId": 2976,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2975,
+      2976
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 2976,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 11,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-17-decision-potianfeng-11-90",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 90,
+    "planningTick": 11,
+    "orderInTick": 3,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-17-potianfeng-334",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙武关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-17-action-potianfeng-91",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 17,
+    "orderInMonth": 91,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "intentId": "intent-17-potianfeng-334",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ],
+          "referenceEventId": "e-17-action-sun-wu-18",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 11,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-17-decision-aphrodite-11-92",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 92,
+    "planningTick": 11,
+    "orderInTick": 5,
+    "cellId": 3564,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-14-aphrodite-232",
+      "optionId": "survival-reflex:17:11:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-17-aphrodite-interrupt-335",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-17-action-aphrodite-93",
+    "kind": "action",
+    "actionTick": 11,
+    "atMonth": 17,
+    "orderInMonth": 93,
+    "cellId": 3648,
+    "who": "aphrodite",
+    "intentId": "intent-17-aphrodite-interrupt-335",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3984,
+      "toZ": 5
+    },
+    "fromCellId": 3564,
+    "toCellId": 3648,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3564,
+      3648
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 11,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-17-decision-potianfeng-12-94",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 94,
+    "planningTick": 12,
+    "orderInTick": 0,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-17-potianfeng-336",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙武关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-17-action-potianfeng-95",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 17,
+    "orderInMonth": 95,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "intentId": "intent-17-potianfeng-336",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ],
+          "referenceEventId": "e-17-action-sun-wu-18",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 12,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-17-action-cai-wenji-96",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 17,
+    "orderInMonth": 96,
+    "cellId": 3312,
+    "who": "cai-wenji",
+    "intentId": "intent-15-cai-wenji-251",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3648,
+      "toZ": 5
+    },
+    "fromCellId": 3228,
+    "toCellId": 3312,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3228,
+      3312
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.3310023310023307,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 12,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-17-action-freyja-97",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 17,
+    "orderInMonth": 97,
+    "cellId": 3060,
+    "who": "freyja",
+    "intentId": "intent-15-freyja-250",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3648,
+      "toZ": 5
+    },
+    "fromCellId": 2976,
+    "toCellId": 3060,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2976,
+      3060
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 3060,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 12,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-17-action-rei-ayanami-98",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 17,
+    "orderInMonth": 98,
+    "cellId": 1031,
+    "who": "rei-ayanami",
+    "intentId": "intent-17-rei-ayanami-315",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "separate",
+      "targets": [
+        {
+          "kind": "voxel",
+          "position": {
+            "x": 23,
+            "y": 13,
+            "z": 4
+          }
+        }
+      ],
+      "toolStackId": "stack-rei-ayanami-41-2"
+    },
+    "fromCellId": 1031,
+    "toCellId": 1031,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1031
+    ],
+    "status": "completed",
+    "result": "从灌木分离出纤维 × 2",
+    "diff": {
+      "sourceMaterialId": 9,
+      "replacementMaterialId": 2,
+      "outputs": [
+        {
+          "materialId": 20,
+          "quantity": 2
+        }
+      ],
+      "productionMultiplier": 1.25,
+      "toolMaterialId": 41,
+      "toolStackId": "stack-rei-ayanami-41-2"
+    },
+    "planningTick": 12,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-17-decision-aphrodite-12-99",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 99,
+    "planningTick": 12,
+    "orderInTick": 5,
+    "cellId": 3648,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-14-aphrodite-232",
+      "optionId": "survival-reflex:17:12:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-17-aphrodite-interrupt-337",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-17-action-aphrodite-100",
+    "kind": "action",
+    "actionTick": 12,
+    "atMonth": 17,
+    "orderInMonth": 100,
+    "cellId": 3732,
+    "who": "aphrodite",
+    "intentId": "intent-17-aphrodite-interrupt-337",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 3984,
+      "toZ": 5
+    },
+    "fromCellId": 3648,
+    "toCellId": 3732,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3648,
+      3732
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 12,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-17-decision-potianfeng-13-101",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 101,
+    "planningTick": 13,
+    "orderInTick": 0,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-17-potianfeng-338",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙武关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-17-action-potianfeng-102",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 17,
+    "orderInMonth": 102,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "intentId": "intent-17-potianfeng-338",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ],
+          "referenceEventId": "e-17-action-sun-wu-18",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 13,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-17-action-freyja-103",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 17,
+    "orderInMonth": 103,
+    "cellId": 3144,
+    "who": "freyja",
+    "intentId": "intent-15-freyja-250",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3732,
+      "toZ": 5
+    },
+    "fromCellId": 3060,
+    "toCellId": 3144,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3060,
+      3144
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 3144,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 13,
+    "orderInTick": 2
+  },
+  {
+    "id": "e-17-action-cai-wenji-104",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 17,
+    "orderInMonth": 104,
+    "cellId": 3396,
+    "who": "cai-wenji",
+    "intentId": "intent-15-cai-wenji-251",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3732,
+      "toZ": 5
+    },
+    "fromCellId": 3312,
+    "toCellId": 3396,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3312,
+      3396
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.3310023310023307,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 13,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-17-action-rei-ayanami-105",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 17,
+    "orderInMonth": 105,
+    "cellId": 1031,
+    "who": "rei-ayanami",
+    "intentId": "intent-17-rei-ayanami-315",
+    "cause": "intent",
+    "action": {
+      "kind": "transfer",
+      "materialId": 20,
+      "quantity": 1,
+      "from": {
+        "kind": "ground",
+        "cellId": 1031,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "dropId": "drop-17-rei-ayanami-separate-358"
+    },
+    "fromCellId": 1031,
+    "toCellId": 1031,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1031
+    ],
+    "status": "completed",
+    "result": "纤维 × 1 改变了持有者",
+    "diff": {
+      "materialId": 20,
+      "quantity": 1,
+      "authorized": true,
+      "agreementAuthorized": false,
+      "permissionAuthorized": false,
+      "mandateAuthorized": false,
+      "mandateUse": null,
+      "from": {
+        "kind": "ground",
+        "cellId": 1031,
+        "z": 5
+      },
+      "to": {
+        "kind": "person",
+        "personId": "rei-ayanami"
+      },
+      "witnessedBy": [
+        "rei-ayanami"
+      ],
+      "sourceEventIds": [
+        "e-17-action-rei-ayanami-98",
+        "e-17-action-rei-ayanami-105"
+      ],
+      "sourceLineageKeys": [
+        "drop:drop-17-rei-ayanami-separate-358"
+      ]
+    },
+    "planningTick": 13,
+    "orderInTick": 4
+  },
+  {
+    "id": "e-17-decision-aphrodite-13-106",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 106,
+    "planningTick": 13,
+    "orderInTick": 5,
+    "cellId": 3732,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-14-aphrodite-232",
+      "optionId": "survival-reflex:17:13:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-17-aphrodite-interrupt-339",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-17-action-aphrodite-107",
+    "kind": "action",
+    "actionTick": 13,
+    "atMonth": 17,
+    "orderInMonth": 107,
+    "cellId": 3816,
+    "who": "aphrodite",
+    "intentId": "intent-17-aphrodite-interrupt-339",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 4152,
+      "toZ": 5
+    },
+    "fromCellId": 3732,
+    "toCellId": 3816,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3732,
+      3816
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 13,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-17-action-rei-ayanami-108",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 17,
+    "orderInMonth": 108,
+    "cellId": 1031,
+    "who": "rei-ayanami",
+    "intentId": "intent-17-rei-ayanami-315",
+    "cause": "intent",
+    "action": {
+      "kind": "act",
+      "operation": "combine",
+      "targets": [
+        {
+          "kind": "inventory-stack",
+          "personId": "rei-ayanami",
+          "stackId": "stack-rei-ayanami-20-17"
+        },
+        {
+          "kind": "inventory-stack",
+          "personId": "rei-ayanami",
+          "stackId": "stack-rei-ayanami-20-17"
+        }
+      ]
+    },
+    "fromCellId": 1031,
+    "toCellId": 1031,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      1031
+    ],
+    "status": "completed",
+    "result": "纤维与纤维结合为绳",
+    "diff": {
+      "techniqueId": "technique:combine-inventory:20x2:23",
+      "inputMaterialIds": [
+        20,
+        20
+      ],
+      "outputMaterialId": 23,
+      "outputQuantity": 1,
+      "baseOutputQuantity": 1,
+      "outputStackId": "stack-rei-ayanami-23-17",
+      "sourceEventId": "e-17-action-rei-ayanami-108"
+    },
+    "planningTick": 14,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-17-action-freyja-109",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 17,
+    "orderInMonth": 109,
+    "cellId": 3228,
+    "who": "freyja",
+    "intentId": "intent-15-freyja-250",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3816,
+      "toZ": 5
+    },
+    "fromCellId": 3144,
+    "toCellId": 3228,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3144,
+      3228
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 3228,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 14,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-17-decision-aphrodite-14-110",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 110,
+    "planningTick": 14,
+    "orderInTick": 2,
+    "cellId": 3816,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-14-aphrodite-232",
+      "optionId": "survival-reflex:17:14:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-17-aphrodite-interrupt-340",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-17-action-aphrodite-111",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 17,
+    "orderInMonth": 111,
+    "cellId": 3900,
+    "who": "aphrodite",
+    "intentId": "intent-17-aphrodite-interrupt-340",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 4152,
+      "toZ": 5
+    },
+    "fromCellId": 3816,
+    "toCellId": 3900,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3816,
+      3900
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 14,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-17-decision-potianfeng-14-112",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 112,
+    "planningTick": 14,
+    "orderInTick": 4,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-17-potianfeng-341",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙武关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-17-action-potianfeng-113",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 17,
+    "orderInMonth": 113,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "intentId": "intent-17-potianfeng-341",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ],
+          "referenceEventId": "e-17-action-sun-wu-18",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 14,
+    "orderInTick": 5
+  },
+  {
+    "id": "e-17-action-cai-wenji-114",
+    "kind": "action",
+    "actionTick": 14,
+    "atMonth": 17,
+    "orderInMonth": 114,
+    "cellId": 3480,
+    "who": "cai-wenji",
+    "intentId": "intent-15-cai-wenji-251",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3900,
+      "toZ": 5
+    },
+    "fromCellId": 3396,
+    "toCellId": 3480,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3396,
+      3480
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2.3310023310023307,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 14,
+    "orderInTick": 6
+  },
+  {
+    "id": "e-17-action-cai-wenji-115",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 17,
+    "orderInMonth": 115,
+    "cellId": 3564,
+    "who": "cai-wenji",
+    "intentId": "intent-15-cai-wenji-251",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3900,
+      "toZ": 5
+    },
+    "fromCellId": 3480,
+    "toCellId": 3564,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3480,
+      3564
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 3.4965034965034962,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [],
+      "carriedPersonIds": [
+        "born-16-cai-wenji-7"
+      ]
+    },
+    "planningTick": 15,
+    "orderInTick": 0
+  },
+  {
+    "id": "e-17-action-freyja-116",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 17,
+    "orderInMonth": 116,
+    "cellId": 3312,
+    "who": "freyja",
+    "intentId": "intent-15-freyja-250",
+    "cause": "intent",
+    "action": {
+      "kind": "move",
+      "toCellId": 3900,
+      "toZ": 5
+    },
+    "fromCellId": 3228,
+    "toCellId": 3312,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3228,
+      3312
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 1.8181818181818181,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": [
+        {
+          "cellId": 3312,
+          "z": 4,
+          "from": 8,
+          "to": 2
+        }
+      ]
+    },
+    "planningTick": 15,
+    "orderInTick": 1
+  },
+  {
+    "id": "e-17-decision-aphrodite-15-117",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 117,
+    "planningTick": 15,
+    "orderInTick": 2,
+    "cellId": 3900,
+    "who": "aphrodite",
+    "decision": {
+      "kind": "revise",
+      "intentId": "intent-14-aphrodite-232",
+      "optionId": "survival-reflex:17:15:aphrodite",
+      "mode": "interrupt",
+      "interruptionKind": "survival-reflex",
+      "reason": "本人当前生存风险最高"
+    },
+    "intentId": "intent-17-aphrodite-interrupt-342",
+    "domain": "strategic",
+    "usedModel": false,
+    "result": "阿佛洛狄忒暂时处理：先处理本人迫近的生存危险"
+  },
+  {
+    "id": "e-17-action-aphrodite-118",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 17,
+    "orderInMonth": 118,
+    "cellId": 3901,
+    "who": "aphrodite",
+    "intentId": "intent-17-aphrodite-interrupt-342",
+    "cause": "survival-reflex",
+    "action": {
+      "kind": "move",
+      "toCellId": 4237,
+      "toZ": 5
+    },
+    "fromCellId": 3900,
+    "toCellId": 3901,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      3900,
+      3901
+    ],
+    "status": "progressed",
+    "result": "沿可容身空间推进了 1 步",
+    "diff": {
+      "spentWork": 2,
+      "verticalPath": [
+        5,
+        5
+      ],
+      "materialChanges": []
+    },
+    "planningTick": 15,
+    "orderInTick": 3
+  },
+  {
+    "id": "e-17-decision-potianfeng-15-119",
+    "kind": "decision",
+    "atMonth": 17,
+    "orderInMonth": 119,
+    "planningTick": 15,
+    "orderInTick": 4,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "decision": {
+      "kind": "start",
+      "optionId": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+      "reason": "对方刚向自己说了一件有真实生活来源的事，需要给出明确回应"
+    },
+    "intentId": "intent-17-potianfeng-343",
+    "domain": "social",
+    "usedModel": false,
+    "result": "破天锋决定：回应孙武关于失败与挫折的话：接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节"
+  },
+  {
+    "id": "e-17-action-potianfeng-120",
+    "kind": "action",
+    "actionTick": 15,
+    "atMonth": 17,
+    "orderInMonth": 120,
+    "cellId": 2962,
+    "who": "potianfeng",
+    "intentId": "intent-17-potianfeng-343",
+    "cause": "intent",
+    "action": {
+      "kind": "communicate",
+      "content": {
+        "id": "respond-conversation:e-17-action-sun-wu-18:potianfeng",
+        "kind": "claim",
+        "summary": "接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节",
+        "conversation": {
+          "version": "grounded-conversation-v1",
+          "basisKey": "grounded-conversation-v1|topic=failure|speaker=sun-wu|listener=potianfeng|sources=e-7-action-sun-wu-33",
+          "topic": "failure",
+          "turn": "response",
+          "speakerId": "potianfeng",
+          "listenerId": "sun-wu",
+          "sourceFactIds": [
+            "e-7-action-sun-wu-33"
+          ],
+          "referenceEventId": "e-17-action-sun-wu-18",
+          "stance": "supportive"
+        }
+      },
+      "audience": [
+        "sun-wu"
+      ],
+      "channel": "voice"
+    },
+    "fromCellId": 2962,
+    "toCellId": 2962,
+    "fromZ": 5,
+    "toZ": 5,
+    "pathSegment": [
+      2962
+    ],
+    "status": "blocked",
+    "result": "这段生活对话已经回应过",
+    "diff": {
+      "groundedConversationBlocked": true
+    },
+    "planningTick": 15,
+    "orderInTick": 5
+  }
+]

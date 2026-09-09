@@ -18,10 +18,17 @@ import { createCognitionState, recordIntentGoalOutcome } from './cognition';
 import { createCharacterAgendaState } from './character-agenda';
 import { inventoryQuantity } from './person';
 import { addDrop } from './action-executor';
-import { WORLD_CELL_COUNT, cellId, cellX, cellY, cellsInRadius, isStandingPosition, neighbors4, setVoxel, surfaceMaterial, surfaceStandingPosition, topZ, voxelAt } from '../world/grid';
+import { captureBodySupports, settleChangedBodySupports } from './actions/support-settlement';
+import { WORLD_CELL_COUNT, cellId, cellX, cellY, cellsInRadius, neighbors4, setVoxel, surfaceMaterial, surfaceStandingPosition, topZ, voxelAt } from '../world/grid';
 import { seededFraction } from '../world/generator';
 import { shelterHeatRelief, survivalShelterAt } from './structure';
+import { physicalStructuresOf } from './physical-structure-index';
 import { advanceWorksMonth, recordWorkShelterUse } from './works';
+import { workOccupiedVoxels } from './work-layout';
+import { syncWorkVoxelMutation } from './work-materials';
+import { planFireProcesses } from './thermal-process';
+import { reconcileWorkStorage } from './work-storage';
+import { bodyMetabolismEnvironmentAt, settleBodyMetabolism } from './body-metabolism';
 import { advanceAnimalBondsMonth } from './animal-bonds';
 import { geneticKinshipRisk, inheritedGeneticLoad, KINSHIP_RISK_KNOWLEDGE_ID } from './kinship';
 import { remember } from './memory';
@@ -34,10 +41,8 @@ import {
   grantProphetKnowledge,
   hasTrait,
   heatHarmMultiplier,
-  heatHydrationMultiplier,
   injuryRecoveryMultiplier,
   injuryWorseningRiskMultiplier,
-  nutritionMetabolicMultiplier,
   personTraitsAtBirth,
   traitDefinition,
   type TraitBirthResult,
@@ -68,10 +73,6 @@ function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
 }
 
-const HIBERNATION_HYDRATION_COST = 0.35;
-const HIBERNATION_NUTRITION_COST = 0.3;
-const HIBERNATION_HEALTH_COST = 0.25;
-
 function hasImmediateHibernationHydrationRecovery(
   state: SimulationState,
   person: PersonState,
@@ -87,10 +88,10 @@ function hasImmediateHibernationHydrationRecovery(
   ));
 }
 
-function event(state: SimulationState, atMonth: number, events: EnvironmentFact[], change: EnvironmentFact['change'], result: string, diff: Record<string, unknown>, person?: PersonState): EnvironmentFact {
+function event(state: SimulationState, atMonth: number, events: EnvironmentFact[], change: EnvironmentFact['change'], result: string, diff: Record<string, unknown>, person?: PersonState, eventId?: string): EnvironmentFact {
   void state;
   const fact: EnvironmentFact = {
-    id: `e-${atMonth}-environment-${change}-${events.length}`,
+    id: eventId ?? `e-${atMonth}-environment-${change}-${events.length}`,
     kind: 'environment', atMonth, orderInMonth: events.length,
     cellId: person?.position.cellId ?? 0,
     change, ...(person ? { who: person.id } : {}), result, diff,
@@ -140,7 +141,7 @@ export function resolveTerminalCatastrophe(
 
 export function advanceWorldProcesses(state: SimulationState, atMonth: number): EnvironmentFact[] {
   const events: EnvironmentFact[] = [];
-  const changes: Array<{ cellId: number; from: number; to: number; process: string }> = [];
+  const changes: Array<{ cellId: number; z: number; from: number; to: number; process: string }> = [];
   const climate = state.civilization.climate;
   const weather = state.civilization.weather;
   const pending: Array<{ cell: number; to: number; process: string }> = [];
@@ -199,72 +200,64 @@ export function advanceWorldProcesses(state: SimulationState, atMonth: number): 
       && neighbors4(cell).some((neighbor) => surfaceMaterial(state.world.grid, neighbor) === Material.Water)
       && seededFraction(state.seed, `world-process:${atMonth}:${cell}:${surface}`) < 0.045) {
       pending.push({ cell, to: Material.WetSoil, process: 'soil-recovery' });
-    } else if (surface === Material.Fire) {
-      const sample = seededFraction(state.seed, `world-process:${atMonth}:${cell}:${surface}`);
-      if (sample < 0.28 || weather.kind === 'rain' || weather.kind === 'storm' || weather.kind === 'snow') {
-        pending.push({ cell, to: Material.Ash, process: 'burn-out' });
-        for (const neighbor of neighbors4(cell)) {
-          const nearby = surfaceMaterial(state.world.grid, neighbor);
-          if (materialHas(nearby, 'flammable') && seededFraction(state.seed, `fire-spread:${atMonth}:${cell}:${neighbor}`) < climate.severity * 0.12) {
-            pending.push({ cell: neighbor, to: Material.Fire, process: 'fire-spread' });
-          }
-        }
-      }
     } else if ((surface === Material.Soil || surface === Material.ExhaustedSoil)
       && weather.kind === 'rain'
       && seededFraction(state.seed, `world-process:${atMonth}:${cell}:${surface}`) < weather.intensity * 0.022) {
       pending.push({ cell, to: Material.WetSoil, process: 'rain-soak' });
     }
   }
+  const fireProcesses = planFireProcesses(state.world, { seed: state.seed, atMonth, weatherKind: weather.kind });
+  for (const fire of fireProcesses.filter((candidate) => !candidate.survived)) {
+    const cell = cellId(fire.position.x, fire.position.y);
+    // Preserve the existing neighbouring-surface spread process. Covered fire
+    // participates in ordinary burnout instead of disappearing from the scan.
+    for (const neighbor of neighbors4(cell)) {
+      const nearby = surfaceMaterial(state.world.grid, neighbor);
+      if (materialHas(nearby, 'flammable') && seededFraction(state.seed, `fire-spread:${atMonth}:${cell}:${neighbor}`) < climate.severity * 0.12) {
+        pending.push({ cell: neighbor, to: Material.Fire, process: 'fire-spread' });
+      }
+    }
+  }
+  const bodySupportsBefore = captureBodySupports(state);
   for (const change of pending.slice(0, 160)) {
     const from = surfaceMaterial(state.world.grid, change.cell);
     if (from === change.to) continue;
-    setVoxel(state.world.grid, cellX(change.cell), cellY(change.cell), topZ(state.world.grid, change.cell), change.to);
-    changes.push({ cellId: change.cell, from, to: change.to, process: change.process });
+    const z = topZ(state.world.grid, change.cell);
+    setVoxel(state.world.grid, cellX(change.cell), cellY(change.cell), z, change.to);
+    changes.push({ cellId: change.cell, z, from, to: change.to, process: change.process });
   }
-  if (changes.length) event(state, atMonth, events, 'material', `${changes.length} 个格子的物质因自然过程发生变化`, { changes });
-  const naturallyChangedCells = new Set(changes.map((change) => change.cellId));
-  for (const person of livingPeople(state)) {
-    if (!naturallyChangedCells.has(person.position.cellId)
-      || isStandingPosition(state.world.grid, person.position)) continue;
-    const from = { cellId: person.position.cellId, z: person.position.z };
-    const destination = cellsInRadius(from.cellId, 2)
-      .flatMap((candidateCellId) => {
-        const position = surfaceStandingPosition(state.world.grid, candidateCellId);
-        return position ? [position] : [];
-      })
-      .sort((left, right) => (
-        Math.abs(cellX(left.cellId) - cellX(from.cellId))
-          + Math.abs(cellY(left.cellId) - cellY(from.cellId))
-          + Math.abs(left.z - from.z) * 0.5
-      ) - (
-        Math.abs(cellX(right.cellId) - cellX(from.cellId))
-          + Math.abs(cellY(right.cellId) - cellY(from.cellId))
-          + Math.abs(right.z - from.z) * 0.5
-      ) || left.cellId - right.cellId || left.z - right.z)[0];
-    if (!destination) continue;
-    person.position.cellId = destination.cellId;
-    person.position.z = destination.z;
-    person.position.lastPath = [from.cellId, destination.cellId];
-    person.position.tickPath = [destination.cellId];
-    event(
-      state,
-      atMonth,
-      events,
-      'material',
-      `${person.name}脚下的自然支撑发生变化，身体移到附近可站立位置`,
-      {
+  for (const fire of fireProcesses) {
+    const { x, y, z } = fire.position;
+    if (!fire.survived && voxelAt(state.world.grid, x, y, z) === Material.Fire) {
+      setVoxel(state.world.grid, x, y, z, Material.Ash);
+      changes.push({ cellId: cellId(x, y), z, from: Material.Fire, to: Material.Ash,
+        process: fire.naturalBurnout ? 'burn-out' : 'precipitation-extinguish' });
+    }
+    fire.survived = voxelAt(state.world.grid, x, y, z) === Material.Fire;
+  }
+  if (changes.length || fireProcesses.length) {
+    const protectedFires = fireProcesses.filter((fire) => fire.precipitation && fire.survived && !fire.rainExposed && fire.cover).length;
+    const materialFact = event(state, atMonth, events, 'material', `${changes.length} 个格子的物质因自然过程发生变化${protectedFires
+      ? `；${protectedFires}处火源因实际遮挡未接触降水而保留下来` : ''}`, { changes,
+      ...(fireProcesses.length ? { fireProcesses } : {}),
+    });
+    for (const change of changes) syncWorkVoxelMutation(state.world,
+      { x: cellX(change.cellId), y: cellY(change.cellId), z: change.z },
+      change.from, change.to, atMonth, materialFact.id);
+    for (const settlement of settleChangedBodySupports(state, bodySupportsBefore, atMonth, materialFact.id)) {
+      event(state, atMonth, events, 'material', settlement.result, {
         process: 'natural-support-displacement',
-        fromCellId: from.cellId,
-        fromZ: from.z,
-        toCellId: destination.cellId,
-        toZ: destination.z,
-        sourceCellChanges: changes.filter((change) => change.cellId === from.cellId),
-      },
-      person,
-    );
+        ...settlement,
+        fromCellId: settlement.from.cellId,
+        fromZ: settlement.from.z,
+        toCellId: settlement.to.cellId,
+        toZ: settlement.to.z,
+        sourceCellChanges: changes.filter((change) => change.cellId === settlement.from.cellId),
+      }, personById(state, settlement.personId));
+    }
   }
   const destroyedContainers = state.containers.filter((container) => {
+    if (container.carrier) return false;
     const materialId = voxelAt(state.world.grid, container.position.x, container.position.y, container.position.z);
     return materialId !== Material.Container && materialId !== Material.Granary;
   });
@@ -276,10 +269,12 @@ export function advanceWorldProcesses(state: SimulationState, atMonth: number): 
         return position ? [position] : [];
       })[0];
     if (spillPosition) for (const stack of container.inventory) {
-      addDrop(state, stack.materialId, stack.quantity, spillPosition.cellId, atMonth, [...container.sourceEventIds, ...stack.sourceEventIds], 'destroyed-container', stack.recordPayloadId, spillPosition.z);
+      addDrop(state, stack.materialId, stack.quantity, spillPosition.cellId, atMonth, [...container.sourceEventIds, ...stack.sourceEventIds], 'destroyed-container', stack.recordPayloadId, spillPosition.z,
+        stack.sourceLineageKeys ?? [], undefined, undefined, stack.mechanicalState);
     }
   }
   if (destroyedContainers.length) state.containers = state.containers.filter((container) => !destroyedContainers.includes(container));
+  const bodySupportsBeforeCollapse = captureBodySupports(state);
   const worksOutcome = advanceWorksMonth(state.world, {
     seed: state.seed,
     atMonth,
@@ -290,7 +285,7 @@ export function advanceWorldProcesses(state: SimulationState, atMonth: number): 
     const builders = collapsed.builderIds
       .map((id) => state.people.find((person) => person.id === id)?.name ?? id)
       .join('、');
-    event(
+    const collapseFact = event(
       state,
       atMonth,
       events,
@@ -303,21 +298,30 @@ export function advanceWorldProcesses(state: SimulationState, atMonth: number): 
         components: collapsed.components,
       },
     );
+    const removedVoxels = new Set(workOccupiedVoxels(collapsed)
+      .map(({ position }) => `${position.x}:${position.y}:${position.z}`));
+    const affectedBodies = bodySupportsBeforeCollapse.filter(({ position }) => [-1, 0, 1]
+      .some((offset) => removedVoxels.has(`${cellX(position.cellId)}:${cellY(position.cellId)}:${position.z + offset}`)));
+    for (const settlement of settleChangedBodySupports(state, affectedBodies, atMonth, collapseFact.id)) {
+      event(state, atMonth, events, 'body', settlement.result, {
+        process: 'work-collapse-support-displacement',
+        workId: collapsed.id,
+        ...settlement,
+      }, personById(state, settlement.personId));
+    }
   }
   advanceAnimalBondsMonth(state.world, atMonth);
+  const storageEventId = `e-${atMonth}-environment-material-${events.length}`;
+  const storageChanges = reconcileWorkStorage(state, atMonth, storageEventId);
+  if (storageChanges.length) {
+    const storageFact = event(state, atMonth, events, 'material', '造物空腔随实际材料变化重新结算，原有内容物按围护状况保留或散失', { workStorageChanges: storageChanges });
+    // Keep the source identity supplied to the settlement exact.
+    if (storageFact.id !== storageEventId) throw new Error('储存空间自然结算的来源事件不一致');
+  }
   advanceAnimals(state, atMonth, events);
   return events;
 }
 
-function nearbyFires(state: SimulationState, person: PersonState): number {
-  let count = 0;
-  for (const cell of cellsInRadius(person.position.cellId, 2)) {
-    for (let z = Math.max(0, person.position.z - 2); z <= Math.min(state.world.grid.levels - 1, person.position.z + 2); z += 1) {
-      if (voxelAt(state.world.grid, cellX(cell), cellY(cell), z) === Material.Fire) count += 1;
-    }
-  }
-  return count;
-}
 
 function condition(state: SimulationState, person: PersonState, kind: ConditionInstance['kind']): ConditionInstance | undefined {
   void state;
@@ -727,12 +731,14 @@ function die(
   atMonth: number,
   events: EnvironmentFact[],
   cause: DeathCause,
-  options: { sourceEventIds?: string[]; vaporized?: boolean } = {},
+  options: { sourceEventIds?: string[]; vaporized?: boolean; planningTick?: number } = {},
 ): void {
   const healthBeforeDeath = person.body.health;
   person.diedAtMonth = atMonth;
   person.body.health = 0;
-  const deathEventId = `e-${atMonth}-environment-death-${events.length}`;
+  const deathEventId = options.planningTick === undefined
+    ? `e-${atMonth}-environment-death-${events.length}`
+    : `e-${atMonth}-environment-death-${options.planningTick}-${person.id}`;
   state.world.remains ??= [];
   const destroyedInventory = options.vaporized
     ? person.inventory.map((stack) => ({
@@ -740,6 +746,7 @@ function die(
         materialId: stack.materialId,
         quantity: stack.quantity,
         ...(stack.recordPayloadId ? { recordPayloadId: stack.recordPayloadId } : {}),
+        ...(stack.mechanicalState ? { mechanicalState: structuredClone(stack.mechanicalState) } : {}),
       }))
     : [];
   const estateInventory: Array<{
@@ -770,6 +777,8 @@ function die(
         person.position.z,
         [`inventory:${person.id}:${stack.id}`, ...(stack.sourceLineageKeys ?? [])],
         person.id,
+        undefined,
+        stack.mechanicalState,
       );
       estateInventory.push({
         sourceStackId: stack.id,
@@ -872,7 +881,8 @@ function die(
     ...(hibernationFailedIntentIds.length
       ? { hibernationFailedIntentIds: [...new Set(hibernationFailedIntentIds)] }
       : {}),
-  }, person);
+  }, person, deathEventId);
+  if (options.planningTick !== undefined) deathFact.planningTick = options.planningTick;
   if (options.vaporized) deathFact.planningTick = 1;
   if (deathFact.id !== deathEventId) throw new Error('死亡事实与遗体来源事件顺序不一致');
 }
@@ -1172,6 +1182,37 @@ export function synchronizeHibernationIntentSuspensions(
   return events;
 }
 
+/** Advance reserves within the open month, after everyone has had this episode's action opportunity. */
+export function advanceBodyTime(
+  state: SimulationState,
+  atMonth: number,
+  planningTick: number,
+  elapsedDays: number,
+  eventOffset = 0,
+): EnvironmentFact[] {
+  const events: EnvironmentFact[] = [];
+  for (const person of state.people) {
+    if (person.diedAtMonth !== undefined) continue;
+    if (person.body.health <= 0) {
+      die(state, person, atMonth, events, 'body-failure', { planningTick });
+      continue;
+    }
+    const metabolism = settleBodyMetabolism(person, elapsedDays, bodyMetabolismEnvironmentAt(state, person));
+    const fact = event(state, atMonth, events, 'body', `${person.name}的身体结算了经过的 ${elapsedDays} 日`,
+      metabolism, person, `e-${atMonth}-body-metabolism-${planningTick}-${person.id}`);
+    if (person.body.health <= 0) die(state, person, atMonth, events, 'body-failure', {
+      planningTick, sourceEventIds: [fact.id],
+    });
+  }
+  events.forEach((fact, index) => {
+    fact.planningTick = planningTick;
+    fact.orderInTick = eventOffset + index;
+    fact.orderInMonth = eventOffset + index;
+  });
+  return events;
+}
+
+/** Monthly lifecycle only. Call advanceBodyTime as time passes before closing the month. */
 export function advanceBodies(state: SimulationState, atMonth: number): EnvironmentFact[] {
   const events: EnvironmentFact[] = [];
   // A primitive action can reduce health to zero after the month's opening
@@ -1191,8 +1232,7 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     const hibernating = Boolean(hibernationCondition && hibernationPhase(hibernationCondition) === 'dormant');
     const shelter = survivalShelterAt(state, person.position);
     const sheltered = Boolean(shelter);
-    const fires = nearbyFires(state, person);
-    const fireProtected = fires > 0;
+    const { fireProtected } = bodyMetabolismEnvironmentAt(state, person);
     const clothed = inventoryQuantity(person, Material.Clothing) > 0 || inventoryQuantity(person, Material.LeatherClothing) > 0;
     const climate = state.civilization.climate;
     const weather = state.civilization.weather;
@@ -1220,6 +1260,11 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
         `${person.name}所在的实际庇护减轻了本月${coldLoadWithoutShelter > coldLoad ? '严寒' : '暑热'}负荷`, {
           shelterUse: {
             workIds: [...shelter.workIds],
+            structures: physicalStructuresOf(state).filter((structure) => structure.complete
+              && structure.interiorPositions.some((position) => position.cellId === person.position.cellId
+                && position.z === person.position.z)).map((structure) => ({
+              structureId: structure.id, constructionSourceEventIds: [...new Set(structure.sourceEventIds)],
+            })),
             position: { cellId: person.position.cellId, z: person.position.z },
             weatherProtection: shelter.weatherProtection,
             thermalInsulation: shelter.thermalInsulation,
@@ -1243,28 +1288,12 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     const postpartum = condition(state, person, 'postpartum-recovery')?.stage ?? 0;
     advanceAging(state, person, atMonth, events);
     const aging = condition(state, person, 'aging')?.stage ?? 0;
-    const heatHydrationExtra = (heat ? 1.35 * ([1, 1.3, 1.7, 2.2][heat] - 1) : 0)
-      + (weather.kind === 'drought' ? weather.intensity * 0.18 : 0);
-    const coldNutritionExtra = cold ? 1.25 * ([1, 1.25, 1.5, 1.8][cold] - 1) * coldTraitMultiplier : 0;
-    const hydrationCost = (hibernating
-      ? HIBERNATION_HYDRATION_COST
-      : 1.35 + heatHydrationExtra * heatHydrationMultiplier(person) + illness * 0.35 + pregnancy * 0.22 + postpartum * 0.12);
-    const nutritionCost = (hibernating
-      ? HIBERNATION_NUTRITION_COST
-      : 1.25 + coldNutritionExtra + illness * 0.38 + pregnancy * 0.28 + postpartum * 0.18)
-      * nutritionMetabolicMultiplier(person);
-    person.body.hydration = clamp(person.body.hydration - hydrationCost);
-    person.body.nutrition = clamp(person.body.nutrition - nutritionCost);
     let healthDelta = 0;
     let favorableRecoveryApplied = false;
-    if (hibernating) {
-      healthDelta -= HIBERNATION_HEALTH_COST;
-      if (state.civilization.epoch === 'chaotic' && climate.severity >= 8) healthDelta -= 0.15;
-    } else {
-      if (person.body.hydration < 10) healthDelta -= 7;
-      else if (person.body.hydration < 25) healthDelta -= 2;
-      if (person.body.nutrition < 10) healthDelta -= 6;
-      else if (person.body.nutrition < 25) healthDelta -= 2;
+    // Reserves, starvation/dehydration damage and dormant upkeep have already
+    // elapsed during the month's activity episodes. Only lifecycle effects
+    // and monthly recovery remain here.
+    if (!hibernating) {
       if (cold >= 3) healthDelta -= 2 * coldTraitMultiplier;
       if (heat >= 3) healthDelta -= 3 * heatTraitMultiplier;
       healthDelta -= Math.max(0, wound - 1) * 1.5 + Math.max(0, illness - 1) * 1.5;
@@ -1296,24 +1325,6 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
         }, person);
         hibernationCondition.sourceEventIds = [...new Set([...hibernationCondition.sourceEventIds, deterioration.id])].slice(-24);
       }
-      const suspendedIntents = intentsOwnedBy(state, person.id).filter((intent) => intent.ownerId === person.id
-        && intent.status === 'suspended'
-        && intent.suspendedForHibernationConditionId === hibernationCondition.id);
-      const suspendedIntent = suspendedIntents.find((intent) => !intent.suspendedByIntentId)
-        ?? suspendedIntents[suspendedIntents.length - 1];
-      event(state, atMonth, events, 'body', `${person.name}结算了脱水休眠 episode 的本月身体代价`, {
-        hibernationMonthlySettlement: true,
-        hibernationConditionId: hibernationCondition.id,
-        hibernationPhase: hibernationPhase(hibernationCondition),
-        monthlyCostApplied: true,
-        metabolicProfile: hibernating ? 'dormant' : 'awake-recovery',
-        hydrationCost,
-        nutritionCost,
-        healthDelta,
-        bodyBefore,
-        bodyAfter: { ...person.body },
-        ...(suspendedIntent ? { suspendedIntentId: suspendedIntent.id } : {}),
-      }, person);
     }
     if (!hibernating) recoverInjuries(state, person, atMonth, sheltered || fireProtected, events);
     advancePregnancies(state, person, atMonth, events);

@@ -1,0 +1,155 @@
+/* Filming scale: 2560 × 1440. Palette and typography follow AgentReplay,
+   ImmersiveInterface, and the game's --font-ui / --font-display tokens. */
+.recorded-dialogue {
+  --replay-primary: #f0eadb;
+  --replay-secondary: #b4bdad;
+  --replay-tertiary: #94a18e;
+  position: absolute;
+  z-index: 90;
+  top: 50%;
+  right: clamp(40px, 4.2vw, 108px);
+  box-sizing: border-box;
+  width: min(900px, 38vw);
+  padding: 38px 44px 40px;
+  border: 1px solid rgba(240, 234, 219, 0.18);
+  border-radius: 18px;
+  background: linear-gradient(150deg, rgba(21, 35, 31, 0.96), rgba(11, 19, 17, 0.92));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+  color: var(--replay-primary);
+  font-family: var(--font-ui, "IBM Plex Sans Variable", "PingFang SC", "Microsoft YaHei UI", sans-serif);
+  font-weight: 400;
+  pointer-events: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.recorded-dialogue *,
+.recorded-dialogue *::before,
+.recorded-dialogue *::after {
+  box-sizing: border-box;
+}
+
+.recorded-dialogue__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 30px;
+  color: var(--replay-secondary);
+  font-size: 23px;
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.recorded-dialogue__replay-mark {
+  color: #d6cda3;
+  font-size: 31px;
+  line-height: 1;
+}
+
+.recorded-dialogue__question {
+  margin-left: 32px;
+  padding: 24px 28px 26px;
+  border: 1px solid rgba(240, 234, 219, 0.1);
+  border-radius: 14px 14px 4px 14px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.recorded-dialogue__question-meta,
+.recorded-dialogue__speaker {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.recorded-dialogue__question-meta {
+  margin-bottom: 14px;
+  color: var(--replay-secondary);
+  font-size: 24px;
+  line-height: 1.5;
+}
+
+.recorded-dialogue time {
+  color: var(--replay-tertiary);
+  font-size: 22px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.recorded-dialogue__text {
+  display: grid;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.recorded-dialogue__layout-text,
+.recorded-dialogue__visible-text {
+  grid-area: 1 / 1;
+}
+
+.recorded-dialogue__layout-text {
+  visibility: hidden;
+}
+
+.recorded-dialogue__question-text {
+  color: #e2e8df;
+  font-size: 44px;
+  line-height: 1.55;
+  letter-spacing: 0.01em;
+}
+
+.recorded-dialogue__answer {
+  margin-top: 36px;
+  padding-top: 30px;
+  border-top: 1px solid rgba(240, 234, 219, 0.14);
+}
+
+.recorded-dialogue__speaker {
+  margin-bottom: 20px;
+}
+
+.recorded-dialogue__speaker h2 {
+  margin: 0;
+  color: #d6cda3;
+  font-family: var(--font-display, "Noto Serif SC Variable", "Source Han Serif SC", "Songti SC", serif);
+  font-size: 42px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.06em;
+}
+
+.recorded-dialogue__answer-text {
+  font-family: var(--font-display, "Noto Serif SC Variable", "Source Han Serif SC", "Songti SC", serif);
+  font-size: 48px;
+  font-weight: 430;
+  line-height: 1.58;
+  letter-spacing: 0.015em;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.25);
+}
+
+.recorded-dialogue__excerpt-note {
+  margin: 18px 0 0;
+  color: var(--replay-tertiary);
+  font-size: 22px;
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+}
+
+/* Scale down for an editing preview without affecting the native 1440p frame. */
+@media (max-width: 2100px) {
+  .recorded-dialogue { width: min(760px, 40vw); padding: 28px 32px 30px; }
+  .recorded-dialogue__eyebrow { font-size: 18px; margin-bottom: 22px; }
+  .recorded-dialogue__replay-mark { font-size: 25px; }
+  .recorded-dialogue__question { margin-left: 24px; padding: 18px 22px 20px; }
+  .recorded-dialogue__question-meta { font-size: 20px; margin-bottom: 10px; }
+  .recorded-dialogue time { font-size: 18px; }
+  .recorded-dialogue__question-text { font-size: 34px; }
+  .recorded-dialogue__answer { margin-top: 26px; padding-top: 24px; }
+  .recorded-dialogue__speaker { margin-bottom: 14px; }
+  .recorded-dialogue__speaker h2 { font-size: 34px; }
+  .recorded-dialogue__answer-text { font-size: 38px; }
+  .recorded-dialogue__excerpt-note { font-size: 18px; margin-top: 14px; }
+}

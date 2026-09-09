@@ -13,10 +13,10 @@ const SOCIETY_MAX_PIXEL_RATIO = 1.5;
 const EMBODIMENT_MAX_PIXEL_RATIO = 1.15;
 const CAMERA_TARGET_INSET_X = 12;
 const CAMERA_TARGET_INSET_Z = 10;
-const EMBODIMENT_EYE_HEIGHT = 0.44;
+const EMBODIMENT_EYE_HEIGHT = 0.48;
 
 export type SocietyCameraMode =
-  | { kind: 'overview' }
+  | { kind: 'overview'; framing?: { target: [number, number, number]; offset: [number, number, number]; key?: string } }
   | {
       kind: 'embodiment';
       agentId: string;
@@ -169,6 +169,8 @@ export function createCameraRuntime({
     };
   };
 
+  let framingSignature = '';
+  let hasOverviewFraming = false;
   const setMode = (society: SocietyState, mode: SocietyCameraMode) => {
     embodimentCamera.setCallbacks({
       onPointerLockChange: (locked) => readFrame().onEmbodimentPointerLockChange?.(locked),
@@ -188,10 +190,26 @@ export function createCameraRuntime({
       }
       return;
     }
-    if (!embodimentCamera.isActive()) return;
+    const leavingEmbodiment = embodimentCamera.isActive();
+    if (!leavingEmbodiment && !mode.framing) return;
     embodiedAgentId = null;
     lastEmbodimentAnchor.set(Number.NaN, Number.NaN, Number.NaN);
-    embodimentCamera.leave();
+    if (leavingEmbodiment) embodimentCamera.leave();
+    if (mode.framing) {
+      const signature = JSON.stringify(mode.framing);
+      if (signature !== framingSignature || leavingEmbodiment) {
+        framingSignature = signature;
+        hasOverviewFraming = true;
+        overviewFocusActive = false;
+        overviewFocusStrength = 0;
+        cameraTarget.fromArray(mode.framing.target);
+        controls.target.copy(cameraTarget);
+        camera.position.copy(cameraTarget).add(new THREE.Vector3().fromArray(mode.framing.offset));
+        cameraFinal.copy(camera.position);
+        cameraEntry.copy(camera.position);
+        camera.lookAt(cameraTarget);
+      }
+    }
     const { width, height } = readViewport();
     if (width > 0 && height > 0) {
       camera.setViewOffset(width, height, 0, height * 0.07, width, height);
@@ -457,7 +475,7 @@ export function createCameraRuntime({
     overviewControlsActive: false,
   };
   const update = (now: number, deltaSeconds: number): CameraRuntimeFrameState => {
-    const entryT = Math.min(1, (now - mountedAt) / 1100);
+    const entryT = hasOverviewFraming ? 1 : Math.min(1, (now - mountedAt) / 1100);
     const entryE = 1 - Math.pow(1 - entryT, 3);
     const embodimentActive = embodimentCamera.isActive();
     if (embodimentActive) {

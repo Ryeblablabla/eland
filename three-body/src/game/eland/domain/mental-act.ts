@@ -1,4 +1,4 @@
-import type { FactPredicate, SocialProposal, WorldRef } from './action';
+import type { FactPredicate, RepresentationInput, SocialProposal, WorldRef } from './action';
 
 /**
  * One subjective turn of mind. It can choose a direction and name fallible
@@ -32,9 +32,14 @@ export type MentalActOrientation =
 export interface MentalPlanTranslation {
   version: 'mental-plan-translation-v1';
   steps: string[];
-  disposition: 'act' | 'continue' | 'pause' | 'abandon' | 'stay';
+  disposition: 'act' | 'continue' | 'pause' | 'abandon' | 'stay' | 'uncompiled';
   /** Expected facts are checked against actual state, never the plan's prose. */
   completion?: { step: PlanCompletionCheck; goal: PlanCompletionCheck };
+  /** Model-authored semantic step, with entities bound at the decision time. */
+  currentStep?: {
+    kind?: 'speech' | 'physical'; description: string; targets: WorldRef[]; expectedResult?: string;
+    derivedTargets?: Array<{ target: WorldRef; source: WorldRef; relation: 'actor-possession' | 'perceived-placement' | 'visible-possession' | 'public-position' | 'support-surface' }>;
+  };
   /** Stable request-scoped handle used by Plan; never interpreted as a fact. */
   firstStepHandle?: string;
   continuationHandle?: string;
@@ -94,6 +99,10 @@ export interface MentalAct {
   /** The person's own declared speech meaning; Plan cannot add a commitment. */
   speechIntent?: MentalSpeechIntent;
   goal: string;
+  /** The person's initial concrete attempt or wait, not an executable API or a world fact. */
+  nextAttempt?: string;
+  /** The actor's chosen initial mode and actual subjects; never another person's consent. */
+  attempt?: { mode: 'observe' | 'act' | 'wait'; targets: WorldRef[] };
   /** The broad subjective direction chosen before Plan saw executable entries. */
   orientation?: MentalActOrientation;
   /** Whether the person meant this goal to persist beyond the current turn. */
@@ -114,11 +123,22 @@ export interface MentalAct {
   sourceEventIds: string[];
 }
 
+/** New words or a social response without choosing another goal or body plan. */
+export type MentalDeclaration = Pick<MentalAct,
+  'utterance' | 'delivery' | 'speechIntent' | 'sourceEventIds' | 'relationshipAppraisal'>;
+
+export function outwardDeclaration(decision: { mentalAct?: MentalAct; declaration?: MentalDeclaration }): MentalDeclaration | undefined {
+  return decision.mentalAct ?? decision.declaration;
+}
+
 export type MentalSpeechIntent =
   | { kind: 'expression' }
-  | { kind: 'proposal'; proposalKind: SocialProposal['kind']; counterpartIds: string[]; commitment: string }
+  | { kind: 'proposal'; proposalKind: SocialProposal['kind']; counterpartIds: string[]; commitment: string;
+      /** Fully bound terms authored by this Mind, never borrowed from a menu option. */
+      proposal?: SocialProposal; compilationProblems?: string[] }
   | { kind: 'accept' | 'reject' | 'end-agreement' | 'revoke-permission' | 'leave-collective' | 'share-knowledge'; referenceId: string }
-  | { kind: 'prediction' | 'request-information' };
+  | { kind: 'prediction'; prediction?: Extract<RepresentationInput, { kind: 'prediction' }>['prediction']; compilationProblems?: string[] }
+  | { kind: 'request-information' };
 export type PlanSuccessCondition =
   | { kind: 'fact'; predicate: FactPredicate }
   | { kind: 'near-target'; target: WorldRef; maxDistance: number }
@@ -134,6 +154,13 @@ export type PlanSuccessCondition =
 export interface PlanCompletionCheck {
   description: string;
   conditions: PlanSuccessCondition[];
+  /** Independent review of whether this exact check can establish the stated outcome.
+   * A different check needs its own review; binding produced-work to its real output retains it.
+   */
+  meaningReview?: {
+    sufficiency: 'sufficient' | 'insufficient' | 'unverified';
+    reason: string;
+  };
 }
 
 /** An observed arrival within this chosen plan, not a permanent state claim. */

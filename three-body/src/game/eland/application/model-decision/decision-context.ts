@@ -1,5 +1,5 @@
 import { materialDefinition } from '../../domain/material';
-import { perceiveMaterial, type PerceivedMaterialProfile } from '../../domain/material-perception';
+import { perceiveMaterial, type PerceivedMaterialProfile, type PerceivedPhysicalMaterialProfile } from '../../domain/material-perception';
 import { ageMonths } from '../../domain/person';
 import {
   retrieveAgentMemories,
@@ -7,7 +7,7 @@ import {
 } from '../../domain/agent-memory';
 import { effectivePersonality } from '../../domain/personality';
 import type { DecisionContext } from '../../simulation';
-import { CONTAINER_CAPACITY } from '../../domain/container';
+import { CONTAINER_CAPACITY, containerById } from '../../domain/container';
 import { assessSocialRepetition } from '../../domain/social-repetition';
 import { buildPersonExperienceLayer, buildPersonSoul } from '../../domain/person-soul';
 import {
@@ -24,11 +24,14 @@ import { traitDefinition, traitStatesOf } from '../../domain/trait';
 import { relationTo } from '../../domain/relation';
 import { actionOptionSemantics } from '../../domain/action-option-semantics';
 import { followUpSemanticallyMatches } from '../../domain/intent-follow-up';
+import { authoredAttemptReturnsToMind } from '../../domain/intent';
 import { projectMaterialPlanProvenance } from '../projects/project-material-provenance';
 import type { CharacterAgendaItem } from '../../domain/character-agenda';
 import type { MentalAct } from '../../domain/mental-act';
-import type { RepresentationInput } from '../../domain/action';
-import { cellX, cellY, surfaceMaterial, topPosition } from '../../world/grid';
+import type { IntentOutcomeReceipt, RepresentationInput } from '../../domain/action';
+import type { ActionFact } from '../../domain/model';
+import { actionFactsForPerson, compareWorldEventsInCanonicalOrder, worldEventById } from '../../domain/event-index';
+import { cellX, cellY, isStandingPosition, surfaceMaterial, topPosition, voxelAt } from '../../world/grid';
 import { shelterGeometryAt } from '../../domain/structure';
 import {
   decisionCounterpartIds,
@@ -38,14 +41,23 @@ import {
 import { mbtiTypeForPersonality, type MbtiType } from '../../domain/mbti-persona-presets';
 import { animalBondTrust } from '../../domain/animal-bonds';
 import { observeWorkAdoption } from '../../domain/works';
+import { languageBroadcastFromDiff, perceivedLanguageText } from '../../domain/language-perception';
+import { agreementIsKnownTo, type Agreement } from '../../domain/agreement';
+import { positionsCanTouch } from '../../domain/social-space';
+import { perceivedProjectMaterialDelivery } from '../../domain/project-material-request';
+import { describeNativeOperations } from '../native-operation';
+import type { NativeOperationDescriptor } from '../../domain/native-operation';
+import { nativeReferenceEntities, type NativeReferenceKind } from './native-operation-context';
+import { knownProjectCapabilities } from '../known-project-capabilities';
 
-function perceivedProperties(profile: PerceivedMaterialProfile): string[] {
+function perceivedProperties(profile: PerceivedPhysicalMaterialProfile): string[] {
   return [...new Set([
     profile.phase,
     profile.form,
     profile.appearance,
     ...(profile.loadBand ? [profile.loadBand] : []),
     ...(profile.rigidity ? [profile.rigidity] : []),
+    ...(profile.mechanicalCondition ? [profile.mechanicalCondition.summary] : []),
   ])];
 }
 
@@ -76,7 +88,145 @@ function openWorldFactCurrentCell(
   return remains?.position.cellId;
 }
 
+function recentActionTarget(event: ActionFact): unknown {
+  const action = event.action;
+  if (action.kind === 'attend') return structuredClone(action.target);
+  if (action.kind === 'act') return structuredClone(action.targets);
+  if (action.kind === 'world-interact') return structuredClone(action.adjudication.targets);
+  if (action.kind === 'move') return {
+    kind: 'voxel', position: { x: cellX(action.toCellId), y: cellY(action.toCellId), z: action.toZ ?? event.toZ },
+  };
+  if (action.kind === 'transfer') return {
+    from: structuredClone(action.from), to: structuredClone(action.to),
+    material: materialDefinition(action.materialId).name, quantity: action.quantity,
+  };
+  if (action.kind === 'inscribe') return { kind: 'inventory-stack', personId: event.who, stackId: action.carrierStackId };
+  // A spoken wave has recipients, not a magically selected or consenting addressee.
+  const broadcast = event.diff.languageBroadcast as { decodedByPersonIds?: string[] } | undefined;
+  return { kind: 'language', heardByPersonIds: [...(broadcast?.decodedByPersonIds ?? [])] };
+}
+
+interface RecentExperience {
+  sourceEventId: string;
+  atMonth: number;
+  actionTick?: number;
+  orderInMonth: number;
+  perspective: '本人行动' | '本人收到' | '本人受到影响' | '本人目击';
+  actor: string;
+  operation: string;
+  execution: string;
+  actualResult: string;
+}
+
+function experiencedExecution(event: ActionFact, recorded?: string): string {
+  // A resisted taking attempt happened even though no possession changed.
+  if (event.status === 'blocked' && event.diff.attempted === true) return 'attempted';
+  return recorded ?? (event.status === 'completed' ? 'performed'
+    : event.status === 'blocked' ? 'not-started' : event.status);
+}
+
+function recentExperiencesForDecision(context: DecisionContext, recalled: RecalledMemory[]): RecentExperience[] {
+  const { state, person } = context;
+  const atMonth = context.decisionMonth ?? state.clock.elapsedMonths + 1;
+  const recalledSourceIds = new Set(recalled.flatMap((memory) => memory.sourceEventIds));
+  // Recent direct memories are available now; older ones must have actually
+  // been recalled. A source reference alone never proves someone witnessed it.
+  const remembered = new Map<string, string>();
+  for (const memory of person.memories) {
+    if (memory.kind !== 'episode') continue;
+    for (const sourceId of memory.sourceEventIds) {
+      if (memory.createdAtMonth >= atMonth || recalledSourceIds.has(sourceId)) remembered.set(sourceId, memory.summary);
+    }
+  }
+  const events = new Map<string, ActionFact>();
+  const add = (event: ReturnType<typeof worldEventById>) => {
+    if (!event || event.kind !== 'action' || event.action.kind === 'talk' || event.atMonth > atMonth
+      || event.atMonth === atMonth && context.planningTick !== undefined
+        && (event.actionTick ?? event.planningTick ?? 0) > context.planningTick) return;
+    events.set(event.id, event);
+  };
+  for (const sourceId of remembered.keys()) add(context.currentMonthEvents?.find((event) => event.id === sourceId)
+    ?? worldEventById(state, sourceId));
+  const ownActions = actionFactsForPerson(state, person.id);
+  for (let index = ownActions.length - 1; index >= 0; index--) {
+    if (ownActions[index].atMonth < atMonth) break;
+    add(ownActions[index]);
+  }
+  for (const event of context.currentMonthEvents ?? []) if ('who' in event && event.who === person.id) add(event);
+  return [...events.values()].sort(compareWorldEventsInCanonicalOrder).flatMap((event): RecentExperience[] => {
+    const effects: Array<Record<string, unknown>> = Array.isArray(event.diff.appliedEffects)
+      ? event.diff.appliedEffects.filter((effect): effect is Record<string, unknown> => Boolean(effect) && typeof effect === 'object') : [];
+    const received = event.action.kind === 'transfer'
+      ? event.action.to.kind === 'person' && event.action.to.personId === person.id && Number(event.diff.quantity) > 0
+      : effects.some((effect) => effect.kind === 'transfer' && Number(effect.quantity) > 0
+        && (effect.destination as { kind?: string; personId?: string } | undefined)?.kind === 'person'
+        && (effect.destination as { personId?: string }).personId === person.id);
+    const witnessed = Array.isArray(event.diff.witnessedBy) && event.diff.witnessedBy.includes(person.id)
+      || effects.some((effect) => Array.isArray(effect.witnessedBy) && effect.witnessedBy.includes(person.id));
+    const affected = event.diff.victimId === person.id || event.diff.resistedBy === person.id;
+    const own = event.who === person.id;
+    if (!own && (!remembered.has(event.id) || !received && !witnessed && !affected)) return [];
+    return [{
+      sourceEventId: event.id, atMonth: event.atMonth, orderInMonth: event.orderInMonth,
+      ...(event.actionTick !== undefined ? { actionTick: event.actionTick } : {}),
+      perspective: own ? '本人行动' : received ? '本人收到' : affected ? '本人受到影响' : '本人目击',
+      actor: state.people.find((candidate) => candidate.id === event.who)?.name ?? event.who,
+      operation: event.action.kind === 'act' ? `act:${event.action.operation}` : event.action.kind,
+      execution: experiencedExecution(event),
+      // Others' compound actions may contain private effects. Reuse the
+      // observer's existing scoped receipt instead of exposing the whole diff.
+      actualResult: own ? event.result : remembered.get(event.id)!,
+    }];
+  }).slice(-6);
+}
+
+function knownProposalDetails(context: DecisionContext, agreement: Agreement) {
+  const { state, person } = context;
+  const namedPerson = (id: string) => ({ id, name: state.people.find((person) => person.id === id)?.name ?? id });
+  const proposal = structuredClone(agreement.proposal);
+  // The proposal's terms are shared; its author's private relationship reasoning is not.
+  if ('basis' in proposal) delete proposal.basis;
+  const event = context.currentMonthEvents?.find((event) => event.id === agreement.proposalEventId)
+    ?? state.world.past.find((event) => event.id === agreement.proposalEventId);
+  const broadcast = event?.kind === 'action' && event.action.kind === 'talk'
+    ? languageBroadcastFromDiff(event.diff) : undefined;
+  const utterance = event?.kind === 'action' && event.action.kind === 'talk'
+    ? broadcast ? perceivedLanguageText({ broadcast, observerId: person.id, speakerId: event.who, seed: state.seed })
+      : event.who === person.id ? event.action.speakerMeaning.summary : undefined
+    : undefined;
+  return {
+    proposer: namedPerson(agreement.proposerId),
+    parties: agreement.partyIds.map(namedPerson),
+    proposal,
+    proposalEventId: agreement.proposalEventId,
+    ...(typeof agreement.acceptByMonth === 'number' && Number.isFinite(agreement.acceptByMonth)
+      ? { acceptByMonth: agreement.acceptByMonth } : {}),
+    ...(agreement.acceptedAtMonth !== undefined ? { acceptedAtMonth: agreement.acceptedAtMonth } : {}),
+    sourceFacts: event?.kind === 'action' && utterance ? [{
+      eventId: event.id, atMonth: event.atMonth, speaker: namedPerson(event.who),
+      ...(broadcast?.sourceEventId ? { languageSourceEventId: broadcast.sourceEventId } : {}),
+      utterance, perception: event.who === person.id ? 'self-authored' as const : 'heard' as const,
+    }] : [],
+  };
+}
+
+/** Read-only units for material stacks, shared by every model-facing view. */
+export const MATERIAL_QUANTITY_SEMANTICS = Object.freeze({
+  appliesTo: '地面物料堆与本人、可见他人的持物栈',
+  unit: '份',
+  quantity: '可分别取用的份数，不表示单件材料的长度或整堆总重量',
+  perPortionDescription: 'perceivedAs与材料物性描述针对单份，不随份数增加而把单份变长或变重',
+  transfer: '候选动作的取用份数只是该次参数，不是人物携带上限；可明确选择其他份数，由真实存量和具体操作条件结算',
+});
+
 export interface DecisionRequestContext {
+  recentExperiences?: RecentExperience[];
+  materialQuantity?: typeof MATERIAL_QUANTITY_SEMANTICS;
+  nativeOperations?: NativeOperationDescriptor[];
+  nativeReferenceFacts?: Array<{ kind: NativeReferenceKind; id: string; summary: string; atMonth?: number }>;
+  knownProjects?: Array<{ id: string; summary: string; status: string; desiredFunction: string }>;
+  recentCompilationFeedback?: Array<{ eventId: string; atMonth: number; status: string; message: string; fields?: string[] }>;
+  pendingExecutionStep?: { eventId: string; atMonth: number; description: string };
   person: {
     id: string;
     name: string;
@@ -98,6 +248,7 @@ export interface DecisionRequestContext {
     inventory: Array<{
       stackId: string; materialId: number; name: string; properties: string[];
       perception: PerceivedMaterialProfile; quantity: number;
+      mechanicalCondition?: PerceivedPhysicalMaterialProfile['mechanicalCondition'];
     }>;
     knowledge: Array<{ id: string; kind: string; summary: string; confidence: number }>;
     procedures?: Array<{ id: string; summary: string; confidence: number; method: NonNullable<DecisionContext['person']['knowledge'][number]['procedural']> }>;
@@ -129,9 +280,22 @@ export interface DecisionRequestContext {
     };
   };
   clock: { elapsedMonths: number; planningTick?: number };
+  /** Latest real new Mind; retaining its goal never creates another author. */
+  currentIntention?: { sourceDecisionEventId: string; mentalAct: MentalAct };
+  reconsideration?: DecisionContext['reconsideration'];
   /** A current-month plan continuation reuses this exact, already spoken intention. */
   continuingPlan?: NonNullable<DecisionContext['continuingPlan']> & {
+    /** Derived from actual actions under this frozen Mind, not the current receipt alone. */
+    initialAttemptPerformed: boolean;
     recentResults: string[];
+    recentActions: Array<{
+      atMonth: number;
+      operation: string;
+      target: unknown;
+      actualResult: string;
+      localGoalProgress: string;
+      overallGoalAssessment: string;
+    }>;
     recentEffects: Array<{ atMonth: number; effects: unknown[] }>;
   };
   climate: DecisionContext['state']['civilization']['climate'];
@@ -149,12 +313,17 @@ export interface DecisionRequestContext {
     plan?: {
       steps: string[];
       disposition: string;
+      completion?: NonNullable<MentalAct['plan']>['completion'];
     };
     recentOutcomes?: Array<{
       execution: string;
       goalProgress: string;
       evidence: string;
       atMonth: number;
+      sourceEventId?: string;
+      actualResult?: string;
+      operation?: string;
+      overallGoalAssessment?: string;
     }>;
     stateGoalUntilMonth?: number;
     lifecycle?: {
@@ -168,8 +337,10 @@ export interface DecisionRequestContext {
     summary: string;
     status: string;
     atMonth: number;
-    plan: { steps: string[]; disposition: string };
-    recentOutcomes: Array<{ execution: string; goalProgress: string; evidence: string; atMonth: number }>;
+    plan?: { steps: string[]; disposition: string; completion?: NonNullable<MentalAct['plan']>['completion'] };
+    recentOutcomes: Array<{ execution: string; goalProgress: string; evidence: string; atMonth: number; sourceEventId?: string;
+      actualResult?: string; operation?: string; overallGoalAssessment?: string }>;
+    preflightResult?: string;
   }>;
   activeProject?: {
     id: string;
@@ -199,10 +370,21 @@ export interface DecisionRequestContext {
     lastProgressAtMonth: number;
     waitingFor?: 'world-change';
     plan?: { steps: string[]; disposition: string };
-    recentOutcomes?: Array<{ execution: string; goalProgress: string; evidence: string; atMonth: number }>;
+    recentOutcomes?: Array<{ execution: string; goalProgress: string; evidence: string; atMonth: number; sourceEventId?: string }>;
   }>;
   agreements: Array<{
     id: string; kind: string; status: string; partyIds: string[]; dueAtMonth?: number;
+    proposer: { id: string; name: string };
+    parties: Array<{ id: string; name: string }>;
+    proposal: Record<string, unknown>;
+    proposalEventId: string;
+    acceptByMonth?: number;
+    acceptedAtMonth?: number;
+    sourceFacts: Array<{
+      eventId: string; atMonth: number; speaker: { id: string; name: string };
+      languageSourceEventId?: string;
+      utterance: string; perception: 'self-authored' | 'heard';
+    }>;
     proposedAtMonth: number;
     pendingResponderNames: string[];
     requiredResponderIds: string[]; acceptedByPersonIds: string[]; fulfilledByPersonIds: string[];
@@ -272,7 +454,17 @@ export interface DecisionRequestContext {
     health: number; hydration: number; nutrition: number; conditions: DecisionContext['person']['conditions'];
     cellId: number; z: number; trust: number; bond: number; fear: number;
   }>;
-  visibleDrops: Array<{ id: string; name: string; properties: string[]; perception: PerceivedMaterialProfile; quantity: number; cellId: number; z: number }>;
+  visiblePossessions?: Array<{
+    personId: string; ownerName: string; stackId: string; name: string;
+    properties: string[]; quantity: number; cellId: number; z: number;
+    mechanicalCondition?: PerceivedPhysicalMaterialProfile['mechanicalCondition'];
+  }>;
+  visibleRemains?: Array<{ id: string; name: string; cellId: number; z: number; status: string }>;
+  visibleDrops: Array<{
+    id: string; name: string; properties: string[]; perception: PerceivedMaterialProfile; quantity: number; cellId: number; z: number;
+    mechanicalCondition?: PerceivedPhysicalMaterialProfile['mechanicalCondition'];
+    knownDelivery?: NonNullable<ReturnType<typeof perceivedProjectMaterialDelivery>>;
+  }>;
   visibleAnimals: Array<{
     id: string;
     speciesId: string;
@@ -286,6 +478,8 @@ export interface DecisionRequestContext {
     id: string; position: { x: number; y: number; z: number };
     capacity: number; usedCapacity: number;
     contents: Array<{ name: string; quantity: number }>;
+    workId?: string;
+    retainsWater?: boolean;
   }>;
   /** Durable nearby state asserted by completed open-ended world interactions. */
   visibleOpenWorldFacts?: Array<{
@@ -486,6 +680,23 @@ export function buildDecisionRequestContext(
     .filter((candidate, index, all) => all.findIndex((other) => other.materialId === candidate.materialId) === index)
     .slice(0, 12)
     .map(({ position, name, properties }) => ({ position, name, properties }));
+  // Material examples cannot describe free space: several adjacent positions
+  // may contain the same air while supporting different physical layouts.
+  // Expose nearby actual surfaces independently of any proposed activity.
+  for (const visibleCellId of context.visibleCells) {
+    const x = cellX(visibleCellId), y = cellY(visibleCellId);
+    if (Math.abs(x - cellX(person.position.cellId)) + Math.abs(y - cellY(person.position.cellId)) !== 1) continue;
+    for (const z of [person.position.z - 1, person.position.z, person.position.z + 1]) {
+      if (!isStandingPosition(state.world.grid, { cellId: visibleCellId, z })) continue;
+      if (visibleVoxels.some((voxel) => voxel.position.x === x && voxel.position.y === y && voxel.position.z === z)) continue;
+      const occupants = context.visiblePeople.filter((other) => other.position.cellId === visibleCellId
+        && other.position.z <= z + 1 && other.position.z + 1 >= z);
+      visibleVoxels.push({ position: { x, y, z }, name: occupants.length ? '有人占据的身旁位置' : '身旁空位', properties: [
+        `下方是${materialDefinition(voxelAt(state.world.grid, x, y, z - 1)).name}`,
+        occupants.length ? `${occupants.map((other) => other.name).join('、')}的身体正占据这里` : '身体与头部空间为空',
+      ] });
+    }
+  }
   const expressedKnowledgeIds = new Set(context.options.flatMap((option) => (
     option.nextAction.kind === 'talk'
       && option.nextAction.speakerMeaning.kind === 'claim'
@@ -519,6 +730,12 @@ export function buildDecisionRequestContext(
         tokenBudget: 1_400,
       });
   const counterpartIds = [...decisionCounterpartIds(context)];
+  const latestMind = [...(context.currentMonthEvents ?? [])].reverse().find((event) => event.kind === 'decision'
+    && event.usedModel && event.who === person.id && event.decision.mentalAct)
+    ?? [...state.world.past].reverse().find((event) => event.kind === 'decision'
+      && event.usedModel && event.who === person.id && event.decision.mentalAct);
+  const currentIntention = latestMind?.kind === 'decision' && latestMind.decision.mentalAct
+    ? { sourceDecisionEventId: latestMind.id, mentalAct: structuredClone(latestMind.decision.mentalAct) } : undefined;
   const recentMentalActs = context.mind?.deliberations ?? [...state.world.past]
     .reverse()
     .flatMap((event) => event.kind === 'decision'
@@ -528,19 +745,135 @@ export function buildDecisionRequestContext(
       ? [{ ...structuredClone(event.decision.mentalAct), atMonth: event.atMonth }]
       : [])
     .slice(0, 4);
+  const initialAttemptPerformed = (() => {
+    const continuation = context.continuingPlan;
+    const mode = continuation?.mentalAct.attempt?.mode;
+    if (!continuation || !mode || mode === 'wait') return false;
+    const origin = context.currentMonthEvents?.find((event) => event.id === continuation.sourceDecisionEventId)
+      ?? worldEventById(state, continuation.sourceDecisionEventId);
+    if (!origin) return false;
+    const relevant = new Map((context.currentMonthEvents ?? []).map((event) => [event.id, event]));
+    for (let index = state.world.past.length - 1; index >= 0; index--) {
+      const event = state.world.past[index];
+      if (event.atMonth < origin.atMonth) break;
+      if (!relevant.has(event.id)) relevant.set(event.id, event);
+    }
+    const roots = new Map<string, string>();
+    for (const event of [...relevant.values()].sort(compareWorldEventsInCanonicalOrder)) {
+      if (!('who' in event) || event.who !== person.id) continue;
+      if (event.kind === 'decision' && event.intentId) {
+        if (event.planContinuation) roots.set(event.intentId, event.planContinuation.sourceDecisionEventId);
+        else if (event.decision.authoredAttempt?.intentionSourceDecisionEventId) roots.set(event.intentId, event.decision.authoredAttempt.intentionSourceDecisionEventId);
+        else if (event.usedModel && event.decision.mentalAct) roots.set(event.intentId, event.id);
+      }
+      if (event.kind !== 'action' || !event.intentId || roots.get(event.intentId) !== continuation.sourceDecisionEventId
+        || event.cause !== 'intent' || !['completed', 'progressed', 'failed'].includes(event.status)) continue;
+      if (mode === 'observe') { if (event.action.kind === 'attend' && ['completed', 'failed'].includes(event.status)) return true; continue; }
+      if (event.action.kind === 'talk' || event.action.kind === 'attend') continue;
+      if (event.fromCellId !== event.toCellId || event.fromZ !== event.toZ) return true;
+      if (event.action.kind === 'move') {
+        continue;
+      }
+      if (event.action.kind === 'transfer') {
+        if (Number(event.diff.quantity) > 0 && JSON.stringify(event.action.from) !== JSON.stringify(event.action.to)) return true;
+        continue;
+      }
+      if (event.action.kind === 'world-interact') {
+        const effects = Array.isArray(event.diff.appliedEffects) ? event.diff.appliedEffects : [];
+        if (effects.some((effect) => effect && typeof effect === 'object'
+          && (['consume', 'produce', 'relocate', 'replace-voxel', 'assemble', 'modify-structure', 'transfer', 'bond-animal'].includes(String(effect.kind))
+            || effect.kind === 'body' && Number.isFinite(effect.delta) && Number(effect.delta) !== 0))) return true;
+        continue;
+      }
+      if (event.status === 'completed' || event.status === 'failed') return true;
+    }
+    return false;
+  })();
+  const recentPlanActions = (context.continuingPlan?.outcomeReceipts ?? []).slice(-4).flatMap((receipt) => {
+    const event = context.currentMonthEvents?.find((event) => event.id === receipt.actionEventId)
+      ?? state.world.past.find((event) => event.id === receipt.actionEventId);
+    return event?.kind === 'action' ? [{ event, receipt }] : [];
+  });
+  const ownEvent = (id: string) => context.currentMonthEvents?.find((event) => event.id === id)
+    ?? worldEventById(state, id);
+  const outcomeSummary = (receipt: IntentOutcomeReceipt) => {
+    const event = ownEvent(receipt.actionEventId);
+    return {
+      sourceEventId: receipt.actionEventId,
+      execution: event?.kind === 'action' ? experiencedExecution(event, receipt.execution) : receipt.execution,
+      goalProgress: receipt.goalProgress, evidence: receipt.evidence, atMonth: receipt.atMonth,
+      overallGoalAssessment: receipt.planAssessment?.goal ?? 'unverified',
+      ...(event?.kind === 'action' && event.who === person.id ? { actualResult: event.result,
+        operation: event.action.kind === 'act' ? `act:${event.action.operation}` : event.action.kind } : {}),
+    };
+  };
+  const lastWorkOrder = (intent: { actionEventIds: string[]; sourceDecisionEventId: string }) =>
+    ownEvent(intent.actionEventIds.at(-1) ?? intent.sourceDecisionEventId)?.orderInMonth ?? 0;
+  const relevantAgreements = state.agreements
+    .filter((agreement) => agreementIsKnownTo(agreement, person.id)
+      && (agreement.status === 'proposed' || agreement.status === 'active'
+        || (agreement.resolvedAtMonth ?? -99) >= state.clock.elapsedMonths - 6))
+    .sort((a, b) => (b.acceptedAtMonth ?? b.proposedAtMonth) - (a.acceptedAtMonth ?? a.proposedAtMonth));
+  const recentResolvedAgreementIds = new Set(relevantAgreements
+    .filter((agreement) => agreement.status !== 'proposed' && agreement.status !== 'active')
+    .slice(0, 6).map((agreement) => agreement.id));
+  const { projects: knownProjectStates, options: modelOptions, followUpOptions: modelFollowUpOptions } = knownProjectCapabilities(context);
+  const nativeOperations = describeNativeOperations({ ...context, options: modelOptions, followUpOptions: modelFollowUpOptions });
+  const projectIds = new Set(nativeReferenceEntities(nativeOperations).filter((entry) => entry.kind === 'project').map((entry) => entry.id));
+  if (activeProject) projectIds.add(activeProject.id);
+  const knownProjects = [...projectIds].flatMap((id) => {
+    const project = knownProjectStates.find((project) => project.id === id);
+    return project ? [{ id, summary: project.summary, status: project.status, desiredFunction: project.desiredFunction }] : [];
+  });
+  const nativeReferenceFacts = nativeReferenceEntities(nativeOperations).map((entry) => {
+    const event = entry.kind === 'source' ? context.currentMonthEvents?.find((event) => event.id === entry.id)
+      ?? state.world.past.find((event) => event.id === entry.id) : undefined;
+    const summary = knownProjects.find((project) => project.id === entry.id)?.summary
+      ?? person.knowledge.find((knowledge) => knowledge.id === entry.id)?.summary
+      ?? person.memories.find((memory) => memory.sourceEventIds.includes(entry.id))?.summary
+      ?? (event && 'who' in event && event.who === person.id ? event.result : undefined)
+      ?? (entry.kind === 'record' ? '本人可引用的实际记录载体，内容仍需本人阅读理解' : '该操作所引用的真实来源');
+    return { ...entry, summary, ...(event ? { atMonth: event.atMonth } : {}) };
+  });
+  const ownDecisionEvents = [...new Map([...state.world.past, ...(context.currentMonthEvents ?? [])]
+    .flatMap((event) => event.kind === 'decision' && event.who === person.id ? [[event.id, event] as const] : [])).values()]
+    .sort(compareWorldEventsInCanonicalOrder);
+  const latestChoice = [...ownDecisionEvents].reverse().find((event) => event.decision.mentalAct || event.planContinuation || event.decision.authoredAttempt);
+  const latestPlan = latestChoice?.planContinuation?.plan ?? latestChoice?.decision.authoredAttempt?.plan ?? latestChoice?.decision.mentalAct?.plan;
+  const pendingDescription = latestPlan?.currentStep?.description ?? latestPlan?.steps[0]
+    ?? latestChoice?.decision.mentalAct?.strategy ?? latestChoice?.decision.mentalAct?.goal
+    ?? (latestChoice?.decision.authoredAttempt ? latestChoice.decision.reason : undefined)
+    ?? (latestChoice?.decision.authoredAttempt ? '本次选择的尝试' : undefined);
+  const pendingExecutionStep = latestChoice?.executionCompilation?.status === 'unresolved' && pendingDescription
+    ? { eventId: latestChoice.id, atMonth: latestChoice.atMonth, description: pendingDescription } : undefined;
   return {
+    recentExperiences: recentExperiencesForDecision(context, recalledMemories),
+    materialQuantity: MATERIAL_QUANTITY_SEMANTICS,
+    nativeOperations, nativeReferenceFacts, knownProjects,
+    recentCompilationFeedback: [...ownDecisionEvents].reverse()
+      .flatMap((event) => event.executionCompilation?.problem ? [{
+        eventId: event.id, atMonth: event.atMonth, status: event.executionCompilation.status,
+        message: event.executionCompilation.problem.message,
+        ...(event.executionCompilation.problem.fields ? { fields: event.executionCompilation.problem.fields } : {}),
+      }] : []).slice(0, 4),
+    ...(pendingExecutionStep ? { pendingExecutionStep } : {}),
+    ...(context.reconsideration ? { reconsideration: structuredClone(context.reconsideration) } : {}),
+    ...(currentIntention ? { currentIntention } : {}),
     ...(context.continuingPlan ? {
       continuingPlan: {
         ...structuredClone(context.continuingPlan),
-        recentResults: context.continuingPlan.outcomeReceipts.slice(-4).flatMap((receipt) => {
-          const event = context.currentMonthEvents?.find((event) => event.id === receipt.actionEventId)
-            ?? state.world.past.find((event) => event.id === receipt.actionEventId);
-          return event?.kind === 'action' ? [event.result] : [];
-        }),
-        recentEffects: context.continuingPlan.outcomeReceipts.slice(-4).flatMap((receipt) => {
-          const event = context.currentMonthEvents?.find((event) => event.id === receipt.actionEventId)
-            ?? state.world.past.find((event) => event.id === receipt.actionEventId);
-          return event?.kind === 'action' && Array.isArray(event.diff.appliedEffects)
+        initialAttemptPerformed,
+        recentResults: recentPlanActions.map(({ event }) => event.result),
+        recentActions: recentPlanActions.map(({ event, receipt }) => ({
+          atMonth: event.atMonth,
+          operation: event.action.kind === 'act' ? `act:${event.action.operation}` : event.action.kind,
+          target: recentActionTarget(event),
+          actualResult: event.result,
+          localGoalProgress: receipt.goalProgress,
+          overallGoalAssessment: receipt.planAssessment?.goal ?? 'unverified',
+        })),
+        recentEffects: recentPlanActions.flatMap(({ event }) => {
+          return Array.isArray(event.diff.appliedEffects)
             ? [{ atMonth: event.atMonth, effects: structuredClone(event.diff.appliedEffects) }] : [];
         }),
       },
@@ -568,13 +901,14 @@ export function buildDecisionRequestContext(
       position: { cellId: person.position.cellId, z: person.position.z },
       inventory: person.inventory.map((stack) => {
         const material = materialDefinition(stack.materialId);
-        const perception = perceiveMaterial(stack.materialId, 'held');
+        const perception = perceiveMaterial(stack.materialId, 'held', stack.mechanicalState);
         return {
           stackId: stack.id,
           materialId: stack.materialId,
           name: material.name,
           properties: perceivedProperties(perception),
           perception,
+          ...(perception.mechanicalCondition ? { mechanicalCondition: perception.mechanicalCondition } : {}),
           quantity: stack.quantity,
         };
       }),
@@ -635,14 +969,10 @@ export function buildDecisionRequestContext(
       ...(context.activeIntent.plan ? { plan: {
         steps: [...context.activeIntent.plan.steps],
         disposition: context.activeIntent.plan.disposition,
+        ...(context.activeIntent.plan.completion ? { completion: structuredClone(context.activeIntent.plan.completion) } : {}),
       } } : {}),
       ...(context.activeIntent.outcomeReceipts?.length ? {
-        recentOutcomes: context.activeIntent.outcomeReceipts.slice(-4).map((receipt) => ({
-          execution: receipt.execution,
-          goalProgress: receipt.goalProgress,
-          evidence: receipt.evidence,
-          atMonth: receipt.atMonth,
-        })),
+        recentOutcomes: context.activeIntent.outcomeReceipts.slice(-4).map(outcomeSummary),
       } : {}),
       ...(context.activeIntent.stateGoalUntilMonth !== undefined ? { stateGoalUntilMonth: context.activeIntent.stateGoalUntilMonth } : {}),
       ...(context.activeIntent.lifecycle ? { lifecycle: {
@@ -654,22 +984,24 @@ export function buildDecisionRequestContext(
       } } : {}),
     } } : {}),
     recentCompletedWork: state.intents
-      .filter((intent) => intent.ownerId === person.id && intent.plan
-        && (intent.status === 'completed' || intent.status === 'failed' || intent.status === 'blocked'))
+      .filter((intent) => {
+        if (intent.ownerId !== person.id || !['completed', 'failed', 'blocked'].includes(intent.status)) return false;
+        const origin = ownEvent(intent.sourceDecisionEventId);
+        return intent.plan || intent.operationAuthorship === 'mind'
+          || origin?.kind === 'decision' && authoredAttemptReturnsToMind(origin.decision);
+      })
       .sort((left, right) => right.lastProgressAtMonth - left.lastProgressAtMonth
+        || lastWorkOrder(right) - lastWorkOrder(left)
         || right.createdAtMonth - left.createdAtMonth)
       .slice(0, 3)
       .map((intent) => ({
         summary: intent.summary,
         status: intent.status,
         atMonth: intent.lastProgressAtMonth,
-        plan: { steps: [...intent.plan!.steps], disposition: intent.plan!.disposition },
-        recentOutcomes: (intent.outcomeReceipts ?? []).slice(-4).map((receipt) => ({
-          execution: receipt.execution,
-          goalProgress: receipt.goalProgress,
-          evidence: receipt.evidence,
-          atMonth: receipt.atMonth,
-        })),
+        ...(intent.plan ? { plan: { steps: [...intent.plan.steps], disposition: intent.plan.disposition,
+          ...(intent.plan.completion ? { completion: structuredClone(intent.plan.completion) } : {}) } } : {}),
+        recentOutcomes: (intent.outcomeReceipts ?? []).slice(-4).map(outcomeSummary),
+        ...(intent.planPreflight ? { preflightResult: intent.planPreflight.summary } : {}),
       })),
     ...(activeProject ? { activeProject: {
       id: activeProject.id,
@@ -720,12 +1052,12 @@ export function buildDecisionRequestContext(
           })),
         } : {}),
       })),
-    agreements: state.agreements
-      .filter((agreement) => agreement.partyIds.includes(person.id) && (agreement.status === 'proposed' || agreement.status === 'active' || (agreement.resolvedAtMonth ?? -99) >= state.clock.elapsedMonths - 6))
-      .sort((a, b) => (b.acceptedAtMonth ?? b.proposedAtMonth) - (a.acceptedAtMonth ?? a.proposedAtMonth))
-      .slice(0, 6)
+    agreements: relevantAgreements
+      .filter((agreement) => agreement.status === 'proposed' || agreement.status === 'active'
+        || recentResolvedAgreementIds.has(agreement.id))
       .map((agreement) => ({
         id: agreement.id, kind: agreement.proposal.kind, status: agreement.status,
+        ...knownProposalDetails(context, agreement),
         partyIds: agreement.partyIds, proposedAtMonth: agreement.proposedAtMonth,
         pendingResponderNames: agreement.status === 'proposed'
           ? agreement.requiredResponderIds
@@ -768,7 +1100,7 @@ export function buildDecisionRequestContext(
     permissions: state.permissions
       .filter((permission) => permission.status === 'active' && (permission.grantorId === person.id || permission.granteeId === person.id))
       .map(({ id, grantorId, granteeId, materialId, validUntilMonth, status }) => ({ id, grantorId, granteeId, materialId, validUntilMonth, status })),
-    options: context.options.map((option) => {
+    options: modelOptions.map((option) => {
       const { id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp, nextAction, completionAction } = option;
       const actionBelief = outcomeBeliefFor(person, cognitiveOutcomeBasisKey(nextAction, option.goal));
       const goalBelief = goalOutcomeBeliefFor(
@@ -832,12 +1164,12 @@ export function buildDecisionRequestContext(
         } } : {}),
       };
     }),
-    followUpOptions: context.followUpOptions.map((option) => {
+    followUpOptions: modelFollowUpOptions.map((option) => {
       const { id, summary, reason, domain, estimatedMonths, risks, target } = option;
       return {
         id, summary, reason, domain, estimatedMonths, risks, target,
         semantics: structuredClone(actionOptionSemantics(option)),
-        matchesOptionIds: context.options
+        matchesOptionIds: modelOptions
           .filter((opening) => opening.requiresFollowUp && followUpSemanticallyMatches(opening, option))
           .map((opening) => opening.id),
       };
@@ -860,17 +1192,32 @@ export function buildDecisionRequestContext(
     }),
     visibleDrops: context.visibleDrops.map((drop) => {
       const material = materialDefinition(drop.materialId);
-      const perception = perceiveMaterial(drop.materialId, 'visible');
+      const perception = perceiveMaterial(drop.materialId, 'visible', drop.mechanicalState);
+      const knownDelivery = perceivedProjectMaterialDelivery(state, person, drop, context.decisionMonth ?? state.clock.elapsedMonths + 1);
       return {
         id: drop.id,
         name: material.name,
         properties: perceivedProperties(perception),
         perception,
+        ...(perception.mechanicalCondition ? { mechanicalCondition: perception.mechanicalCondition } : {}),
         quantity: drop.quantity,
         cellId: drop.cellId,
         z: drop.z,
+        ...(knownDelivery ? { knownDelivery } : {}),
       };
     }),
+    visiblePossessions: context.visiblePeople
+      .filter((other) => other.id !== person.id && positionsCanTouch(state.world.grid, person.position, other.position))
+      .flatMap((other) => other.inventory.filter((stack) => stack.quantity > 0).map((stack) => ({
+        personId: other.id, ownerName: other.name, stackId: stack.id,
+        name: materialDefinition(stack.materialId).name,
+        properties: perceivedProperties(perceiveMaterial(stack.materialId, 'visible', stack.mechanicalState)),
+        ...(stack.mechanicalState ? { mechanicalCondition: perceiveMaterial(stack.materialId, 'visible', stack.mechanicalState).mechanicalCondition } : {}),
+        quantity: stack.quantity, cellId: other.position.cellId, z: other.position.z,
+      }))),
+    visibleRemains: (context.visibleRemains ?? []).map((remains) => ({
+      id: remains.id, name: '人的遗体', cellId: remains.position.cellId, z: remains.position.z, status: remains.status,
+    })),
     visibleAnimals: context.visibleAnimals.map((animal) => ({
       id: animal.id,
       speciesId: animal.speciesId,
@@ -881,12 +1228,14 @@ export function buildDecisionRequestContext(
       bondTrust: animalBondTrust(state.world, animal.id, person.id),
     })),
     visibleContainers: state.containers
-      .filter((container) => context.visibleCells.includes(container.position.x + container.position.y * state.world.grid.width))
+      .filter((container) => context.visibleCells.includes(container.position.x + container.position.y * state.world.grid.width)
+        && containerById(state, container.id))
       .slice(0, 4)
       .map((container) => ({
         id: container.id,
         position: container.position,
-        capacity: CONTAINER_CAPACITY,
+        capacity: container.capacity ?? CONTAINER_CAPACITY,
+        ...(container.carrier ? { workId: container.carrier.workId, retainsWater: container.retainsWater === true } : {}),
         usedCapacity: container.inventory.reduce((sum, stack) => sum + stack.quantity, 0),
         contents: container.inventory.slice(0, 6).map((stack) => ({
           name: materialDefinition(stack.materialId).name,

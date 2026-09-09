@@ -33,6 +33,7 @@ import {
   type SocietyCameraMode,
 } from './society-scene/cameraRuntime';
 import { createDecorLayer } from './society-scene/decorLayer';
+import { createContactGrounding } from './society-scene/contactGrounding';
 import {
   createEnvironmentRuntime,
   type HumanSkySnapshot,
@@ -48,9 +49,19 @@ import {
   sameTerrainVisuals,
 } from './society-scene/visualInvalidation';
 import { visualSmoothNoise, visualSpatialHash } from './society-scene/visualNoise';
+import type {
+  SocietyCaptureApi,
+  SocietyCaptureCameraPose,
+  SocietyCaptureOptions,
+} from './society-scene/captureControls';
 
 export type { HumanSkySnapshot } from './society-scene/environmentRuntime';
 export type { SocietyCameraMode } from './society-scene/cameraRuntime';
+export type {
+  SocietyCaptureApi,
+  SocietyCaptureCameraPose,
+  SocietyCaptureOptions,
+} from './society-scene/captureControls';
 
 /**
  * GTAO 内部用 overrideMaterial 重渲染场景取深度/法线，
@@ -169,6 +180,8 @@ interface Props {
   onEmbodimentTargetChange?: (target: EmbodimentTargetView | null) => void;
   onEmbodimentPointerLockChange?: (locked: boolean) => void;
   onEmbodimentCameraSettled?: () => void;
+  /** Presentation-only capture, configured when the scene mounts. */
+  capture?: SocietyCaptureOptions;
 }
 
 export type SocietySceneSelection =
@@ -214,6 +227,7 @@ export default function SocietyScene3D({
   onEmbodimentTargetChange,
   onEmbodimentPointerLockChange,
   onEmbodimentCameraSettled,
+  capture,
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -237,6 +251,7 @@ export default function SocietyScene3D({
     onEmbodimentTargetChange,
     onEmbodimentPointerLockChange,
     onEmbodimentCameraSettled,
+    capture,
   });
   useEffect(() => {
     propsRef.current = {
@@ -259,17 +274,20 @@ export default function SocietyScene3D({
       onEmbodimentTargetChange,
       onEmbodimentPointerLockChange,
       onEmbodimentCameraSettled,
+      capture,
     };
   });
 
+  const captureTime = useRef(0);
+  const animationNow = () => propsRef.current.capture ? captureTime.current : performance.now();
   const animStart = useRef(0); // 挂载后由 effect 置为当前时间（渲染期不调非纯函数）
-  useEffect(() => { animStart.current = performance.now(); }, [society]);
+  useEffect(() => { animStart.current = animationNow(); }, [society]);
 
   // FigureLayer still consumes the original 3s animation clock. Scale only
   // its presentation timestamp so every visual layer follows the duration
   // chosen by the authoritative month buffer without rebuilding the scene.
   const playbackAnimationStartedAt = () => {
-    const now = performance.now();
+    const now = animationNow();
     const duration = Math.max(1, propsRef.current.monthPlaybackDurationMs);
     const elapsed = Math.max(0, now - animStart.current);
     return now - elapsed * DEFAULT_MONTH_PLAYBACK_MS / duration;
@@ -296,7 +314,14 @@ export default function SocietyScene3D({
     const world0 = propsRef.current.society.world;
     const COUNT = world0.width * world0.height;
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    const captureAtMount = propsRef.current.capture;
+    const manualCapture = Boolean(captureAtMount && captureAtMount.manual !== false);
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      powerPreference: 'high-performance',
+      preserveDrawingBuffer: Boolean(captureAtMount),
+    });
     renderer.setClearColor('#040610'); // 深空底色：星球浮在宇宙中
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -1515,8 +1540,14 @@ export default function SocietyScene3D({
         society: propsRef.current.society,
         animationStartedAt: playbackAnimationStartedAt(),
       }),
+      readNow: animationNow,
     });
-    decorApiRef.current = decorLayer.sync;
+    const contactGrounding = createContactGrounding(scene, camera, CELL_H);
+    aoExcluded.push(contactGrounding.object);
+    decorApiRef.current = (current, currentEra) => {
+      decorLayer.sync(current, currentEra);
+      contactGrounding.sync(current);
+    };
 
     // 环境音景：程序化风/雨/火声，跟随权威天气、纪元与近处火光；不写入任何状态。
     // 浏览器自动播放策略要求首次用户手势后才允许出声。
@@ -1544,6 +1575,8 @@ export default function SocietyScene3D({
           selectedAgentId: current.selectedAgentId,
           selectedObject: current.selectedObject,
           animationStartedAt: playbackAnimationStartedAt(),
+          hideNameLabels: current.capture?.hideNameLabels,
+          hideSpeech: current.capture?.hideSpeech,
         };
       },
     });
@@ -1677,9 +1710,11 @@ export default function SocietyScene3D({
       if (now - lastReticleHitAt >= 110) emitEmbodimentTarget(null);
     };
 
-    cameraRuntime.attachInput({
-      onSelectionGestureCancel: () => { selectionPointerDown = null; },
-    });
+    if (!captureAtMount) {
+      cameraRuntime.attachInput({
+        onSelectionGestureCancel: () => { selectionPointerDown = null; },
+      });
+    }
     cameraRuntime.setOverviewInteractionListener((active) => {
       // 用户拖拽/缩放镜头时解除人物聚焦，把控制权完整交还。
       if (active && focusAgentId) {
@@ -1700,7 +1735,7 @@ export default function SocietyScene3D({
     composer.addPass(new RenderPass(scene, camera)); // 先渲染 beauty（GTAO 在 readBuffer 上合成 AO）
     const gtaoPass = new ScopedGTAOPass(scene, camera, 1, 1);
     gtaoPass.updateGtaoMaterial({
-      radius: 0.18, // 覆盖约 1.5 个微体素棱，让贴地接触处真正暗下来
+      radius: 0.24, // Cover contacts between existing voxels without large dark halos.
       distanceExponent: 1,
       thickness: 0.12,
       scale: 1,
@@ -1708,7 +1743,7 @@ export default function SocietyScene3D({
       distanceFallOff: 1,
       screenSpaceRadius: false,
     });
-    gtaoPass.blendIntensity = 0.7;
+    gtaoPass.blendIntensity = 0.56;
     gtaoPass.excluded = aoExcluded;
     composer.addPass(gtaoPass);
     const tiltShiftPass = new ShaderPass(AdaptiveTiltShiftShader);
@@ -1720,7 +1755,8 @@ export default function SocietyScene3D({
     // 交互时优先保证镜头跟手；松手后恢复环境遮蔽和景深表现。
     cameraRuntime.setOverviewInteractionListener((active, embodimentActive) => {
       gtaoPass.enabled = !active && !embodimentActive;
-      tiltShiftPass.enabled = !active && !embodimentActive;
+      tiltShiftPass.enabled = !active && !embodimentActive
+        && !(propsRef.current.capture && propsRef.current.capture.disableTiltShift !== false);
     });
 
     const tiltFocusWorld = new THREE.Vector3();
@@ -1763,9 +1799,9 @@ export default function SocietyScene3D({
       const transitionVisibility = cameraRuntime.isZoomOutTransitionRequested()
         ? 0
         : THREE.MathUtils.smoothstep(entryT, 0.5, 1);
-      const desiredStrength = (0.12 + overviewMix * 0.88) * transitionVisibility;
-      const desiredBand = THREE.MathUtils.lerp(0.24, hasSubject ? 0.155 : 0.135, overviewMix);
-      const desiredBlurCssPixels = THREE.MathUtils.lerp(0.8, hasSubject ? 4.5 : 5.5, overviewMix);
+      const desiredStrength = (hasSubject ? 0.28 + overviewMix * 0.15 : 0.12) * transitionVisibility;
+      const desiredBand = hasSubject ? 0.24 : 0.34;
+      const desiredBlurCssPixels = hasSubject ? 2.2 : 1.0;
       tiltStrength = THREE.MathUtils.damp(tiltStrength, desiredStrength, 6, deltaSeconds);
       tiltBand = THREE.MathUtils.damp(tiltBand, desiredBand, 7, deltaSeconds);
       tiltBlurCssPixels = THREE.MathUtils.damp(tiltBlurCssPixels, desiredBlurCssPixels, 7, deltaSeconds);
@@ -1782,9 +1818,16 @@ export default function SocietyScene3D({
       const hpx = mount.clientHeight;
       if (wpx <= 0 || hpx <= 0) return;
       const maxPixelRatio = cameraRuntime.pixelRatioCap();
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio));
+      renderer.setPixelRatio(propsRef.current.capture
+        ? Math.max(0.25, propsRef.current.capture.pixelRatio ?? 1)
+        : Math.min(window.devicePixelRatio || 1, maxPixelRatio));
       renderer.setSize(wpx, hpx, false);
-      cameraRuntime.resizeCamera(wpx, hpx);
+      if (captureAtMount) {
+        camera.aspect = wpx / hpx;
+        camera.updateProjectionMatrix();
+      } else {
+        cameraRuntime.resizeCamera(wpx, hpx);
+      }
       composer.setPixelRatio(renderer.getPixelRatio());
       composer.setSize(wpx, hpx); // 内部会把 GTAO 等 Pass 按 pixelRatio 换算
       const pr = renderer.getPixelRatio();
@@ -1798,13 +1841,24 @@ export default function SocietyScene3D({
 
     // ---- 主循环 ----
     let raf = 0;
-    let previousFrameAt = performance.now();
+    let previousFrameAt = animationNow();
     let terrainWetness = 0;
-    const tick = () => {
-      raf = 0;
-      if (document.hidden) return;
-      raf = requestAnimationFrame(tick);
-      const now = performance.now();
+    let capturePose: SocietyCaptureCameraPose | null = null;
+    const applyCaptureCamera = () => {
+      if (!capturePose) return;
+      camera.position.set(...capturePose.position);
+      camera.lookAt(...capturePose.target);
+      if (capturePose.fov !== undefined && camera.fov !== capturePose.fov) {
+        camera.fov = capturePose.fov;
+        camera.updateProjectionMatrix();
+      }
+      camera.updateMatrixWorld(true);
+    };
+    const renderFrame = (now: number) => {
+      if (captureAtMount) {
+        captureTime.current = now;
+        applyCaptureCamera();
+      }
       const deltaSeconds = Math.min(0.05, Math.max(0, (now - previousFrameAt) / 1_000));
       previousFrameAt = now;
       figureLayer.sync(now);
@@ -1865,14 +1919,17 @@ export default function SocietyScene3D({
           dbgSociety.agentScreenPoint = null;
         }
       }
-      const cameraFrame = cameraRuntime.update(now, deltaSeconds);
+      const cameraFrame = captureAtMount
+        ? { embodimentActive: false, overviewControlsActive: false, entryProgress: 1 }
+        : cameraRuntime.update(now, deltaSeconds);
       if (cameraFrame.embodimentActive) {
         gtaoPass.enabled = false;
         tiltShiftPass.enabled = false;
       } else {
         gtaoPass.enabled = !cameraFrame.overviewControlsActive;
-        tiltShiftPass.enabled = !cameraFrame.overviewControlsActive;
-        updateTiltShift(deltaSeconds, cameraFrame.entryProgress);
+        tiltShiftPass.enabled = !cameraFrame.overviewControlsActive
+          && !(propsRef.current.capture && propsRef.current.capture.disableTiltShift !== false);
+        if (tiltShiftPass.enabled) updateTiltShift(deltaSeconds, cameraFrame.entryProgress);
         // 近景/聚焦时 GTAO 升采样：接触阴影更细腻；远景保持半分辨率。
         const gtaoScale = focusAgentId || cameraRuntime.overviewDistanceRatio() < 0.35 ? 0.75 : 0.5;
         if (gtaoPass.resolutionScale !== gtaoScale) {
@@ -1883,9 +1940,17 @@ export default function SocietyScene3D({
       updateEmbodimentReticle(now);
       figureLayer.layoutSpeechBubbles();
       environmentRuntime.updateAfterCamera(deltaSeconds);
+      contactGrounding.update(now);
       composer.render();
     };
+    const tick = () => {
+      raf = 0;
+      if (document.hidden) return;
+      raf = requestAnimationFrame(tick);
+      renderFrame(performance.now());
+    };
     const onVisibilityChange = () => {
+      if (manualCapture) return;
       if (document.hidden) {
         cancelAnimationFrame(raf);
         raf = 0;
@@ -1895,9 +1960,38 @@ export default function SocietyScene3D({
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
-    raf = requestAnimationFrame(tick);
+    if (!manualCapture) raf = requestAnimationFrame(tick);
+
+    const capturePosition = new THREE.Vector3();
+    const captureApi: SocietyCaptureApi = {
+      scene,
+      renderer,
+      camera,
+      renderAt: renderFrame,
+      setCamera: (pose) => {
+        capturePose = {
+          position: [...pose.position],
+          target: [...pose.target],
+          fov: pose.fov,
+        };
+        applyCaptureCamera();
+      },
+      setPlaybackStart: (timeMs) => { animStart.current = timeMs; },
+      getAgentPosition: (agentId) => figureLayer.writeWorldPosition(agentId, capturePosition)
+        ? [capturePosition.x, capturePosition.y, capturePosition.z]
+        : null,
+      resize,
+    };
+    // Wait for this commit's terrain/decor/state effects before exposing a ready
+    // capture handle; React StrictMode can dispose its first mount meanwhile.
+    let captureDisposed = false;
+    queueMicrotask(() => {
+      if (!captureDisposed) captureAtMount?.onReady(captureApi);
+    });
 
     return () => {
+      captureDisposed = true;
+      captureAtMount?.onReady(null);
       cancelAnimationFrame(raf);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       ro.disconnect();
@@ -1916,6 +2010,7 @@ export default function SocietyScene3D({
       cameraModeApiRef.current = null;
       embodimentTargetsApiRef.current = null;
       decorLayer.dispose();
+      contactGrounding.dispose();
       figureLayer.dispose();
       for (const entry of structureSelectionById.values()) entry.mesh.geometry.dispose();
       structureSelectionById.clear();

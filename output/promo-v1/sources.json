@@ -1,0 +1,79 @@
+{
+  "title": "ELAND · 没有写好的历史",
+  "duration_seconds": 42,
+  "resolution": "1920x1080",
+  "fps": 30,
+  "visual_sources": [
+    {
+      "name": "01-cosmos",
+      "source": "output/promo-v1/source/cosmos-world.mp4",
+      "duration": 5.6,
+      "start": 0,
+      "span": 5.6,
+      "crop": "1152:490:64:0"
+    },
+    {
+      "name": "02-descent",
+      "source": "output/promo-v1/source/cosmos-world.mp4",
+      "duration": 5.6,
+      "start": 8.7,
+      "span": 7.6,
+      "crop": "1152:490:64:0"
+    },
+    {
+      "name": "03-wildlife",
+      "source": "output/promo-v1/source/wildlife.mp4",
+      "duration": 6.6,
+      "start": 0.3,
+      "span": 6.6,
+      "crop": "1920:816:0:45"
+    },
+    {
+      "name": "04-homestead",
+      "source": "output/promo-v1/source/homestead.mp4",
+      "duration": 7.6,
+      "start": 0.3,
+      "span": 7.6,
+      "crop": "1920:816:0:80",
+      "zoom": true
+    },
+    {
+      "name": "05-dialogue",
+      "source": "knowledge-base/assets/gallery/world-dialogue.png",
+      "duration": 6.6,
+      "crop": "1360:578:100:80",
+      "still": true,
+      "zoom": true
+    },
+    {
+      "name": "06-orbits",
+      "source": "knowledge-base/assets/gallery/cosmos-orbits.png",
+      "duration": 6.6,
+      "crop": "1600:680:0:190",
+      "still": true,
+      "zoom": true
+    },
+    {
+      "name": "07-end",
+      "source": "output/promo-v1/source/cosmos-world.mp4",
+      "duration": 7,
+      "start": 30,
+      "span": 7,
+      "crop": "1152:490:64:0",
+      "dark": true
+    }
+  ],
+  "capture_notes": [
+    "cosmos-world.mp4 is a CFR transcode of knowledge-base/assets/hero-loop.mp4.",
+    "wildlife.mp4: formal game renderer replaying movement-frames.json, actual month 0 to 1 animal paths.",
+    "homestead.mp4: formal game renderer displaying civilization 16 saved state; stable showcase daylight.",
+    "The wildlife and homestead footage was captured on 2026-09-09. Gallery screenshots and hero recording predate this capture.",
+    "No generated AI video, synthetic actors, or simulated new gameplay outcomes were added.",
+    "Screenshots are animated with editorial pan/zoom. The video uses crops, fades, title text, and a darkened closing shot."
+  ],
+  "soundtrack": [
+    "three-body/public/audio/bgm/triple-dusk-human-world-loop.mp3",
+    "three-body/public/audio/bgm/triple-dusk-chaotic-era-loop.mp3",
+    "three-body/public/audio/bgm/triple-dusk-cosmic-loop.mp3"
+  ]
+}

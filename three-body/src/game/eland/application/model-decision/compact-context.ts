@@ -6,7 +6,6 @@ import {
   type DecisionProbeHandleMap,
 } from './capability-handles';
 import type { RecentDialogueContextLine } from './recent-dialogue';
-import { buildCharacterTurnNote } from '../../domain/person-soul';
 
 export interface CompactDecisionRequestContext {
   schemaVersion: 'decision-context-compact-v2';
@@ -42,29 +41,6 @@ function relevantPersonIds(options: readonly DecisionRequestContext['options'][n
   return result;
 }
 
-function activatedSoulFacet(context: DecisionRequestContext) {
-  const facets = context.person.soul.sceneFacets;
-  const find = (id: typeof facets[number]['id']) => facets.find((facet) => facet.id === id) ?? facets[0];
-  const needKinds = new Set(context.options.flatMap((option) => option.semantics.needKinds));
-  const purposes = new Set(context.options.map((option) => option.semantics.purpose));
-  if (context.activePressures.length || needKinds.has('safety') || needKinds.has('care') || needKinds.has('bereavement')) {
-    return find('danger-and-loss');
-  }
-  if (context.options.some((option) => option.semantics.obligation === 'required-response'
-    || option.semantics.reproduction?.phase === 'proposal'
-    || option.semantics.reproduction?.phase === 'response')) {
-    return find('autonomy-and-proposals');
-  }
-  if (context.activeIntent || context.activeProject || needKinds.has('commitment')
-    || context.options.some((option) => option.semantics.obligation === 'commitment-action')) {
-    return find('commitment-and-work');
-  }
-  if (needKinds.has('inquiry') || needKinds.has('capability') || purposes.has('inquiry')) {
-    return find('uncertainty-and-change');
-  }
-  return find('trust-and-closeness');
-}
-
 function compactSpeechAct(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(compactSpeechAct);
   if (!value || typeof value !== 'object') return value;
@@ -88,7 +64,10 @@ function compactTarget(
   }
   if (target.kind === 'inventory-stack') {
     const handle = handles.held.find((item) => item.stackId === target.stackId)?.handle;
-    return handle ? { kind: 'own-inventory-stack', handle } : { kind: 'inventory-stack' };
+    const visible = handles.visible.find((item) => item.kind === 'inventory-stack'
+      && item.personId === target.personId && item.stackId === target.stackId);
+    return handle ? { kind: 'own-inventory-stack', handle }
+      : visible ? { kind: 'inventory-stack', handle: visible.handle } : { kind: 'inventory-stack' };
   }
   const visible = handles.visible.find((item) => (
     (target.kind === 'drop' && item.kind === 'drop' && item.dropId === target.dropId)
@@ -218,8 +197,6 @@ export function buildCompactDecisionRequestContext(
     activeCues: [],
     rule: '没有可用的有来源经历 cue。',
   };
-  const activeFacet = activatedSoulFacet(context);
-  const characterNote = buildCharacterTurnNote(soul, experience, activeFacet.id);
   const { styleMatrix: currentDelivery, ...adaptivePersonality } = experience.adaptivePersonality;
   const targetedDrops = new Set([...selectedOptions, ...selectedFollowUps].flatMap((option) => (
     option.target?.kind === 'drop' ? [option.target.dropId] : []
@@ -247,7 +224,6 @@ export function buildCompactDecisionRequestContext(
         innerVoice: soul.innerVoice,
         ...(soul.prototype ? { prototypeSummary: soul.prototype.personalitySummary } : {}),
       },
-      characterNote,
       experience: {
         ...experience,
         adaptivePersonality: {
@@ -309,6 +285,7 @@ export function buildCompactDecisionRequestContext(
     },
     recentDialogue: (context.recentDialogue ?? []).slice(0, 4),
     commitments: {
+      recentExperiences: context.recentExperiences ?? [],
       recentCompletedWork: context.recentCompletedWork ?? [],
       ...(context.activeIntent ? { activeIntent: context.activeIntent } : {}),
       ...(context.activeProject ? { activeProject: {
@@ -344,9 +321,18 @@ export function buildCompactDecisionRequestContext(
         ...(intent.plan ? { plan: intent.plan } : {}),
         ...(intent.recentOutcomes ? { recentOutcomes: intent.recentOutcomes } : {}),
       })),
-      agreements: context.agreements.slice(0, 3).map((agreement) => ({
+      agreements: context.agreements.map((agreement) => ({
+        ref: handles.speechReferences?.find((reference) => reference.kind === 'agreement' && reference.id === agreement.id)?.handle,
         kind: agreement.kind,
         status: agreement.status,
+        proposer: agreement.proposer,
+        parties: agreement.parties,
+        proposal: agreement.proposal,
+        proposalEventId: agreement.proposalEventId,
+        sourceFacts: agreement.sourceFacts,
+        ...(typeof agreement.acceptByMonth === 'number' && Number.isFinite(agreement.acceptByMonth)
+          ? { acceptByMonth: agreement.acceptByMonth } : {}),
+        ...(agreement.acceptedAtMonth !== undefined ? { acceptedAtMonth: agreement.acceptedAtMonth } : {}),
         proposedAtMonth: agreement.proposedAtMonth,
         pendingResponderNames: agreement.pendingResponderNames,
         ...(agreement.dueAtMonth !== undefined ? { dueAtMonth: agreement.dueAtMonth } : {}),
@@ -421,12 +407,18 @@ export function buildCompactDecisionRequestContext(
     })),
     visible: {
       people: visiblePeople,
+      possessions: (context.visiblePossessions ?? []).map(({ personId, stackId, ...possession }) => ({
+        handle: handles.visible.find((item) => item.kind === 'inventory-stack'
+          && item.personId === personId && item.stackId === stackId)?.handle,
+        ownerHandle: visiblePersonHandleById.get(personId), ...possession,
+      })),
       drops: [...context.visibleDrops]
         .sort((left, right) => Number(targetedDrops.has(right.id)) - Number(targetedDrops.has(left.id))
           || right.quantity - left.quantity || left.id.localeCompare(right.id))
-        .slice(0, Math.max(4, targetedDrops.size)).map(({ id, name, properties, quantity, cellId, z }) => ({
+        .slice(0, Math.max(4, targetedDrops.size)).map(({ id, name, properties, quantity, cellId, z, knownDelivery }) => ({
         handle: handles.visible.find((item) => item.kind === 'drop' && item.dropId === id)?.handle,
         name, properties, quantity, cellId, z,
+        ...(knownDelivery ? { knownDelivery } : {}),
       })),
       animals: [...context.visibleAnimals]
         .sort((left, right) => Number(targetedAnimals.has(right.id)) - Number(targetedAnimals.has(left.id))

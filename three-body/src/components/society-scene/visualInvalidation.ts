@@ -1,4 +1,5 @@
 import type { EraKey, SocietyState } from '@/game/societyContract';
+import { weatherSwayStrength } from '@/game/voxel-assets/decor-primitives';
 
 type Primitive = string | number | boolean | null | undefined;
 
@@ -186,6 +187,7 @@ function activeDecorFacilityCells(society: SocietyState): number[] {
 export function sameDecorVisuals(left: SocietyState, leftEra: EraKey, right: SocietyState, rightEra: EraKey): boolean {
   if (leftEra !== rightEra
     || left.weather?.kind !== right.weather?.kind
+    || (weatherSwayStrength(left.weather) >= 0.24) !== (weatherSwayStrength(right.weather) >= 0.24)
     || !sameTerrainWorld(left.world, right.world)
     || !samePrimitiveArray(left.world.biomes, right.world.biomes)
     || !sameDecorStructures(left.structures, right.structures)
@@ -203,7 +205,8 @@ export function sameDecorVisuals(left: SocietyState, leftEra: EraKey, right: Soc
     && a.materialId === b.materialId && a.cellId === b.cellId && a.z === b.z && a.quantity === b.quantity)) return false;
   if (!sameArrayBy(left.containers, right.containers, (a, b) => a.id === b.id
     && a.materialId === b.materialId && a.cellId === b.cellId && a.z === b.z
-    && a.capacity === b.capacity && a.usedCapacity === b.usedCapacity)) return false;
+    && a.capacity === b.capacity && a.usedCapacity === b.usedCapacity
+    && sameArrayBy(a.contents ?? [], b.contents ?? [], (p, q) => p.materialId === q.materialId && p.quantity === q.quantity))) return false;
   if (!sameArrayBy(left.graves ?? [], right.graves ?? [], (a, b) => a.id === b.id
     && a.cellId === b.cellId && a.z === b.z && a.marked === b.marked
     && a.markerMaterialId === b.markerMaterialId)) return false;

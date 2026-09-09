@@ -1,8 +1,17 @@
-import type { ActionCompletionPolicy, ActionOption, FactPredicate, Intent, PrimitiveAction, RecordUseBasis, RecordUseStage, RelationshipCausalBasis, WorldRef } from './action';
+import type { ActionCompletionPolicy, ActionOption, FactPredicate, Intent, IntentDecision, PrimitiveAction, RecordUseBasis, RecordUseStage, RelationshipCausalBasis, WorldRef } from './action';
 import type { ProjectProposal } from './project';
 import { followUpSemanticallyMatches } from './intent-follow-up';
 import { actionOptionSemantics } from './action-option-semantics';
 import type { MentalPlanTranslation, PlanCompletionAssessment, PlanSuccessCondition } from './mental-act';
+
+/** Current creative operations return to Mind; a durable goal does not imply
+ * that the world compiler owns its future steps. Existing plans keep their path. */
+export function authoredAttemptReturnsToMind(decision: Pick<IntentDecision, 'authoredAttempt' | 'mentalAct'>): boolean {
+  return decision.authoredAttempt?.kind === 'native'
+    || decision.authoredAttempt?.kind === 'creative'
+      && ((!decision.mentalAct?.plan && !decision.authoredAttempt.plan)
+        || (!decision.mentalAct && !decision.authoredAttempt.intentionSourceDecisionEventId));
+}
 
 function sameRef(left: WorldRef, right: WorldRef): boolean {
   if (left.kind !== right.kind) return false;
@@ -25,7 +34,8 @@ export function completionConditionsCoverAction(
       && sameRef(condition.target, target) && condition.maxDistance <= distance
   ));
   if (action.kind === 'move') return conditions.some((condition) => condition.kind === 'fact'
-    && condition.predicate.kind === 'at-cell' && condition.predicate.cellId === action.toCellId);
+    && condition.predicate.kind === 'at-cell' && condition.predicate.cellId === action.toCellId
+    && (action.toZ === undefined || condition.predicate.z === action.toZ));
   if (action.kind === 'transfer') return action.to.kind === 'person' && inventoryCovered(action.materialId, action.to.personId);
   if (action.kind === 'talk') return conditions.some((condition) => condition.kind === 'fact'
     && condition.predicate.kind === 'representation-made' && condition.predicate.representationId === action.speakerMeaning.id);
@@ -67,13 +77,17 @@ export function assessPlanCompletion(
 ): PlanCompletionAssessment {
   const satisfiedConditionIds: string[] = [];
   const assess = (scope: 'step' | 'goal'): PlanCompletionAssessment['step'] => {
-    const conditions = plan?.completion?.[scope].conditions ?? [];
+    const check = plan?.completion?.[scope];
+    const conditions = check?.conditions ?? [];
     if (!conditions.length) return 'unverified';
     const satisfied = conditions.map((condition, index) => {
       const result = satisfies(condition);
       if (result) satisfiedConditionIds.push(`${scope}:${index}`);
       return result;
     });
+    // Factual truth and whether those facts establish the intended outcome
+    // are separate. Keep every actual condition result for the action receipt.
+    if (check?.meaningReview && check.meaningReview.sufficiency !== 'sufficient') return 'unverified';
     return satisfied.every(Boolean) ? 'satisfied' : 'unmet';
   };
   const step = assess('step');

@@ -1,5 +1,6 @@
 import type { ContainerState } from '../container';
 import type { MaterialId } from '../material';
+import type { ItemMechanicalState } from '../material-mechanics';
 import type { DropState, SimulationState } from '../model';
 import type { ItemStack, PersonState } from '../person';
 import { surfaceStandingPosition } from '../../world/grid';
@@ -14,6 +15,12 @@ export function removeEmptyStacks(person: PersonState): void {
   person.inventory = person.inventory.filter((stack) => stack.quantity > 0);
 }
 
+function unusedStackId(stacks: readonly ItemStack[], requested: string): string {
+  let id = requested;
+  for (let suffix = 2; stacks.some((stack) => stack.id === id); suffix += 1) id = `${requested}-${suffix}`;
+  return id;
+}
+
 export function addInventory(
   person: PersonState,
   materialId: MaterialId,
@@ -22,9 +29,10 @@ export function addInventory(
   stackId = `stack-${person.id}-${materialId}`,
   recordPayloadId?: string,
   sourceLineageKeys: string[] = [],
+  mechanicalState?: ItemMechanicalState,
 ): ItemStack {
   const existing = person.inventory.find((stack) => stack.materialId === materialId
-    && stack.recordPayloadId === recordPayloadId);
+    && stack.recordPayloadId === recordPayloadId && !stack.mechanicalState && !mechanicalState);
   if (existing) {
     existing.quantity += quantity;
     existing.sourceEventIds = boundedItemSourceEventIds([
@@ -38,12 +46,13 @@ export function addInventory(
     return existing;
   }
   const stack = {
-    id: stackId,
+    id: unusedStackId(person.inventory, stackId),
     materialId,
     quantity,
     sourceEventIds: boundedItemSourceEventIds(sourceEventIds),
     ...(sourceLineageKeys.length ? { sourceLineageKeys: [...new Set(sourceLineageKeys)].slice(-32) } : {}),
     ...(recordPayloadId ? { recordPayloadId } : {}),
+    ...(mechanicalState ? { mechanicalState: structuredClone(mechanicalState) } : {}),
   };
   person.inventory.push(stack);
   return stack;
@@ -89,9 +98,10 @@ export function addContainerInventory(
   stackId: string,
   recordPayloadId?: string,
   sourceLineageKeys: string[] = [],
+  mechanicalState?: ItemMechanicalState,
 ): ItemStack {
   const existing = container.inventory.find((stack) => stack.materialId === materialId
-    && stack.recordPayloadId === recordPayloadId);
+    && stack.recordPayloadId === recordPayloadId && !stack.mechanicalState && !mechanicalState);
   if (existing) {
     existing.quantity += quantity;
     existing.sourceEventIds = boundedItemSourceEventIds([
@@ -105,12 +115,13 @@ export function addContainerInventory(
     return existing;
   }
   const stack = {
-    id: stackId,
+    id: unusedStackId(container.inventory, stackId),
     materialId,
     quantity,
     sourceEventIds: boundedItemSourceEventIds(sourceEventIds),
     ...(sourceLineageKeys.length ? { sourceLineageKeys: [...new Set(sourceLineageKeys)].slice(-32) } : {}),
     ...(recordPayloadId ? { recordPayloadId } : {}),
+    ...(mechanicalState ? { mechanicalState: structuredClone(mechanicalState) } : {}),
   };
   container.inventory.push(stack);
   return stack;
@@ -129,11 +140,13 @@ export function addDrop(
   sourceLineageKeys: string[] = [],
   estateOfPersonId?: string,
   projectMaterialDelivery?: DropState['projectMaterialDelivery'],
+  mechanicalState?: ItemMechanicalState,
 ): DropState {
   const resolvedZ = z ?? surfaceStandingPosition(state.world.grid, cell)?.z ?? 1;
   const existing = state.world.drops.find((drop) => drop.cellId === cell
     && drop.z === resolvedZ
     && drop.materialId === materialId
+    && !drop.mechanicalState && !mechanicalState
     && drop.recordPayloadId === recordPayloadId
     && drop.estateOfPersonId === estateOfPersonId
     && drop.projectMaterialDelivery?.requestEventId === projectMaterialDelivery?.requestEventId
@@ -165,6 +178,7 @@ export function addDrop(
     ...(recordPayloadId ? { recordPayloadId } : {}),
     ...(estateOfPersonId ? { estateOfPersonId } : {}),
     ...(projectMaterialDelivery ? { projectMaterialDelivery: { ...projectMaterialDelivery } } : {}),
+    ...(mechanicalState ? { mechanicalState: structuredClone(mechanicalState) } : {}),
   };
   state.world.drops.push(drop);
   return drop;

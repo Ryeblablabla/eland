@@ -108,7 +108,6 @@ import {
 import { knowsDeath, remainsForPerson, type HumanRemainsState } from '../domain/mortuary';
 import { buildMortuaryOptions, recompileMortuaryNextAction } from './mortuary-options';
 import { techniqueOutputMaterialId } from '../domain/technique-demonstration';
-import { canPersonPlanToCollectProjectMaterialDrop } from '../domain/project-material-request';
 import { openProjectKnowledgeRequestsFor } from '../domain/project-knowledge-request';
 import { productionToolUpgradeTradeCandidate } from './projects/capability-replication';
 import {
@@ -116,14 +115,14 @@ import {
   crowdingReliefTarget,
   visibleLanguageCandidates,
   positionsCanShareLanguage,
+  physicalRendezvous,
+  positionsCanTouch,
 } from '../domain/social-space';
 import {
   actionOptionSemantics,
   assertClassifiedActionOption,
   classifyActionOption,
   defineActionOptionSemantics,
-  isCommitmentActionOption,
-  isRequiredResponseOption,
 } from '../domain/action-option-semantics';
 import { buildCharacterAgendaOptions } from './character-agenda';
 import {
@@ -134,6 +133,7 @@ import {
   type FailureRetryContext,
 } from './action-failure-retry';
 import { buildReproductionOptions } from './reproduction-options';
+import { nativeTransferPreparationKind, resolveNativeTransferAction, resolveNativeMovePosition } from './native-operation';
 import { buildPersonMindView } from '../domain/person-mind';
 import { movementMetabolicMultiplier } from '../domain/trait';
 
@@ -359,12 +359,6 @@ function withPlanning(
     estimatedMonths,
     risks,
   };
-}
-
-function decisionOptionPriority(option: ActionOption): number {
-  if (isRequiredResponseOption(option)) return 0;
-  if (isCommitmentActionOption(option)) return 1;
-  return option.domain === 'strategic' ? 2 : 3;
 }
 
 export function isObservedEmergencyHibernationOption(
@@ -695,7 +689,7 @@ function buildOptions(
     ? betterGroundProductionTool(
         state,
         person,
-        visibleDrops.filter((drop) => canPersonPlanToCollectProjectMaterialDrop(state, person.id, drop, atMonth)),
+        visibleDrops,
       )
     : undefined;
   if (groundToolUpgrade) {
@@ -721,7 +715,6 @@ function buildOptions(
   const nearestDropsByMaterial = new Map<number, DropState>();
   for (const drop of [...visibleDrops].sort((a, b) => distance(person.position.cellId, a.cellId) - distance(person.position.cellId, b.cellId) || a.id.localeCompare(b.id))) {
     if (drop.id === groundToolUpgrade?.drop.id) continue;
-    if (!canPersonPlanToCollectProjectMaterialDrop(state, person.id, drop, atMonth)) continue;
     if (!nearestDropsByMaterial.has(drop.materialId)) nearestDropsByMaterial.set(drop.materialId, drop);
   }
   for (const drop of [...nearestDropsByMaterial.values()].slice(0, 8)) {
@@ -1194,10 +1187,17 @@ function buildOptions(
   // Possibility is physical, motive is subjective. Nearby possessions remain
   // visible as possible unauthorized taking; the model decides whether to try,
   // and the owner may resist. Hunger/trust scores never manufacture the wish.
-  for (const { carrier, stack } of localPeople.flatMap((carrier) => carrier.inventory
+  for (const { carrier, stack } of visiblePeople
+    .filter((carrier) => carrier.id !== person.id && isAlive(carrier)
+      && positionsCanTouch(state.world.grid, carrier.position, person.position))
+    .flatMap((carrier) => carrier.inventory
     .filter((stack) => stack.quantity > 0)
-    .slice(0, 2)
     .map((stack) => ({ carrier, stack })))) {
+    const taking: PrimitiveAction = {
+      kind: 'transfer', materialId: stack.materialId, quantity: 1,
+      from: { kind: 'person', personId: carrier.id },
+      to: { kind: 'person', personId: person.id }, stackId: stack.id,
+    };
     options.push({
       id: `take-without-permission:${carrier.id}:${stack.id}`,
       summary: `未经同意尝试从${carrier.name}处拿走${materialDefinition(stack.materialId).name}`,
@@ -1206,11 +1206,8 @@ function buildOptions(
         kind: 'inventory-at-least', materialId: stack.materialId,
         quantity: inventoryQuantity(person, stack.materialId) + 1,
       },
-      nextAction: {
-        kind: 'transfer', materialId: stack.materialId, quantity: 1,
-        from: { kind: 'person', personId: carrier.id },
-        to: { kind: 'person', personId: person.id }, stackId: stack.id,
-      },
+      nextAction: taking,
+      completionAction: taking,
       target: { kind: 'person', personId: carrier.id },
       estimatedDuration: 'one-month',
       sourceFactIds: [...new Set([
@@ -1525,7 +1522,7 @@ export function buildDecisionContext(
         && action.operation === 'ingest');
     })
     .filter((option) => optionAllowedForLifeStage(stage, option))
-    .sort((a, b) => decisionOptionPriority(a) - decisionOptionPriority(b) || a.id.localeCompare(b.id));
+    .sort((a, b) => a.id.localeCompare(b.id));
   const followUpOptions = allOptions.filter((option) => !option.recordUseBasis
     && option.nextAction.kind !== 'talk');
   const options = allOptions
@@ -1533,10 +1530,6 @@ export function buildDecisionContext(
       && followUpOptions.some((followUp) => followUpSemanticallyMatches(option, followUp))
       ? { ...option, requiresFollowUp: true }
       : { ...option, requiresFollowUp: false });
-  const requiredSocialResponses = options.filter(isRequiredResponseOption);
-  const observedEmergencyHibernation = options.filter((option) => (
-    isObservedEmergencyHibernationOption(state, person, option)
-  ));
   return {
     state,
     person,
@@ -1545,9 +1538,9 @@ export function buildDecisionContext(
     visibleDrops,
     visibleAnimals,
     visibleRemains,
-    options: requiredSocialResponses.length
-      ? [...observedEmergencyHibernation, ...requiredSocialResponses]
-      : options,
+    // A pending proposal adds a possible response; it does not remove the
+    // person's physically available work, exploration or other relationships.
+    options,
     followUpOptions,
     activeIntent: person.activeIntentId && intentById(state, person.activeIntentId)?.status === 'active'
       ? intentById(state, person.activeIntentId)
@@ -1577,6 +1570,18 @@ export function recompileNextAction(
   intent: Intent,
   atMonth = state.clock.elapsedMonths,
 ): PrimitiveAction | null {
+  if (intent.nativeOperation) {
+    const request = intent.nativeOperation;
+    if (request.kind === 'move' && intent.nextAction.kind === 'move') {
+      const position = resolveNativeMovePosition(state, person, request);
+      return position ? { ...intent.nextAction, toCellId: position.cellId, toZ: position.z } : null;
+    }
+    if (request.kind === 'transfer' && intent.completionAction?.kind === 'transfer'
+      && nativeTransferPreparationKind(person, intent.completionAction)) {
+      return resolveNativeTransferAction(state, person, intent.completionAction);
+    }
+    return structuredClone(intent.nextAction);
+  }
   if (reproductionIntentAttemptedThisMonth(state, person, intent, atMonth)) return null;
   if (intent.recordUseBasis) return recompileRecordUseNextAction(state, person, intent);
   if (intent.completionAction?.kind === 'attend' && intent.target?.kind === 'drop') {
@@ -1695,6 +1700,11 @@ export function recompileNextAction(
         ? { kind: 'move', toCellId: rendezvous.position.cellId, toZ: rendezvous.position.z }
         : null;
     }
+    if (intent.completionAction.kind === 'transfer') {
+      const meeting = physicalRendezvous(state, person, target);
+      return !meeting ? null : positionsCanTouch(state.world.grid, target.position, person.position)
+        ? intent.completionAction : { kind: 'move', toCellId: meeting.position.cellId, toZ: meeting.position.z };
+    }
     return sameLocation(target, person) ? intent.completionAction : { kind: 'move', toCellId: target.position.cellId, toZ: target.position.z };
   }
   if (intent.goal.kind === 'near-person') {
@@ -1752,8 +1762,7 @@ export function recompileNextAction(
       const targetDropId = intent.target.dropId;
       const drop = state.world.drops.find((candidate) => candidate.id === targetDropId
         && candidate.materialId === materialId
-        && candidate.quantity > 0
-        && canPersonPlanToCollectProjectMaterialDrop(state, person.id, candidate, atMonth));
+        && candidate.quantity > 0);
       if (!drop || drop.materialId !== materialId || drop.quantity <= 0) return null;
       const dropZ = dropStandingZ(state, drop);
       const path = findStandingPath(state.world.grid, person.position, { cellId: drop.cellId, z: dropZ });
@@ -1817,15 +1826,13 @@ export function recompileNextAction(
     const local = state.world.drops.find((drop) => drop.cellId === person.position.cellId
       && dropStandingZ(state, drop) === person.position.z
       && drop.materialId === materialId
-      && drop.quantity > 0
-      && canPersonPlanToCollectProjectMaterialDrop(state, person.id, drop, atMonth));
+      && drop.quantity > 0);
     if (local) return actionForDrop(state, person, local);
     const visible = new Set(visibleCellsFor(person));
     const reachable = state.world.drops
       .filter((drop) => visible.has(drop.cellId)
         && drop.materialId === materialId
-        && drop.quantity > 0
-        && canPersonPlanToCollectProjectMaterialDrop(state, person.id, drop, atMonth))
+        && drop.quantity > 0)
       .map((drop) => ({
         drop,
         path: findStandingPath(state.world.grid, person.position, {
@@ -1840,8 +1847,7 @@ export function recompileNextAction(
       const toCellId = intent.nextAction.toCellId;
       const atTarget = state.world.drops.find((drop) => drop.cellId === toCellId
         && drop.materialId === materialId
-        && drop.quantity > 0
-        && canPersonPlanToCollectProjectMaterialDrop(state, person.id, drop, atMonth));
+        && drop.quantity > 0);
       if (atTarget) return actionForDrop(state, person, atTarget);
     }
   }

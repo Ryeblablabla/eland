@@ -9,10 +9,12 @@ import { agreementById, agreementsForPerson } from '../../domain/agreement';
 import { recordIntentGoalOutcome } from '../../domain/cognition';
 import {
   clearPlanningEventOverlay,
+  planningOverlayEvents,
   registerPlanningEventOverlay,
   worldEventById,
 } from '../../domain/event-index';
 import {
+  authoredAttemptReturnsToMind,
   composeIntentChoice,
   completionConditionsCoverIntent,
   intentMaintainUntilMonth,
@@ -21,7 +23,7 @@ import {
 import { remember } from '../../domain/memory';
 import { broadcastLanguage, type LanguageBroadcast } from '../../domain/language-perception';
 import { materialHas } from '../../domain/material';
-import type { MentalAct } from '../../domain/mental-act';
+import { outwardDeclaration, type MentalDeclaration } from '../../domain/mental-act';
 import { withSpokenUtterance } from '../../domain/spoken-meaning';
 import { recordRelationshipEpisode } from '../../domain/relationship-episode';
 import type {
@@ -74,6 +76,8 @@ import {
   buildImmediateCharacterProbeOption,
   type AcceptedCharacterAgendaProposal,
 } from '../character-agenda';
+import { compileNativeOperation, nativeTransferBlockedReason, nativeTransferPreparationKind } from '../native-operation';
+import { compileNativeSpeechOperation } from '../native-speech';
 
 const MAX_REPRODUCTION_AUDIT_SOURCE_FACTS = 32;
 const localCommitFallbackPlanner = new RulePlanner();
@@ -135,7 +139,7 @@ function commitMentalRelationshipAppraisal(
   state: SimulationState,
   person: PersonState,
   context: DecisionContext,
-  mentalAct: MentalAct | undefined,
+  mentalAct: MentalDeclaration | undefined,
   decisionEventId: string,
   atMonth: number,
 ): void {
@@ -502,6 +506,9 @@ export function startIntent(
     reusable.domain = choice.domain;
     reusable.goal = structuredClone(projectTarget.goal);
     reusable.nextAction = structuredClone(choice.nextAction);
+    const nextNativeOperation = (followUpOption ?? selectedOption)?.nativeOperation;
+    if (nextNativeOperation) reusable.nativeOperation = structuredClone(nextNativeOperation);
+    else delete reusable.nativeOperation;
     if (choice.openingAction) {
       reusable.openingAction = structuredClone(choice.openingAction);
       reusable.openingActionCompleted = false;
@@ -553,6 +560,8 @@ export function startIntent(
     ...projectTarget,
     ...(choice.openingAction ? { openingAction: choice.openingAction, openingActionCompleted: false } : {}),
     nextAction: choice.nextAction,
+    ...((followUpOption ?? selectedOption)?.nativeOperation
+      ? { nativeOperation: structuredClone((followUpOption ?? selectedOption)!.nativeOperation) } : {}),
     ...(choice.completionAction ? { completionAction: choice.completionAction } : {}),
     ...(choice.target ? { target: choice.target } : {}),
     status: 'active',
@@ -730,6 +739,7 @@ export function startInterruptIntent(
     domain: selected.domain ?? 'social',
     goal: structuredClone(selected.goal),
     nextAction: structuredClone(selected.nextAction),
+    ...(selected.nativeOperation ? { nativeOperation: structuredClone(selected.nativeOperation) } : {}),
     ...(selected.completionAction ? { completionAction: structuredClone(selected.completionAction) } : {}),
     ...(selected.target ? { target: structuredClone(selected.target) } : {}),
     status: 'active',
@@ -942,6 +952,7 @@ export function installAgreementContinuation(state: SimulationState, currentInte
     delete intent.openingAction;
     delete intent.openingActionCompleted;
     delete intent.completionAction;
+    delete intent.nativeOperation;
     delete intent.plannedDurationMonths;
     delete intent.stateGoalUntilMonth;
     delete intent.lifecycle;
@@ -975,16 +986,63 @@ export function applyDecision(
 ): DecisionFact {
   if (context.continuingPlan) {
     const continuation = context.continuingPlan;
-    const sourceIntent = intentById(state, continuation.sourceIntentId);
+    const sourceIntent = continuation.sourceIntentId ? intentById(state, continuation.sourceIntentId) : undefined;
     const origin = context.currentMonthEvents?.find((event) => event.id === continuation.sourceDecisionEventId)
       ?? worldEventById(state, continuation.sourceDecisionEventId);
-    if (sourceIntent?.ownerId !== person.id
-      || (sourceIntent.planSourceDecisionEventId ?? sourceIntent.sourceDecisionEventId) !== continuation.sourceDecisionEventId
+    const failedCompilation = continuation.compilationFailureEventId
+      ? context.currentMonthEvents?.find((event) => event.id === continuation.compilationFailureEventId)
+        ?? worldEventById(state, continuation.compilationFailureEventId) : undefined;
+    const validIntent = sourceIntent?.ownerId === person.id
+      && (sourceIntent.planSourceDecisionEventId ?? sourceIntent.sourceDecisionEventId) === continuation.sourceDecisionEventId;
+    const validFailure = failedCompilation?.kind === 'decision' && failedCompilation.usedModel
+      && failedCompilation.who === person.id && failedCompilation.executionCompilation?.status === 'unresolved'
+      && (failedCompilation.planContinuation?.sourceDecisionEventId
+        ?? failedCompilation.decision.authoredAttempt?.intentionSourceDecisionEventId ?? failedCompilation.id) === continuation.sourceDecisionEventId;
+    if ((!validIntent && !validFailure)
       || origin?.kind !== 'decision' || !origin.usedModel || origin.who !== person.id || !origin.decision.mentalAct) {
-      throw new Error('续编必须引用本人真实选定的意图及其原始模型决定');
+      throw new Error('续编必须引用本人真实选定的意图或编译问题及其原始模型决定');
     }
   }
-  if (decision.kind === 'idle' && decision.executionProbe) {
+  const authoredSourceId = decision.authoredAttempt?.intentionSourceDecisionEventId;
+  const authoredOrigin = authoredSourceId
+    ? context.currentMonthEvents?.find((event) => event.id === authoredSourceId) ?? worldEventById(state, authoredSourceId)
+    : undefined;
+  if (authoredSourceId && (authoredOrigin?.kind !== 'decision' || !authoredOrigin.usedModel
+    || authoredOrigin.who !== person.id || !authoredOrigin.decision.mentalAct)) {
+    throw new Error('保留意图的尝试必须引用本人真实原始Mind决定');
+  }
+  const originalMind = authoredOrigin?.kind === 'decision' ? authoredOrigin.decision.mentalAct : undefined;
+  const authoredFields = {
+    ...(decision.declaration ? { declaration: structuredClone(decision.declaration) } : {}),
+    ...(decision.authoredAttempt ? { authoredAttempt: structuredClone(decision.authoredAttempt) } : {}),
+  };
+  let executionCompilation: DecisionFact['executionCompilation'] = decision.kind === 'idle' && decision.compilationFailure
+    ? { status: 'unresolved', problem: structuredClone(decision.compilationFailure) } : undefined;
+  if (decision.kind === 'idle' && decision.nativeOperation) {
+    const operation = decision.nativeOperation;
+    const compiled = compileNativeOperation(context, operation,
+      `native-operation:${person.id}:${atMonth}:${planningTick}`, decision.mentalAct ?? originalMind ?? context.continuingPlan?.mentalAct);
+    if (compiled.ok) {
+      const option = compiled.option;
+      context = { ...context, options: [option, ...context.options.filter((candidate) => candidate.id !== option.id)] };
+      selectedOptionAtDecision = option;
+      executionCompilation = { status: compiled.feedback ? 'compiled-with-feedback' : 'compiled', operation,
+        compiledAction: structuredClone(option.nextAction), ...(compiled.feedback ? { problem: compiled.feedback } : {}) };
+      decision = context.activeIntent ? {
+        kind: 'revise', intentId: context.activeIntent.id, optionId: option.id, reason: decision.reason,
+        ...authoredFields,
+        ...(decision.characterAgendaUpdate ? { characterAgendaUpdate: decision.characterAgendaUpdate } : {}),
+        ...(decision.mentalAct ? { mentalAct: decision.mentalAct } : {}),
+      } : { kind: 'start', optionId: option.id, reason: decision.reason,
+        ...authoredFields,
+        ...(decision.characterAgendaUpdate ? { characterAgendaUpdate: decision.characterAgendaUpdate } : {}),
+        ...(decision.mentalAct ? { mentalAct: decision.mentalAct } : {}) };
+    } else {
+      executionCompilation = { status: 'unresolved', operation, problem: compiled.problem };
+      decision = { ...decision, reason: `${decision.reason}；操作尚未编译：${compiled.problem.message}` };
+    }
+  }
+  if (decision.kind === 'idle' && decision.executionProbe && !executionCompilation) {
     const option = buildImmediateCharacterProbeOption(
       context,
       decision.executionProbe,
@@ -995,14 +1053,18 @@ export function applyDecision(
       selectedOptionAtDecision = option;
       decision = context.activeIntent ? {
         kind: 'revise',
+        ...authoredFields,
         intentId: context.activeIntent.id,
         optionId: option.id,
         reason: decision.reason,
+        ...(decision.characterAgendaUpdate ? { characterAgendaUpdate: decision.characterAgendaUpdate } : {}),
         ...(decision.mentalAct ? { mentalAct: decision.mentalAct } : {}),
       } : {
         kind: 'start',
+        ...authoredFields,
         optionId: option.id,
         reason: decision.reason,
+        ...(decision.characterAgendaUpdate ? { characterAgendaUpdate: decision.characterAgendaUpdate } : {}),
         ...(decision.mentalAct ? { mentalAct: decision.mentalAct } : {}),
       };
     }
@@ -1017,12 +1079,17 @@ export function applyDecision(
   ));
   const id = `e-${atMonth}-decision-${person.id}-${planningTick}-${orderInMonth}`;
   const translatedPlan = context.continuingPlan
-    ? structuredClone(decision.mentalAct?.plan ?? context.continuingPlan.plan)
-    : undefined;
+    ? structuredClone(decision.mentalAct?.plan ?? decision.authoredAttempt?.plan ?? context.continuingPlan.plan)
+    : decision.authoredAttempt?.plan ? structuredClone(decision.authoredAttempt.plan) : undefined;
+  if (translatedPlan?.completion?.goal && originalMind) translatedPlan.completion.goal.description = originalMind.goal;
   const chosenGoal = context.continuingPlan?.plan.completion?.goal;
-  if (translatedPlan && chosenGoal?.conditions.length) {
-    // Translation may revise the next means; only a new Mind decision can
-    // replace the goal whose success the person originally chose to test.
+  if (translatedPlan?.completion?.goal.meaningReview && context.continuingPlan) {
+    // World reviewed these revised criteria against the same frozen Mind
+    // goal. Keep that goal while allowing Plan to correct an inadequate test.
+    translatedPlan.completion.goal.description = context.continuingPlan.mentalAct.goal;
+  } else if (translatedPlan && chosenGoal?.conditions.length) {
+    // A translation without a new semantic review cannot replace the
+    // original checks merely by declaring an easier local result.
     translatedPlan.completion = {
       step: translatedPlan.completion?.step ?? { description: decision.reason, conditions: [] },
       goal: structuredClone(chosenGoal),
@@ -1037,14 +1104,15 @@ export function applyDecision(
     if ('characterAgendaUpdate' in decision) delete decision.characterAgendaUpdate;
   }
   const mentalAct = decision.mentalAct;
-  if (usedModel) commitMentalRelationshipAppraisal(state, person, context, mentalAct, id, atMonth);
-  const languageBroadcast = usedModel && mentalAct?.utterance.trim()
+  const declaration = outwardDeclaration(decision);
+  if (usedModel) commitMentalRelationshipAppraisal(state, person, context, declaration, id, atMonth);
+  const languageBroadcast = usedModel && declaration?.utterance.trim()
     ? broadcastLanguage({
         seed: state.seed,
         sourceFactId: id,
         speakerId: person.id,
-        text: mentalAct.utterance,
-        intensity: mentalAct.delivery === 'whisper' ? 0.35 : mentalAct.delivery === 'call' ? 1.8 : 1,
+        text: declaration.utterance,
+        intensity: declaration.delivery === 'whisper' ? 0.35 : declaration.delivery === 'call' ? 1.8 : 1,
         world: state.world.grid,
         speakerPosition: person.position,
         listeners: state.people.filter(isAlive).map((listener) => ({
@@ -1194,10 +1262,29 @@ export function applyDecision(
   const attachTranslatedPlan = (intent: Intent | null): void => {
     if (!intent) return;
     delete intent.planPreflight;
+    if (decision.authoredAttempt) {
+      if (decision.authoredAttempt.kind !== 'wait') intent.sourceDecisionEventId = id;
+      if (decision.authoredAttempt.kind === 'native') {
+        intent.operationAuthorship = 'mind';
+      } else delete intent.operationAuthorship;
+      if (!translatedPlan && !mentalAct?.plan) {
+        delete intent.plan;
+        delete intent.planAssessment;
+        delete intent.planMilestones;
+      }
+      const originId = mentalAct ? id : authoredSourceId;
+      if (originId) intent.planSourceDecisionEventId = originId;
+      else delete intent.planSourceDecisionEventId;
+    }
     if (context.continuingPlan && translatedPlan) {
+      delete intent.operationAuthorship;
+      intent.sourceDecisionEventId = id;
       intent.plan = structuredClone(translatedPlan);
       intent.planSourceDecisionEventId = context.continuingPlan.sourceDecisionEventId;
       intent.planMilestones = structuredClone(context.continuingPlan.milestones ?? []);
+    } else if (translatedPlan) {
+      intent.plan = structuredClone(translatedPlan);
+      delete intent.planMilestones;
     } else if (mentalAct?.plan) {
       intent.plan = structuredClone(mentalAct.plan);
       intent.planSourceDecisionEventId = id;
@@ -1308,10 +1395,21 @@ export function applyDecision(
             ? `${person.name}保留了尚无可行办法的长期关切：${aim}`
             : `${person.name}重新考虑了长期关切：${aim}`;
     } else {
-      result = `${person.name}在规划刻度 ${planningTick} 不改变当前安排：${decision.reason}`;
+      result = decision.attention === 'keep-current'
+        ? `${person.name}暂时不改变安排`
+        : `${person.name}在规划刻度 ${planningTick} 不改变当前安排：${decision.reason}`;
     }
   }
   person.lastDecisionText = result;
+  if (executionCompilation?.status === 'unresolved') {
+    const description = translatedPlan?.currentStep?.description ?? translatedPlan?.steps[0]
+      ?? mentalAct?.strategy ?? mentalAct?.goal ?? originalMind?.nextAttempt;
+    const pending = `此前选择的这一步尚未开始${description ? `：${description}` : ''}`;
+    person.lastDecisionText = pending;
+    if (!person.activeIntentId) person.currentActionText = pending;
+  }
+  // Translation diagnostics stay on DecisionFact. They are not an experience
+  // of the world, and a compiled-with-feedback result is not an action failure.
   const decisionFact: DecisionFact = {
     id,
     kind: 'decision',
@@ -1322,6 +1420,7 @@ export function applyDecision(
     cellId: person.position.cellId,
     who: person.id,
     decision,
+    ...(executionCompilation ? { executionCompilation } : {}),
     ...(intentId ? { intentId } : {}),
     ...(domain ? { domain } : {}),
     planningChannel,
@@ -1373,31 +1472,94 @@ export function applyDecision(
     } : {}),
     ...(characterAgendaEvidence.length ? { characterAgendaEvidence } : {}),
     ...(languageBroadcast ? { languageBroadcast } : {}),
-    ...(context.continuingPlan && translatedPlan ? {
+    ...(context.reconsideration ? { reconsideration: structuredClone(context.reconsideration) } : {}),
+    ...((context.continuingPlan || authoredSourceId) && translatedPlan ? {
       planContinuation: {
-        sourceIntentId: context.continuingPlan.sourceIntentId,
-        sourceDecisionEventId: context.continuingPlan.sourceDecisionEventId,
+        ...(context.continuingPlan?.sourceIntentId ? { sourceIntentId: context.continuingPlan.sourceIntentId } : {}),
+        ...(context.continuingPlan?.compilationFailureEventId ? { compilationFailureEventId: context.continuingPlan.compilationFailureEventId } : {}),
+        sourceDecisionEventId: context.continuingPlan?.sourceDecisionEventId ?? authoredSourceId!,
         plan: structuredClone(translatedPlan),
       },
     } : {}),
     usedModel,
     result,
   };
-  const immediateTalkConsumesDecisionLanguage = Boolean(
-    languageBroadcast && intentId && selectedOption?.nextAction.kind === 'talk',
-  );
-  if (mentalAct?.planFeedback) {
-    person.knowledge.push({
-      id: `plan-feedback:${id}`,
-      kind: 'claim',
-      summary: `${mentalAct.planFeedback.correction}；本次调整：${mentalAct.planFeedback.adjustment}`,
-      confidence: 60,
-      learnedAtMonth: atMonth,
-      sourceEventIds: [...new Set([...mentalAct.planFeedback.sourceEventIds, id])].slice(-24),
-    });
-  }
-  if (!immediateTalkConsumesDecisionLanguage) rememberDecisionLanguage(state, decisionFact);
+  // The wave already exists even when its native talk action follows now.
+  // Store that exact source once; doing so does not emit another wave or rely on UI speech storage.
+  rememberDecisionLanguage(state, decisionFact);
   return decisionFact;
+}
+
+/** Commit the outward declaration now; a later body plan cannot unsay it. */
+export function commitDecision(
+  state: SimulationState,
+  person: PersonState,
+  context: DecisionContext,
+  decision: Decision,
+  usedModel: boolean,
+  atMonth: number,
+  events: WorldEvent[],
+  planningTick: number,
+  planningChannel: NonNullable<DecisionFact['planningChannel']> = 'ordinary',
+  selectedOptionAtDecision?: ActionOption,
+): DecisionFact {
+  const priorOverlay = [...planningOverlayEvents(state)];
+  const exposeEvents = (): void => registerPlanningEventOverlay(state,
+    [...new Map([...priorOverlay, ...events].map((event) => [event.id, event])).values()]);
+  exposeEvents();
+  try {
+    const fact = applyDecision(state, person, { ...context, currentMonthEvents: events }, decision,
+      usedModel, atMonth, events.length, planningTick, planningChannel, selectedOptionAtDecision);
+    events.push(fact);
+    exposeEvents();
+    const mind = outwardDeclaration(fact.decision);
+    if (!fact.usedModel || !mind || !fact.languageBroadcast || (fact.planContinuation && !fact.decision.declaration)) return fact;
+
+    const intent = fact.intentId ? intentById(state, fact.intentId) : undefined;
+    const speechIntent = intent?.sourceDecisionEventId === fact.id
+      && intent.nextAction.kind === 'talk' && !intent.completionAction ? intent : undefined;
+    const optionId = speechIntent && (fact.decision.kind === 'start' || fact.decision.kind === 'revise')
+      ? fact.decision.optionId : `decision-language:${fact.id}`;
+    const compiled = compileNativeSpeechOperation({ ...context, currentMonthEvents: events,
+      decisionMonth: atMonth, continuingPlan: undefined }, mind, optionId);
+    // A real wave has nonempty authored words. Missing social terms are an
+    // ordinary claim with feedback, never a reason to erase the declaration.
+    if (!compiled.ok || compiled.option.nextAction.kind !== 'talk') {
+      throw new Error('已形成的本人语言波必须能够提交为原话发言');
+    }
+    const speech = compiled.option.nextAction;
+    if (speechIntent) {
+      speechIntent.nextAction = structuredClone(speech);
+      speechIntent.goal = structuredClone(compiled.option.goal);
+    }
+    const before = speechIntent ? assessIntentPlan(state, person, speechIntent) : undefined;
+    const attempt = speechIntent ? capturePlanAttempt(state, person, speech, speechIntent) : undefined;
+    const action = executePrimitiveAction(state, person, speech, atMonth, events.length, {
+      cause: 'decision-language', actionTick: planningTick, languageBroadcast: fact.languageBroadcast,
+      ...(speechIntent ? { intentId: speechIntent.id } : {}),
+    });
+    if (compiled.feedback) action.diff.speechCompilation = { status: 'compiled-with-feedback', problem: compiled.feedback };
+    events.push(action);
+    exposeEvents();
+    if (speechIntent) {
+      speechIntent.actionEventIds.push(action.id);
+      const achieved = action.status === 'completed';
+      const receipt = outcomeReceiptForFact(speechIntent, action, false, achieved);
+      attachPlanAttemptReceipt(state, person, speechIntent, action, receipt, attempt!, before!);
+      appendOutcomeReceipt(speechIntent, receipt);
+      speechIntent.status = achieved ? 'completed' : action.status === 'failed' ? 'failed' : 'blocked';
+      speechIntent.progress = achieved ? 1 : 0;
+      speechIntent.lastProgressAtMonth = atMonth;
+      recordIntentGoalOutcome(state, speechIntent, achieved ? 'achieved' : 'attempted-unmet',
+        atMonth, [action.id], action.action);
+      if (person.activeIntentId === speechIntent.id) delete person.activeIntentId;
+      person.currentActionText = action.result;
+    }
+    return fact;
+  } finally {
+    if (priorOverlay.length) registerPlanningEventOverlay(state, priorOverlay);
+    else clearPlanningEventOverlay(state);
+  }
 }
 
 /** Classify the chosen decision, not the observer metric that happened to wake the planner. */
@@ -1531,8 +1693,29 @@ export function executeActiveIntent(
     }
     return fact;
   }
+  let nativeMoveHasNoRoute = false;
+  if (intent.nativeOperation?.kind === 'move') {
+    const refreshed = recompileNextAction(state, person, intent, atMonth);
+    nativeMoveHasNoRoute = refreshed?.kind !== 'move';
+    if (refreshed?.kind === 'move') {
+      intent.nextAction = refreshed;
+      if (!intent.nativeOperation.goal) intent.goal = { kind: 'at-cell', cellId: refreshed.toCellId, z: refreshed.toZ };
+    }
+  }
   intent.planAssessment = assessIntentPlan(state, person, intent);
-  const achievedScope = (['goal', 'step'] as const).find((scope) => intent.planAssessment?.[scope] === 'satisfied'
+  const nativeTransferPreparation = intent.nativeOperation?.kind === 'transfer'
+    && intent.completionAction?.kind === 'transfer'
+    && nativeTransferPreparationKind(person, intent.completionAction);
+  const origin = currentMonthEvents.find((event) => event.id === intent.sourceDecisionEventId)
+    ?? worldEventById(state, intent.sourceDecisionEventId);
+  // An authored attempt still needs its actual execution receipt, even when
+  // its compiled prerequisite (such as being beside someone) is already true.
+  // Existing world plans retain their explicit state-completion preflight.
+  const requiresAttemptReceipt = intent.operationAuthorship === 'mind'
+    || origin?.kind === 'decision' && authoredAttemptReturnsToMind(origin.decision);
+  const achievedScope = !requiresAttemptReceipt && !nativeMoveHasNoRoute
+    && (!nativeTransferPreparation || goalSatisfied(state, person, intent.goal))
+    && (['goal', 'step'] as const).find((scope) => intent.planAssessment?.[scope] === 'satisfied'
     && completionConditionsCoverIntent(intent.plan?.completion?.[scope].conditions ?? [], intent));
   if (achievedScope) {
     recordPlanPreflight(intent, achievedScope === 'goal' ? 'goal-already-satisfied' : 'step-already-satisfied',
@@ -1543,7 +1726,7 @@ export function executeActiveIntent(
     person.currentActionText = intent.planPreflight!.summary;
     return null;
   }
-  if (goalSatisfied(state, person, intent.goal)
+  if (!requiresAttemptReceipt && !nativeMoveHasNoRoute && goalSatisfied(state, person, intent.goal)
     && (!intent.plan || completionConditionsCoverIntent([{ kind: 'fact', predicate: intent.goal }], intent))) {
     const maintainUntilMonth = intentMaintainUntilMonth(intent);
     if (maintainUntilMonth !== undefined && atMonth < maintainUntilMonth) {
@@ -1675,7 +1858,9 @@ export function executeActiveIntent(
       return null;
     }
     intent.status = 'blocked';
-    intent.blockedReason = '目标未满足，但无法编译出下一原子动作';
+    intent.blockedReason = nativeTransferPreparation && intent.completionAction?.kind === 'transfer'
+      ? nativeTransferBlockedReason(state, person, intent.completionAction)
+      : '目标未满足，但无法编译出下一原子动作';
     recordIntentGoalOutcome(
       state,
       intent,
@@ -1924,8 +2109,12 @@ export function executeActiveIntent(
       && !intent.recordUseBasis
       && !intent.completionAction;
     const reproductionAttempted = fact.action.kind === 'act' && fact.action.operation === 'reproduce';
+    const transferPreparationMove = nativeTransferPreparation && fact.action.kind === 'move';
     const processAttemptCompleted = fact.status === 'completed'
+      && !transferPreparationMove
       && (fact.action.kind === 'world-interact'
+        || Boolean(intent.nativeOperation)
+        || isAttemptOnlyGoal(intent)
         || fact.action.kind === 'act'
         && (reproductionAttempted || fact.action.operation === 'combine' || fact.action.operation === 'exert' || fact.action.operation === 'expose'));
     if (processAttemptCompleted) intent.lastProcessAttemptAtMonth = atMonth;
@@ -1957,7 +2146,8 @@ export function executeActiveIntent(
         || observationEpisodeCompleted
         || (processAttemptCompleted && recordUseProcessCompleted)
         || satisfiedAfterAction);
-    if (!currentContinues && (maintainedStateCompleted || lifecycleAchievementCompleted || ordinaryIntentCompleted)) {
+    if (!currentContinues && !transferPreparationMove
+      && (maintainedStateCompleted || lifecycleAchievementCompleted || ordinaryIntentCompleted)) {
       intent.status = 'completed';
       intent.progress = 1;
       const conceptionFact = satisfiedAfterAction

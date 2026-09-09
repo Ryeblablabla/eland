@@ -1,0 +1,1167 @@
+{
+  "version": "eland-promo-replay-v2",
+  "createdAt": "2026-09-08T18:58:11.530Z",
+  "source": {
+    "database": "/Users/wangyu.rye/Desktop/eland/three-body/data/eland.sqlite3",
+    "mode": "readOnly",
+    "manualSaveId": "save-mt1m7vkc-1014f920",
+    "snapshotHash": "c75dda6f9e73d2e1d348a607dafbe36851036d025cdc4201e10c55c315695e10",
+    "runId": "threebody-mt1b1rdl-xg1bp290",
+    "civilizationId": 16,
+    "branchId": "root-1166699014-16",
+    "savedAt": "2026-08-20T14:28:03.084Z"
+  },
+  "projection": {
+    "module": "three-body/src/game/eland/adapter.ts:toSocietyState",
+    "legacyFieldBridge": "In memory only: old action.kind communicate becomes talk; old action.content is copied unchanged to action.speakerMeaning. Raw event exports preserve original fields.",
+    "movement": "Recorded tickPath, lastPath, previousCellId and animal movementPath retained."
+  },
+  "dialogueFile": "dialogue-records.json",
+  "sequences": [
+    {
+      "id": "founding",
+      "label": "开局与第一间住所",
+      "months": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "focus": "rei-ayanami",
+      "frames": [
+        {
+          "month": 0,
+          "calendar": {
+            "year": 1,
+            "month": 1,
+            "label": "第 1 年 · 1 月"
+          },
+          "frameFile": "c16-m0-frame.json",
+          "eventsFile": "c16-m0-events.json",
+          "sha256": "0d0ac6343ebf5ba6f31b8ca65da8ce88e05c6e43305d3377285cb1e36120f8bc",
+          "bytes": 212568,
+          "movingAgents": [],
+          "actionEvents": 0,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 0
+          }
+        },
+        {
+          "month": 1,
+          "calendar": {
+            "year": 1,
+            "month": 1,
+            "label": "第 1 年 · 1 月"
+          },
+          "frameFile": "c16-m1-frame.json",
+          "eventsFile": "c16-m1-events.json",
+          "sha256": "d47d6de436ea29d57455964fd0fdb6d4677c40485c768ca72322fda241b22939",
+          "bytes": 221023,
+          "movingAgents": [
+            "potianfeng",
+            "rei-ayanami",
+            "freyja",
+            "cai-wenji",
+            "aphrodite"
+          ],
+          "actionEvents": 20,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 0
+          }
+        },
+        {
+          "month": 2,
+          "calendar": {
+            "year": 1,
+            "month": 2,
+            "label": "第 1 年 · 2 月"
+          },
+          "frameFile": "c16-m2-frame.json",
+          "eventsFile": "c16-m2-events.json",
+          "sha256": "c4584b4170f126ac92bdd7a1c64a5a8417d3c08d0853e43880c94b8df17bec57",
+          "bytes": 228368,
+          "movingAgents": [
+            "potianfeng",
+            "rei-ayanami",
+            "houyi"
+          ],
+          "actionEvents": 35,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 0
+          }
+        },
+        {
+          "month": 3,
+          "calendar": {
+            "year": 1,
+            "month": 3,
+            "label": "第 1 年 · 3 月"
+          },
+          "frameFile": "c16-m3-frame.json",
+          "eventsFile": "c16-m3-events.json",
+          "sha256": "0d1d3f68a13697aeaa301b0d5a767304ad716e8392b46a8903ab04e451cca59c",
+          "bytes": 227726,
+          "movingAgents": [
+            "potianfeng",
+            "rei-ayanami",
+            "cai-wenji",
+            "sun-wu",
+            "aphrodite"
+          ],
+          "actionEvents": 57,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "childhood-house",
+      "label": "后羿建成住所；幼年的孙疏影随母亲觅食",
+      "months": [
+        17,
+        18,
+        19
+      ],
+      "focus": "houyi",
+      "frames": [
+        {
+          "month": 17,
+          "calendar": {
+            "year": 2,
+            "month": 5,
+            "label": "第 2 年 · 5 月"
+          },
+          "frameFile": "c16-m17-frame.json",
+          "eventsFile": "c16-m17-events.json",
+          "sha256": "4e6eca712e2f3482f560405b8ed3e0ead60637907fafaa026e0b690363937187",
+          "bytes": 243324,
+          "movingAgents": [
+            "rei-ayanami",
+            "freyja",
+            "cai-wenji",
+            "aphrodite",
+            "houyi",
+            "born-16-cai-wenji-7"
+          ],
+          "actionEvents": 79,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 0
+          }
+        },
+        {
+          "month": 18,
+          "calendar": {
+            "year": 2,
+            "month": 6,
+            "label": "第 2 年 · 6 月"
+          },
+          "frameFile": "c16-m18-frame.json",
+          "eventsFile": "c16-m18-events.json",
+          "sha256": "23007e0484cbeccb71932b24c2ea2f48d6e74314ab8dc65166d5f0f8349ff800",
+          "bytes": 246384,
+          "movingAgents": [
+            "freyja",
+            "cai-wenji",
+            "aphrodite",
+            "born-16-cai-wenji-7"
+          ],
+          "actionEvents": 63,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 0
+          }
+        },
+        {
+          "month": 19,
+          "calendar": {
+            "year": 2,
+            "month": 7,
+            "label": "第 2 年 · 7 月"
+          },
+          "frameFile": "c16-m19-frame.json",
+          "eventsFile": "c16-m19-events.json",
+          "sha256": "00040fa4bc281d9e15af1994fd18ce41b967dd51723b10cf8575963b0d239e9f",
+          "bytes": 243276,
+          "movingAgents": [
+            "potianfeng",
+            "freyja",
+            "cai-wenji",
+            "aphrodite",
+            "born-16-cai-wenji-7"
+          ],
+          "actionEvents": 38,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "shuying-house",
+      "label": "孙疏影建成住所",
+      "months": [
+        395,
+        396,
+        397
+      ],
+      "focus": "born-16-cai-wenji-7",
+      "frames": [
+        {
+          "month": 395,
+          "calendar": {
+            "year": 33,
+            "month": 11,
+            "label": "第 33 年 · 11 月"
+          },
+          "frameFile": "c16-m395-frame.json",
+          "eventsFile": "c16-m395-events.json",
+          "sha256": "788120700d942372724f418aee4120cfa02f83f4dd24859901f643b04dc74f77",
+          "bytes": 405867,
+          "movingAgents": [],
+          "actionEvents": 16,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 0
+          }
+        },
+        {
+          "month": 396,
+          "calendar": {
+            "year": 33,
+            "month": 12,
+            "label": "第 33 年 · 12 月"
+          },
+          "frameFile": "c16-m396-frame.json",
+          "eventsFile": "c16-m396-events.json",
+          "sha256": "f4e0d55b186459ae72c8a3c6534e4d53c39cfce246fa910677b092328c3dfa1d",
+          "bytes": 407247,
+          "movingAgents": [],
+          "actionEvents": 23,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 0
+          }
+        },
+        {
+          "month": 397,
+          "calendar": {
+            "year": 34,
+            "month": 1,
+            "label": "第 34 年 · 1 月"
+          },
+          "frameFile": "c16-m397-frame.json",
+          "eventsFile": "c16-m397-events.json",
+          "sha256": "491d6361fe17ffac5cb34aad5c79b4054879af54df77e5e81eb4cbc5e6209d01",
+          "bytes": 406372,
+          "movingAgents": [],
+          "actionEvents": 30,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "era-change",
+      "label": "一次真实的短暂乱纪元；没有灾难终局",
+      "months": [
+        425,
+        426,
+        427
+      ],
+      "focus": "born-16-cai-wenji-7",
+      "frames": [
+        {
+          "month": 425,
+          "calendar": {
+            "year": 36,
+            "month": 5,
+            "label": "第 36 年 · 5 月"
+          },
+          "frameFile": "c16-m425-frame.json",
+          "eventsFile": "c16-m425-events.json",
+          "sha256": "4cc676f4d60502e8bd67676ebdc1a55f5ecce3648c4045e49388e19d52cd5a85",
+          "bytes": 407706,
+          "movingAgents": [],
+          "actionEvents": 29,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 0
+          }
+        },
+        {
+          "month": 426,
+          "calendar": {
+            "year": 36,
+            "month": 6,
+            "label": "第 36 年 · 6 月"
+          },
+          "frameFile": "c16-m426-frame.json",
+          "eventsFile": "c16-m426-events.json",
+          "sha256": "dc2e82910eb8e18b23c96ffa55f2e3f8223d3474a7615f2cb9c586ef48c2e7f8",
+          "bytes": 408239,
+          "movingAgents": [
+            "born-22-potianfeng-8"
+          ],
+          "actionEvents": 30,
+          "epoch": "chaotic",
+          "climate": {
+            "kind": "temperate",
+            "severity": 4,
+            "sinceMonth": 426
+          }
+        },
+        {
+          "month": 427,
+          "calendar": {
+            "year": 36,
+            "month": 7,
+            "label": "第 36 年 · 7 月"
+          },
+          "frameFile": "c16-m427-frame.json",
+          "eventsFile": "c16-m427-events.json",
+          "sha256": "3d460ebd765c2fa7ebbfe17fc1ccbdccc3b44d8b1a8cf1768d2fb75ea781c960",
+          "bytes": 407779,
+          "movingAgents": [],
+          "actionEvents": 15,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 427
+          }
+        }
+      ]
+    },
+    {
+      "id": "bronze-conversation",
+      "label": "玩家建议铜锡合炼；人物解释自己的困难",
+      "months": [
+        474,
+        475,
+        476,
+        477,
+        478,
+        479
+      ],
+      "focus": "born-16-cai-wenji-7",
+      "frames": [
+        {
+          "month": 474,
+          "calendar": {
+            "year": 40,
+            "month": 6,
+            "label": "第 40 年 · 6 月"
+          },
+          "frameFile": "c16-m474-frame.json",
+          "eventsFile": "c16-m474-events.json",
+          "sha256": "260ebe96dc38a02e71044f17fc9141e4af7962159fc8592a2848c2963ac1e6c7",
+          "bytes": 423827,
+          "movingAgents": [
+            "rei-ayanami",
+            "sun-wu",
+            "houyi",
+            "born-115-cai-wenji-10",
+            "born-244-potianfeng-13"
+          ],
+          "actionEvents": 28,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 459
+          }
+        },
+        {
+          "month": 475,
+          "calendar": {
+            "year": 40,
+            "month": 7,
+            "label": "第 40 年 · 7 月"
+          },
+          "frameFile": "c16-m475-frame.json",
+          "eventsFile": "c16-m475-events.json",
+          "sha256": "e7f1e11bada375dabead5c2c3e075c08bd9c662653a0ad7b7bfd314f315935e3",
+          "bytes": 424227,
+          "movingAgents": [
+            "born-244-potianfeng-13"
+          ],
+          "actionEvents": 28,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 459
+          }
+        },
+        {
+          "month": 476,
+          "calendar": {
+            "year": 40,
+            "month": 8,
+            "label": "第 40 年 · 8 月"
+          },
+          "frameFile": "c16-m476-frame.json",
+          "eventsFile": "c16-m476-events.json",
+          "sha256": "7d9bed1974e303dd319b72450f0681a36d72c901ca4e5e480e02a3f3927f441c",
+          "bytes": 424468,
+          "movingAgents": [],
+          "actionEvents": 29,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 459
+          }
+        },
+        {
+          "month": 477,
+          "calendar": {
+            "year": 40,
+            "month": 9,
+            "label": "第 40 年 · 9 月"
+          },
+          "frameFile": "c16-m477-frame.json",
+          "eventsFile": "c16-m477-events.json",
+          "sha256": "39fbc8587c3eef351095dcc4b40ad79169b13c739e4615e75231fb4aa85f7ece",
+          "bytes": 424273,
+          "movingAgents": [
+            "born-115-cai-wenji-10"
+          ],
+          "actionEvents": 43,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 459
+          }
+        },
+        {
+          "month": 478,
+          "calendar": {
+            "year": 40,
+            "month": 10,
+            "label": "第 40 年 · 10 月"
+          },
+          "frameFile": "c16-m478-frame.json",
+          "eventsFile": "c16-m478-events.json",
+          "sha256": "6e559ffc8d38858aa3021ceef63f15176ffa972cdf152c14e2b60b2cf23b1f0a",
+          "bytes": 424699,
+          "movingAgents": [
+            "houyi"
+          ],
+          "actionEvents": 27,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 459
+          }
+        },
+        {
+          "month": 479,
+          "calendar": {
+            "year": 40,
+            "month": 11,
+            "label": "第 40 年 · 11 月"
+          },
+          "frameFile": "c16-m479-frame.json",
+          "eventsFile": "c16-m479-events.json",
+          "sha256": "547f94933baa446371f5419168c323c273140f3d7bad9a422a83c63991184bab",
+          "bytes": 424423,
+          "movingAgents": [],
+          "actionEvents": 44,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 459
+          }
+        }
+      ]
+    },
+    {
+      "id": "teaching-conversation",
+      "label": "玩家建议传授手艺；人物仍须先谋生",
+      "months": [
+        523,
+        524,
+        525,
+        526,
+        527,
+        528,
+        529,
+        530
+      ],
+      "focus": "born-16-cai-wenji-7",
+      "frames": [
+        {
+          "month": 523,
+          "calendar": {
+            "year": 44,
+            "month": 7,
+            "label": "第 44 年 · 7 月"
+          },
+          "frameFile": "c16-m523-frame.json",
+          "eventsFile": "c16-m523-events.json",
+          "sha256": "306c349468b3a6fd8a44f463d7813186a3fd3700b3764a3b6f466a8c724bb33a",
+          "bytes": 425648,
+          "movingAgents": [],
+          "actionEvents": 31,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 524,
+          "calendar": {
+            "year": 44,
+            "month": 8,
+            "label": "第 44 年 · 8 月"
+          },
+          "frameFile": "c16-m524-frame.json",
+          "eventsFile": "c16-m524-events.json",
+          "sha256": "02a7878efb90839e4ed17ad44bf659a750be695b8282da35c0b1a3324190617a",
+          "bytes": 425567,
+          "movingAgents": [],
+          "actionEvents": 16,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 525,
+          "calendar": {
+            "year": 44,
+            "month": 9,
+            "label": "第 44 年 · 9 月"
+          },
+          "frameFile": "c16-m525-frame.json",
+          "eventsFile": "c16-m525-events.json",
+          "sha256": "2995584b0333153862c8724f41f775de3b2d21466ff7119c86b642d0a39cb3b2",
+          "bytes": 425571,
+          "movingAgents": [],
+          "actionEvents": 31,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 526,
+          "calendar": {
+            "year": 44,
+            "month": 10,
+            "label": "第 44 年 · 10 月"
+          },
+          "frameFile": "c16-m526-frame.json",
+          "eventsFile": "c16-m526-events.json",
+          "sha256": "db59d1b1c21801eba310b4a8a53eb66827d6717623dcda9b0c6e7d39c1d082b1",
+          "bytes": 426158,
+          "movingAgents": [],
+          "actionEvents": 15,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 527,
+          "calendar": {
+            "year": 44,
+            "month": 11,
+            "label": "第 44 年 · 11 月"
+          },
+          "frameFile": "c16-m527-frame.json",
+          "eventsFile": "c16-m527-events.json",
+          "sha256": "0888b6b85f5068c1b6e76b7ed5887deb9697bf0fd33826f8cc9329178379f248",
+          "bytes": 426037,
+          "movingAgents": [],
+          "actionEvents": 55,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 528,
+          "calendar": {
+            "year": 44,
+            "month": 12,
+            "label": "第 44 年 · 12 月"
+          },
+          "frameFile": "c16-m528-frame.json",
+          "eventsFile": "c16-m528-events.json",
+          "sha256": "69c3b074709d2b3af075e544a427cfbc9e760c7b57e44e6b19dc4fde548ac31f",
+          "bytes": 425806,
+          "movingAgents": [
+            "born-16-cai-wenji-7"
+          ],
+          "actionEvents": 36,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 529,
+          "calendar": {
+            "year": 45,
+            "month": 1,
+            "label": "第 45 年 · 1 月"
+          },
+          "frameFile": "c16-m529-frame.json",
+          "eventsFile": "c16-m529-events.json",
+          "sha256": "46cc0f316c9ea06bcd08f0143be45b333a2823f34a74ba00a705511aa033262f",
+          "bytes": 425452,
+          "movingAgents": [],
+          "actionEvents": 29,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 530,
+          "calendar": {
+            "year": 45,
+            "month": 2,
+            "label": "第 45 年 · 2 月"
+          },
+          "frameFile": "c16-m530-frame.json",
+          "eventsFile": "c16-m530-events.json",
+          "sha256": "99511fffb497f4ec84bbf1719d325f0676785a54e2477e47033fe6ca0437c108",
+          "bytes": 425488,
+          "movingAgents": [
+            "born-16-cai-wenji-7"
+          ],
+          "actionEvents": 31,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        }
+      ]
+    },
+    {
+      "id": "kiln-attempts",
+      "label": "孙疏影回到工地继续尝试；这六个月尝试均失败",
+      "months": [
+        530,
+        531,
+        532,
+        533,
+        534,
+        535,
+        536
+      ],
+      "focus": "born-16-cai-wenji-7",
+      "frames": [
+        {
+          "month": 530,
+          "calendar": {
+            "year": 45,
+            "month": 2,
+            "label": "第 45 年 · 2 月"
+          },
+          "frameFile": "c16-m530-frame.json",
+          "eventsFile": "c16-m530-events.json",
+          "sha256": "99511fffb497f4ec84bbf1719d325f0676785a54e2477e47033fe6ca0437c108",
+          "bytes": 425488,
+          "movingAgents": [
+            "born-16-cai-wenji-7"
+          ],
+          "actionEvents": 31,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 531,
+          "calendar": {
+            "year": 45,
+            "month": 3,
+            "label": "第 45 年 · 3 月"
+          },
+          "frameFile": "c16-m531-frame.json",
+          "eventsFile": "c16-m531-events.json",
+          "sha256": "d27b3ecab83c5f663596ca9d30f5c554b1a7d9081dde1005daf091b903774252",
+          "bytes": 425192,
+          "movingAgents": [
+            "freyja",
+            "aphrodite"
+          ],
+          "actionEvents": 19,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 532,
+          "calendar": {
+            "year": 45,
+            "month": 4,
+            "label": "第 45 年 · 4 月"
+          },
+          "frameFile": "c16-m532-frame.json",
+          "eventsFile": "c16-m532-events.json",
+          "sha256": "048197f31bd9b571d5762bef8cae949de78858c8a70ce6b75c46342feb3c21ce",
+          "bytes": 425811,
+          "movingAgents": [],
+          "actionEvents": 43,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 533,
+          "calendar": {
+            "year": 45,
+            "month": 5,
+            "label": "第 45 年 · 5 月"
+          },
+          "frameFile": "c16-m533-frame.json",
+          "eventsFile": "c16-m533-events.json",
+          "sha256": "941d64f2054f760f11a4d66532c56a5e6757093db5f31ffbe1a6a858b2d80aaf",
+          "bytes": 425647,
+          "movingAgents": [],
+          "actionEvents": 43,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 534,
+          "calendar": {
+            "year": 45,
+            "month": 6,
+            "label": "第 45 年 · 6 月"
+          },
+          "frameFile": "c16-m534-frame.json",
+          "eventsFile": "c16-m534-events.json",
+          "sha256": "4ed17af36c96dcc5000effee14854da90de1b1641f4cb0794966c2893d46494e",
+          "bytes": 425429,
+          "movingAgents": [],
+          "actionEvents": 30,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 535,
+          "calendar": {
+            "year": 45,
+            "month": 7,
+            "label": "第 45 年 · 7 月"
+          },
+          "frameFile": "c16-m535-frame.json",
+          "eventsFile": "c16-m535-events.json",
+          "sha256": "322d1f4709a98b34dcd694349326853735aaac485cac2ba0be5e27819e41bc20",
+          "bytes": 426836,
+          "movingAgents": [],
+          "actionEvents": 28,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 536,
+          "calendar": {
+            "year": 45,
+            "month": 8,
+            "label": "第 45 年 · 8 月"
+          },
+          "frameFile": "c16-m536-frame.json",
+          "eventsFile": "c16-m536-events.json",
+          "sha256": "4376e00c7f2c773cd07e6cf6179216f75bf6fbbcde5348ee715fadde10fc89d3",
+          "bytes": 426068,
+          "movingAgents": [],
+          "actionEvents": 42,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        }
+      ]
+    },
+    {
+      "id": "worry",
+      "label": "后凌川称呼玩家为主，并担心乱纪元",
+      "months": [
+        707,
+        708,
+        709,
+        710
+      ],
+      "focus": "born-115-cai-wenji-10",
+      "frames": [
+        {
+          "month": 707,
+          "calendar": {
+            "year": 59,
+            "month": 11,
+            "label": "第 59 年 · 11 月"
+          },
+          "frameFile": "c16-m707-frame.json",
+          "eventsFile": "c16-m707-events.json",
+          "sha256": "862937bea990ed6266f22407c46538059e7f3365c1c9a6bbb9e6045380027b6f",
+          "bytes": 437180,
+          "movingAgents": [
+            "freyja",
+            "cai-wenji",
+            "houyi",
+            "born-16-cai-wenji-7",
+            "born-22-potianfeng-8",
+            "born-115-cai-wenji-10",
+            "born-193-cai-wenji-12"
+          ],
+          "actionEvents": 45,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 708,
+          "calendar": {
+            "year": 59,
+            "month": 12,
+            "label": "第 59 年 · 12 月"
+          },
+          "frameFile": "c16-m708-frame.json",
+          "eventsFile": "c16-m708-events.json",
+          "sha256": "4eeae462d60bb86a5191977807973d01f3c6a2c3b61d92a916fb6ed878253974",
+          "bytes": 433100,
+          "movingAgents": [
+            "cai-wenji",
+            "houyi",
+            "born-16-cai-wenji-7",
+            "born-22-potianfeng-8",
+            "born-115-cai-wenji-10",
+            "born-159-potianfeng-11"
+          ],
+          "actionEvents": 18,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 709,
+          "calendar": {
+            "year": 60,
+            "month": 1,
+            "label": "第 60 年 · 1 月"
+          },
+          "frameFile": "c16-m709-frame.json",
+          "eventsFile": "c16-m709-events.json",
+          "sha256": "93eb341f0eae8f887cb6656d58f4fb8dd3e4d35bb63d1124d80cd9eebcf6b863",
+          "bytes": 435085,
+          "movingAgents": [
+            "born-16-cai-wenji-7",
+            "born-22-potianfeng-8",
+            "born-159-potianfeng-11"
+          ],
+          "actionEvents": 33,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 710,
+          "calendar": {
+            "year": 60,
+            "month": 2,
+            "label": "第 60 年 · 2 月"
+          },
+          "frameFile": "c16-m710-frame.json",
+          "eventsFile": "c16-m710-events.json",
+          "sha256": "b2c9a477b7649b3d5288b953e0458ebdef18e9cc06c94317b1349f5d43ef6abe",
+          "bytes": 439690,
+          "movingAgents": [
+            "born-22-potianfeng-8",
+            "born-244-potianfeng-13"
+          ],
+          "actionEvents": 21,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        }
+      ]
+    },
+    {
+      "id": "future",
+      "label": "后若水回应文明的未来，先民继续生活",
+      "months": [
+        785,
+        786,
+        787,
+        788,
+        789,
+        790,
+        791
+      ],
+      "focus": "born-193-cai-wenji-12",
+      "frames": [
+        {
+          "month": 785,
+          "calendar": {
+            "year": 66,
+            "month": 5,
+            "label": "第 66 年 · 5 月"
+          },
+          "frameFile": "c16-m785-frame.json",
+          "eventsFile": "c16-m785-events.json",
+          "sha256": "868a55ac857b65556f0360206cf07cb091330e73a43690952e69d6b192cd2941",
+          "bytes": 454898,
+          "movingAgents": [
+            "sun-wu",
+            "houyi",
+            "born-115-cai-wenji-10"
+          ],
+          "actionEvents": 17,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 786,
+          "calendar": {
+            "year": 66,
+            "month": 6,
+            "label": "第 66 年 · 6 月"
+          },
+          "frameFile": "c16-m786-frame.json",
+          "eventsFile": "c16-m786-events.json",
+          "sha256": "7505478e814edb5d928036f0e7bef469acc51af3f62bcc396c2ef9163ba69fa2",
+          "bytes": 466890,
+          "movingAgents": [
+            "sun-wu",
+            "born-115-cai-wenji-10"
+          ],
+          "actionEvents": 42,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 787,
+          "calendar": {
+            "year": 66,
+            "month": 7,
+            "label": "第 66 年 · 7 月"
+          },
+          "frameFile": "c16-m787-frame.json",
+          "eventsFile": "c16-m787-events.json",
+          "sha256": "81d6264b8b02db0b6b2459e52a93dcde90ae90d6d21eb9226e634dbd877c706d",
+          "bytes": 452854,
+          "movingAgents": [
+            "potianfeng",
+            "sun-wu",
+            "born-16-cai-wenji-7",
+            "born-115-cai-wenji-10"
+          ],
+          "actionEvents": 38,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 788,
+          "calendar": {
+            "year": 66,
+            "month": 8,
+            "label": "第 66 年 · 8 月"
+          },
+          "frameFile": "c16-m788-frame.json",
+          "eventsFile": "c16-m788-events.json",
+          "sha256": "8741c4eb70d25d5dc5eca4aed40ad195d2eac41b49dadc89bf2fe4e283ffd818",
+          "bytes": 453704,
+          "movingAgents": [
+            "potianfeng",
+            "rei-ayanami",
+            "sun-wu",
+            "houyi",
+            "born-16-cai-wenji-7",
+            "born-22-potianfeng-8",
+            "born-159-potianfeng-11",
+            "born-193-cai-wenji-12"
+          ],
+          "actionEvents": 66,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 789,
+          "calendar": {
+            "year": 66,
+            "month": 9,
+            "label": "第 66 年 · 9 月"
+          },
+          "frameFile": "c16-m789-frame.json",
+          "eventsFile": "c16-m789-events.json",
+          "sha256": "ec72d1b88476af92a95d572c7b66bf5459628db6e2fa0941b382232decd556b5",
+          "bytes": 456708,
+          "movingAgents": [
+            "potianfeng",
+            "rei-ayanami",
+            "sun-wu",
+            "born-16-cai-wenji-7",
+            "born-22-potianfeng-8",
+            "born-115-cai-wenji-10",
+            "born-159-potianfeng-11",
+            "born-193-cai-wenji-12"
+          ],
+          "actionEvents": 46,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 790,
+          "calendar": {
+            "year": 66,
+            "month": 10,
+            "label": "第 66 年 · 10 月"
+          },
+          "frameFile": "c16-m790-frame.json",
+          "eventsFile": "c16-m790-events.json",
+          "sha256": "c184c0e425956718535c95507d8017c9a2cfb62bc3edc67d1a7b79603bc71b28",
+          "bytes": 457065,
+          "movingAgents": [
+            "rei-ayanami",
+            "sun-wu",
+            "houyi",
+            "born-22-potianfeng-8",
+            "born-115-cai-wenji-10",
+            "born-193-cai-wenji-12",
+            "born-244-potianfeng-13"
+          ],
+          "actionEvents": 19,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        },
+        {
+          "month": 791,
+          "calendar": {
+            "year": 66,
+            "month": 11,
+            "label": "第 66 年 · 11 月"
+          },
+          "frameFile": "c16-m791-frame.json",
+          "eventsFile": "c16-m791-events.json",
+          "sha256": "320b3b2717e1c4086e3959acd1b0948a5e2e031e6085da867f0b00f196ed89e5",
+          "bytes": 452621,
+          "movingAgents": [
+            "sun-wu"
+          ],
+          "actionEvents": 16,
+          "epoch": "stable",
+          "climate": {
+            "kind": "temperate",
+            "severity": 1,
+            "sinceMonth": 491
+          }
+        }
+      ]
+    }
+  ]
+}

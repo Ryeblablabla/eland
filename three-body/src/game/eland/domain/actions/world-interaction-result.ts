@@ -12,6 +12,7 @@ export function worldInteractionResult(
     if (effect.kind === 'consume') results.push(`投入了${effect.quantity}份${material}`);
     else if (effect.kind === 'produce') results.push(`得到${effect.quantity}份${material}，${effect.destination === 'inventory' ? '已放入随身物资' : '已放在地面'}`);
     else if (effect.kind === 'relocate') results.push(`实际搬动了${effect.quantity}份${material}`);
+    else if (effect.kind === 'transfer') results.push(String(effect.result ?? '完成了取放物品的尝试'));
     else if (effect.kind === 'replace-voxel') results.push(`目标位置变为${material}`);
     else if (effect.kind === 'assemble' || effect.kind === 'modify-structure') {
       const work = state.world.works?.find((item) => item.id === effect.workId);

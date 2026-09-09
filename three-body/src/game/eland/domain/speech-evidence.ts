@@ -1,4 +1,5 @@
 import type { WorldEvent } from './model';
+import { outwardDeclaration } from './mental-act';
 import { languageBroadcastFromDiff } from './language-perception';
 import type { SpeechAct } from './speech-act';
 
@@ -39,12 +40,12 @@ export function isVerifiedModelSpeechLine(
     || line.month !== event.atMonth
     || line.speakerId !== ('who' in event ? event.who : undefined)) return false;
   if (event.kind === 'decision') {
-    const mentalAct = 'mentalAct' in event.decision ? event.decision.mentalAct : undefined;
+    const declaration = outwardDeclaration(event.decision);
     return line.source === 'decision-model'
       && line.planningTick === (event.planningTick ?? 0)
       && line.communicationKind === 'talk'
       && line.speechAct.kind === 'talk'
-      && line.text.trim() === mentalAct?.utterance.trim()
+      && line.text.trim() === declaration?.utterance.trim()
       && sameIds(line.perceivedByPersonIds, event.languageBroadcast?.perceivedByPersonIds ?? []);
   }
   if (event.kind !== 'action') return false;

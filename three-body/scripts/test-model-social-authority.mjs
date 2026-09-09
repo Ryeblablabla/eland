@@ -237,6 +237,12 @@ try {
     endpoint: { kind: 'months', value: 2 },
     chaosIntensity: 0,
   });
+  const urgent = structuredClone(initial);
+  urgent.clock.elapsedMonths = 1;
+  urgent.people[0].body = { health: 25, hydration: 0, nutrition: 0 };
+  const urgentContext = buildDecisionContexts(urgent, 2).find((candidate) => candidate.person.id === urgent.people[0].id);
+  assert.equal(isLiveModelDecisionContext({ ...urgentContext, options: [], followUpOptions: [] }, 2), true,
+    'an alive person in bodily danger keeps a model review even without a suggested local action or conversation');
   const founderCount = initial.people.filter((person) => person.generation === 0).length;
   const requestedBatches = [];
   const failedModelMonth = await stepSimulationAsync(initial, {
@@ -331,7 +337,10 @@ try {
     && event.decision.kind === 'idle'), false,
   '模型超时不得伪造人物自主 idle');
 
-  const noBudgetState = structuredClone(failedModelMonth);
+  // Isolate ordinary capacity from the genuine hunger/thirst exemptions
+  // produced by a full month of the earlier failed-model fixture.
+  const noBudgetState = structuredClone(initial);
+  noBudgetState.clock.elapsedMonths = 1;
   noBudgetState.civilization.status = 'running';
   delete noBudgetState.civilization.outcome;
   noBudgetState.civilization.conditions.endpoint = { kind: 'months', value: 3 };
@@ -340,7 +349,7 @@ try {
     if (intent.status === 'active') intent.status = 'abandoned';
   }
   noBudgetState.decisionBudget.credits = 0;
-  noBudgetState.decisionBudget.ledgers = noBudgetState.decisionBudget.ledgers.map((ledger) => ({
+  noBudgetState.decisionBudget.ledgers = failedModelMonth.decisionBudget.ledgers.map((ledger) => ({
     ...ledger,
     ordinaryModelContexts: 1_000,
     ordinaryChargedTokens: 1_000 * noBudgetState.decisionBudget.tokensPerContext,

@@ -70,10 +70,10 @@ export function createEnvironmentRuntime({
       c.width = 512; c.height = 256;
       const g = c.getContext('2d')!;
       const grad = g.createLinearGradient(0, 0, 0, c.height);
-      grad.addColorStop(0, '#344a70');
-      grad.addColorStop(0.42, '#172849');
-      grad.addColorStop(0.72, '#0d1730');
-      grad.addColorStop(1, '#070b17');
+      grad.addColorStop(0, '#8fabb7');
+      grad.addColorStop(0.42, '#b4b9ac');
+      grad.addColorStop(0.72, '#747962');
+      grad.addColorStop(1, '#343d36');
       g.fillStyle = grad;
       g.fillRect(0, 0, c.width, c.height);
       const envTex = new THREE.CanvasTexture(c);
@@ -499,6 +499,7 @@ export function createEnvironmentRuntime({
     const skyNadirTarget = new THREE.Color(ERA_SKY[activeLightEra].nadir);
     const skyHazeTarget = new THREE.Color(ERA_SKY[activeLightEra].haze);
     const skyColorScratch = new THREE.Color();
+    const aerialTint = new THREE.Color();
     let skyDaylightStrength = 0;
     let skyStarVisibility = 0;
 
@@ -524,8 +525,9 @@ export function createEnvironmentRuntime({
     sun.shadow.camera.far = 260;
     sun.shadow.camera.updateProjectionMatrix();
     sun.shadow.bias = -0.00008;
-    sun.shadow.normalBias = 0.032;
-    sun.shadow.radius = 3.2;
+    sun.shadow.normalBias = 0.012;
+    sun.shadow.radius = 2.2;
+    let activeShadowExtent = shadowExtent;
     scene.add(sun);
     // 少量无阴影直射光模拟天空与地表的多次散射，避免体素背光面和云影落成纯黑。
     const sunScatter = new THREE.DirectionalLight(sun.color, initialEraLight.sunI * 0.1);
@@ -715,9 +717,9 @@ void main() {`,
       // 所有下限都随天光连续插值，避免日落、日出或镜头切换时发生亮度跳变。
       let ambientMultiplier = THREE.MathUtils.lerp(0.60, 1, celestialDaylight);
       let exposureMultiplier = THREE.MathUtils.lerp(0.92, 1.02, celestialDaylight);
-      const hemisphereFillScale = THREE.MathUtils.lerp(0.86, 0.72, celestialDaylight);
+      const hemisphereFillScale = THREE.MathUtils.lerp(1.04, 0.94, celestialDaylight);
       const rimFillScale = THREE.MathUtils.lerp(0.94, 0.72, celestialDaylight);
-      const environmentFillScale = THREE.MathUtils.lerp(0.88, 0.80, celestialDaylight);
+      const environmentFillScale = THREE.MathUtils.lerp(0.54, 0.64, celestialDaylight);
       const blend = 1 - Math.exp(-LIGHT_DAMPING * deltaSeconds);
       // 星夜微光：三体世界没有月亮，深夜的冷色地板来自星空与银河背景光。
       // 它只保证地形与人物轮廓可读，不冲淡夜晚——火焰仍是夜里真正的暖光源。
@@ -749,6 +751,17 @@ void main() {`,
       // 镜头模式切换会改变观察锚点，但阴影中心仍以阻尼追随，避免进入化身
       // 或返回沙盘时整片阴影在一帧内平移。
       sunTarget.position.lerp(sunAnchorTarget, blend);
+      // Reuse the existing map at a tighter scale in close views. No larger texture or extra pass.
+      const closeShadowExtent = Math.min(shadowExtent, Math.max(16,
+        Math.ceil(camera.position.distanceTo(sunAnchorTarget) * 0.55 / 4) * 4));
+      if (Math.abs(closeShadowExtent - activeShadowExtent) > 2) {
+        activeShadowExtent = closeShadowExtent;
+        sun.shadow.camera.left = -closeShadowExtent;
+        sun.shadow.camera.right = closeShadowExtent;
+        sun.shadow.camera.top = closeShadowExtent;
+        sun.shadow.camera.bottom = -closeShadowExtent;
+        sun.shadow.camera.updateProjectionMatrix();
+      }
       sunlightTargetPosition.copy(skyLightDirection).multiplyScalar(120).add(sunTarget.position);
 
       if (chaotic) {
@@ -907,9 +920,15 @@ void main() {`,
       });
 
       const fog = scene.fog as THREE.Fog;
-      fog.color.lerp(weatherRuntime.fog.color, blend);
-      fog.near = THREE.MathUtils.damp(fog.near, weatherRuntime.fog.near, LIGHT_DAMPING, deltaSeconds);
-      fog.far = THREE.MathUtils.damp(fog.far, weatherRuntime.fog.far, LIGHT_DAMPING, deltaSeconds);
+      const fairAir = weather.kind === 'clear' || weather.kind === 'drought';
+      aerialTint.copy(weatherRuntime.fog.color);
+      if (fairAir) {
+        skyColorScratch.copy(skyHorizonTarget).lerp(hemi.groundColor, 0.65);
+        aerialTint.lerp(skyColorScratch, celestialDaylight * 0.75);
+      }
+      fog.color.lerp(aerialTint, blend);
+      fog.near = THREE.MathUtils.damp(fog.near, fairAir ? Math.min(64, weatherRuntime.fog.near) : weatherRuntime.fog.near, LIGHT_DAMPING, deltaSeconds);
+      fog.far = THREE.MathUtils.damp(fog.far, fairAir ? Math.min(320, weatherRuntime.fog.far) : weatherRuntime.fog.far, LIGHT_DAMPING, deltaSeconds);
       renderer.setClearColor(fog.color);
     };
 

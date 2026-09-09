@@ -1,14 +1,8 @@
 import type { BatchDecider, Decision, DecisionContext, TokenUsage } from "../src/game/eland/simulation";
 import type { SpeechLineView } from '../src/game/societyContract';
-import { isModelOwnedVoluntarySocialOption } from '../src/game/eland/domain/action-option-semantics';
-import { intentReviewAtMonth } from '../src/game/eland/domain/intent';
 import {
   buildDecisionRequestContext,
-  hasFulfillmentOpportunity,
-  isPlayerInteractionEmergencyContext,
-  isFulfillmentOption,
-  isRequiredSocialOption,
-  characterAgendaModelReviewDue,
+  personCanDecide,
   validatePlayerInteractionChoice,
   type PlayerInteractionChoiceFailure,
 } from '../src/game/eland/infrastructure-api';
@@ -115,33 +109,13 @@ export function decisionFromPlayerInteraction(
   };
 }
 
-/**
- * 实时模型只参与真正存在主观选择空间的关键节点。身体危险和既定履约
- * 保持本地即时处理；先民也可进入审议，但仍与普通月份共用容量。可选对话
- * 与关系分叉即使只有一项合法行动，也保留“做或不做”的模型选择。
+/** The application already decides when a review is due. A survival response
+ * can precede body work without removing the person's opportunity to think.
+ * Local candidate counts or the absence of a suggested conversation do not
+ * determine whether a model-owned person has subjective choices.
  */
 export function isLiveModelDecisionContext(context: DecisionContext, atMonth: number): boolean {
-  if (isPlayerInteractionEmergencyContext(context)) return false;
-  const required = context.options.filter(isRequiredSocialOption);
-  if (required.length) return true;
-  if (hasFulfillmentOpportunity(context)) return true;
-  const hasDialogueChoice = context.options.some((option) => option.nextAction.kind === 'talk'
-    || option.completionAction?.kind === 'talk');
-  const active = context.activeIntent;
-  const progressAnchor = active
-    ? Math.max(active.lastProgressAtMonth, active.lastResumedAtMonth ?? active.lastProgressAtMonth)
-    : atMonth;
-  const reviewAtMonth = active ? intentReviewAtMonth(active) : undefined;
-  const turningPoint = Boolean(active) && (
-    reviewAtMonth !== undefined && atMonth > reviewAtMonth
-    || atMonth - progressAnchor >= 2
-  );
-  if (turningPoint || characterAgendaModelReviewDue(context, atMonth)) return true;
-  if (context.options.some(isModelOwnedVoluntarySocialOption)) return true;
-  // The model owns formation of a new subjective direction. A single current
-  // affordance is only a possible first step, not a reason to skip cognition.
-  if (!active) return true;
-  return hasDialogueChoice;
+  return personCanDecide(context.state, context, atMonth);
 }
 
 export function createServerLlmDecider(

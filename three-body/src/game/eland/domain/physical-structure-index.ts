@@ -50,6 +50,10 @@ interface HistorySeal {
 
 type PhysicalStructureState = Pick<DecisionAuthorityState, 'clock' | 'world'>;
 
+/** Increment when support/connectivity/shelter criteria change independently
+ * of the voxel data or construction-provenance format. */
+export const PHYSICAL_STRUCTURE_GEOMETRY_VERSION = 1;
+
 function positionKey(x: number, y: number, z: number): string {
   return `${x}:${y}:${z}`;
 }
@@ -343,6 +347,7 @@ function materializePhysicalStructureIndex(
   const constructionRecords = orderedRecords(fold);
   return {
     projectionVersion: 2,
+    geometryVersion: PHYSICAL_STRUCTURE_GEOMETRY_VERSION,
     appliedHistoryEventCount: fold.appliedHistoryEventCount,
     appliedTailEventId: fold.appliedTailEventId,
     calculatedAtMonth: state.clock.elapsedMonths,
@@ -437,6 +442,7 @@ function legacyFullHistoryCacheIsFresh(
   hasOverlay: boolean,
 ): boolean {
   return index.projectionVersion === undefined
+    && index.geometryVersion === PHYSICAL_STRUCTURE_GEOMETRY_VERSION
     && hotStartIndex === 0
     && !hasOverlay
     && index.voxelRevision !== undefined
@@ -480,7 +486,8 @@ export function physicalStructureIndexOf(state: PhysicalStructureState): Physica
     if (overlay.length === 0) state.world.physicalStructureIndex = base;
   }
   if (overlay.length > 0) return previewPhysicalStructureIndex(state, base, overlay);
-  if (base.voxelRevision === voxelWorldRevision(state.world.grid)
+  if (base.geometryVersion === PHYSICAL_STRUCTURE_GEOMETRY_VERSION
+    && base.voxelRevision === voxelWorldRevision(state.world.grid)
     && base.calculatedAtMonth === state.clock.elapsedMonths) return base;
   const refreshed = materializePhysicalStructureIndex(state, beginPhysicalStructureFold(state.world.grid, base));
   state.world.physicalStructureIndex = refreshed;

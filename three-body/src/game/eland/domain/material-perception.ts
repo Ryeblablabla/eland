@@ -3,6 +3,7 @@ import {
   type MaterialId,
   type MaterialPerceptualForm,
 } from './material';
+import { perceivedMechanicalCondition, type ItemMechanicalState, type PerceivedMechanicalCondition } from './material-mechanics';
 
 /** How directly this person has encountered one exact material entity. */
 export type MaterialPerceptionAccess = 'visible' | 'held' | 'verified';
@@ -35,6 +36,11 @@ export interface PerceivedMaterialProfile {
   appearance: PerceivedMaterialAppearance;
   loadBand?: PerceivedMaterialLoadBand;
   rigidity?: PerceivedMaterialRigidity;
+}
+
+/** Entity condition is distinct from the material's scalar comparison traits. */
+export interface PerceivedPhysicalMaterialProfile extends PerceivedMaterialProfile {
+  mechanicalCondition?: PerceivedMechanicalCondition;
 }
 
 function perceivedForm(materialId: MaterialId): PerceivedMaterialForm {
@@ -80,11 +86,13 @@ function perceivedRigidity(materialId: MaterialId): PerceivedMaterialRigidity {
 export function perceiveMaterial(
   materialId: MaterialId,
   access: MaterialPerceptionAccess,
-): PerceivedMaterialProfile {
-  const profile: PerceivedMaterialProfile = {
+  mechanicalState?: ItemMechanicalState,
+): PerceivedPhysicalMaterialProfile {
+  const profile: PerceivedPhysicalMaterialProfile = {
     phase: materialDefinition(materialId).phase,
     form: perceivedForm(materialId),
     appearance: perceivedAppearance(materialId),
+    ...(mechanicalState ? { mechanicalCondition: perceivedMechanicalCondition(mechanicalState) } : {}),
   };
   if (access === 'visible') return profile;
   return {

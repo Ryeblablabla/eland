@@ -68,7 +68,9 @@ function sameTerrainWorld(left: SocietyState['world'], right: SocietyState['worl
 
 function sameTerrainStructures(left: SocietyState['structures'], right: SocietyState['structures']): boolean {
   return sameArrayBy(left, right, (a, b) => a.id === b.id
+    && a.workId === b.workId
     && a.complete === b.complete
+    && sameArrayBy(a.workGroundPositions ?? [], b.workGroundPositions ?? [], (p, q) => p.cellId === q.cellId && p.z === q.z)
     && samePrimitiveArray(a.occupiedCells, b.occupiedCells)
     && sameArrayBy(a.interiorPositions, b.interiorPositions, (p, q) => p.cellId === q.cellId && p.z === q.z));
 }
@@ -87,6 +89,8 @@ export function sameSelectionVisuals(left: SocietyState, right: SocietyState): b
 
 function sameDecorStructures(left: SocietyState['structures'], right: SocietyState['structures']): boolean {
   return sameArrayBy(left, right, (a, b) => a.id === b.id
+    && a.workId === b.workId
+    && sameArrayBy(a.workVoxels ?? [], b.workVoxels ?? [], (p, q) => p.cellId === q.cellId && p.z === q.z && p.materialId === q.materialId)
     && a.complete === b.complete
     && a.componentCount === b.componentCount
     && a.effects.weatherProtection === b.effects.weatherProtection
@@ -204,8 +208,10 @@ export function sameDecorVisuals(left: SocietyState, leftEra: EraKey, right: Soc
   if (!sameArrayBy(left.drops, right.drops, (a, b) => a.id === b.id
     && a.materialId === b.materialId && a.cellId === b.cellId && a.z === b.z && a.quantity === b.quantity)) return false;
   if (!sameArrayBy(left.containers, right.containers, (a, b) => a.id === b.id
+    && a.workId === b.workId && a.accessible === b.accessible
     && a.materialId === b.materialId && a.cellId === b.cellId && a.z === b.z
     && a.capacity === b.capacity && a.usedCapacity === b.usedCapacity
+    && sameArrayBy(a.cavityPositions ?? [], b.cavityPositions ?? [], (p, q) => p.cellId === q.cellId && p.z === q.z)
     && sameArrayBy(a.contents ?? [], b.contents ?? [], (p, q) => p.materialId === q.materialId && p.quantity === q.quantity))) return false;
   if (!sameArrayBy(left.graves ?? [], right.graves ?? [], (a, b) => a.id === b.id
     && a.cellId === b.cellId && a.z === b.z && a.marked === b.marked

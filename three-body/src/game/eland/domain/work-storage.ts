@@ -12,6 +12,7 @@ export interface WorkStorageSpace {
   mouth: VoxelPosition;
   capacity: number;
   retainsWater: boolean;
+  open: boolean;
 }
 
 const key = (position: VoxelPosition) => `${position.x}:${position.y}:${position.z}`;
@@ -28,39 +29,63 @@ export function workStorageSpaces(world: { grid: VoxelWorld }, work: WorkState):
   const positions = occupied.map((voxel) => voxel.position);
   const min = { x: Math.min(...positions.map((p) => p.x)), y: Math.min(...positions.map((p) => p.y)), z: Math.min(...positions.map((p) => p.z)) };
   const max = { x: Math.max(...positions.map((p) => p.x)), y: Math.max(...positions.map((p) => p.y)), z: Math.max(...positions.map((p) => p.z)) };
-  const owned = new Set(positions.map(key)), visited = new Set<string>();
+  const owned = new Set(positions.map(key));
   const spaces: WorkStorageSpace[] = [];
-  for (let z = min.z + 1; z <= max.z; z++) for (let y = min.y; y <= max.y; y++) for (let x = min.x; x <= max.x; x++) {
-    const seed = { x, y, z };
-    if (visited.has(key(seed)) || voxelAt(world.grid, x, y, z) !== Material.Air) continue;
-    const cells = [seed], mouths: VoxelPosition[] = [];
-    let closed = true, boundaryOwned = false, retainsWater = true;
-    visited.add(key(seed));
-    for (let index = 0; index < cells.length; index++) {
-      const current = cells[index];
+  const opensOutside = (mouth: VoxelPosition, fillZ: number): boolean => {
+    const start = { ...mouth, z: mouth.z + 1 };
+    const queue = [start], seen = new Set([key(start)]);
+    for (let index = 0; index < queue.length; index++) {
+      const current = queue[index];
+      if (current.x < min.x || current.x > max.x || current.y < min.y || current.y > max.y || current.z > max.z) return true;
       for (const [dx, dy, dz] of directions) {
         const next = { x: current.x + dx, y: current.y + dy, z: current.z + dz };
-        const materialId = voxelAt(world.grid, next.x, next.y, next.z);
-        if (materialId !== Material.Air) {
-          const solid = materialDefinition(materialId).phase === 'solid'
-            && (materialHas(materialId, 'solid') || materialHas(materialId, 'ground'));
-          if (!solid) closed = false;
-          if (!materialDefinition(materialId).retainsWater) retainsWater = false;
-          if (owned.has(key(next))) boundaryOwned = true;
-          continue;
-        }
-        if (next.x < min.x || next.x > max.x || next.y < min.y || next.y > max.y || next.z <= min.z) {
-          closed = false;
-          continue;
-        }
-        if (next.z > max.z) { mouths.push(current); continue; }
-        if (!visited.has(key(next))) { visited.add(key(next)); cells.push(next); }
+        if (next.z <= fillZ || seen.has(key(next)) || voxelAt(world.grid, next.x, next.y, next.z) !== Material.Air) continue;
+        seen.add(key(next)); queue.push(next);
       }
     }
-    if (!closed || !boundaryOwned || !mouths.length) continue;
-    cells.sort((a, b) => a.z - b.z || a.x - b.x || a.y - b.y);
-    mouths.sort((a, b) => a.x - b.x || a.y - b.y || a.z - b.z);
-    spaces.push({ cells, mouth: mouths[0], capacity: cells.length, retainsWater });
+    return false;
+  };
+  // Raise the fill level only while its side/bottom faces remain closed.
+  // Air spilling over a low rim does not erase the real capacity below it.
+  for (let fillZ = min.z + 1; fillZ <= max.z; fillZ++) {
+    const visited = new Set<string>();
+    for (let z = min.z + 1; z <= fillZ; z++) for (let y = min.y; y <= max.y; y++) for (let x = min.x; x <= max.x; x++) {
+      const seed = { x, y, z };
+      if (visited.has(key(seed)) || voxelAt(world.grid, x, y, z) !== Material.Air) continue;
+      const cells = [seed], mouths: VoxelPosition[] = [];
+      let closed = true, boundaryOwned = false, retainsWater = true;
+      visited.add(key(seed));
+      for (let index = 0; index < cells.length; index++) {
+        const current = cells[index];
+        for (const [dx, dy, dz] of directions) {
+          const next = { x: current.x + dx, y: current.y + dy, z: current.z + dz };
+          const materialId = voxelAt(world.grid, next.x, next.y, next.z);
+          if (materialId !== Material.Air) {
+            const solid = materialDefinition(materialId).phase === 'solid'
+              && (materialHas(materialId, 'solid') || materialHas(materialId, 'ground'));
+            if (!solid) closed = false;
+            if (!materialDefinition(materialId).retainsWater) retainsWater = false;
+            if (owned.has(key(next))) boundaryOwned = true;
+            continue;
+          }
+          if (next.x < min.x || next.x > max.x || next.y < min.y || next.y > max.y || next.z <= min.z) {
+            closed = false;
+            continue;
+          }
+          if (next.z > fillZ) { mouths.push(current); continue; }
+          if (!visited.has(key(next))) { visited.add(key(next)); cells.push(next); }
+        }
+      }
+      if (!closed || !boundaryOwned) continue;
+      cells.sort((a, b) => a.z - b.z || a.x - b.x || a.y - b.y);
+      mouths.sort((a, b) => a.x - b.x || a.y - b.y || a.z - b.z);
+      const cellKeys = new Set(cells.map(key));
+      for (let index = spaces.length - 1; index >= 0; index--) {
+        if (spaces[index].cells.some((cell) => cellKeys.has(key(cell)))) spaces.splice(index, 1);
+      }
+      const openMouth = mouths.find((mouth) => opensOutside(mouth, fillZ));
+      spaces.push({ cells, mouth: openMouth ?? cells.at(-1)!, capacity: cells.length, retainsWater, open: Boolean(openMouth) });
+    }
   }
   return spaces;
 }
@@ -71,6 +96,7 @@ export interface WorkStorageChange {
   change: 'opened' | 'reshaped' | 'merged' | 'lost-containment' | 'contents-spilled';
   capacity?: number;
   retainsWater?: boolean;
+  open?: boolean;
   contents?: Array<{ materialId: number; quantity: number; sourceStackId: string;
     sourceEventIds: string[]; sourceLineageKeys: string[]; dropId?: string; lost?: true }>;
 }
@@ -114,14 +140,14 @@ export function reconcileWorkStorage(state: SimulationState, atMonth: number, ev
       if (!container) {
         const point = space.cells[0];
         container = { id: `work-storage:${work.id}:${key(point)}`, position: { ...space.mouth },
-          inventory: [], capacity: space.capacity, retainsWater: space.retainsWater,
+          inventory: [], capacity: space.capacity, retainsWater: space.retainsWater, accessible: space.open,
           carrier: { kind: 'work', workId: work.id, cavityPoint: { ...point } }, createdAtMonth: atMonth,
           sourceEventIds: [...new Set([...work.sourceEventIds, eventId])] };
         state.containers.push(container);
-        changes.push({ workId: work.id, containerId: container.id, change: 'opened', capacity: space.capacity, retainsWater: space.retainsWater });
+        changes.push({ workId: work.id, containerId: container.id, change: 'opened', capacity: space.capacity, retainsWater: space.retainsWater, open: space.open });
       } else if (container.capacity !== space.capacity || container.retainsWater !== space.retainsWater
-        || !samePosition(container.position, space.mouth)) {
-        changes.push({ workId: work.id, containerId: container.id, change: 'reshaped', capacity: space.capacity, retainsWater: space.retainsWater });
+        || container.accessible !== space.open || !samePosition(container.position, space.mouth)) {
+        changes.push({ workId: work.id, containerId: container.id, change: 'reshaped', capacity: space.capacity, retainsWater: space.retainsWater, open: space.open });
       }
       retained.add(container.id);
       for (const merged of matches.slice(1)) {
@@ -134,6 +160,7 @@ export function reconcileWorkStorage(state: SimulationState, atMonth: number, ev
       container.position = { ...space.mouth };
       container.capacity = space.capacity;
       container.retainsWater = space.retainsWater;
+      container.accessible = space.open;
       if (!space.retainsWater) spill(container, Number.POSITIVE_INFINITY, true);
       spill(container, Math.max(0, container.inventory.reduce((sum, stack) => sum + stack.quantity, 0) - space.capacity));
     }

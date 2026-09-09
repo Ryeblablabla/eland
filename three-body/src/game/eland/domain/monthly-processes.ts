@@ -314,9 +314,8 @@ export function advanceWorldProcesses(state: SimulationState, atMonth: number): 
   const storageEventId = `e-${atMonth}-environment-material-${events.length}`;
   const storageChanges = reconcileWorkStorage(state, atMonth, storageEventId);
   if (storageChanges.length) {
-    const storageFact = event(state, atMonth, events, 'material', '造物空腔随实际材料变化重新结算，原有内容物按围护状况保留或散失', { workStorageChanges: storageChanges });
-    // Keep the source identity supplied to the settlement exact.
-    if (storageFact.id !== storageEventId) throw new Error('储存空间自然结算的来源事件不一致');
+    event(state, atMonth, events, 'material', '造物空腔随实际材料变化重新结算，原有内容物按围护状况保留或散失',
+      { workStorageChanges: storageChanges }, undefined, storageEventId);
   }
   advanceAnimals(state, atMonth, events);
   return events;

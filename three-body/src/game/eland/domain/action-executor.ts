@@ -38,6 +38,7 @@ import {
   type StandingPosition,
 } from '../world/grid';
 import { BASE_ACTIVITY_EPISODE_WORK_EFFORT, physicalWorkCapacityMultiplier } from './calendar';
+import { actionWorkQuote, actorWorkCapacity, invalidateChangedMovementWork, movementWorkBasis, workProgressHolder, type ActivityWorkBudget } from './action-work';
 import { seededFraction } from '../world/generator';
 import {
   createWork,
@@ -48,6 +49,7 @@ import {
   captureWorkSupportUse,
   recordWorkSupportUse,
   recordWorkThermalProcessingUse,
+  recordWorkStorageUse,
 } from './works';
 import { processingSources, rainProtectedProcessingAt } from './thermal-process';
 import { applyAnimalBondContact, resetAnimalBond } from './animal-bonds';
@@ -553,7 +555,8 @@ function compactTraversedSurface(state: SimulationState, path: StandingPosition[
   return changes;
 }
 
-function executeMove(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'move' }>, eventId: string, atMonth: number) {
+function executeMove(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'move' }>, eventId: string, atMonth: number, workBudget?: ActivityWorkBudget) {
+  invalidateChangedMovementWork(state);
   if (isDormantDehydratedHibernating(person)) return { status: 'blocked' as const, path: [person.position.cellId], result: '处于低代谢休眠，无法移动', diff: {} };
   if (person.conditions.some((condition) => condition.kind === 'restrained')) return { status: 'blocked' as const, path: [person.position.cellId], result: '身体受到拘束，无法远距离移动', diff: {} };
   const threatValidation = action.wildlifeThreatBasis
@@ -666,19 +669,35 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
     nutrition: person.body.nutrition,
     conditions: person.conditions,
   });
-  // One action tick is a coherent activity episode. The path remains exact,
-  // while body state changes how much of it can be covered in that episode.
-  const segment = standingPathSegmentForEffort(
-    state.world.grid,
-    fullPath,
-    BASE_ACTIVITY_EPISODE_WORK_EFFORT,
-    workCapacity,
-  );
+  // Movement shares the remaining actor effort instead of receiving a fresh
+  // eight units on every continuation. An expensive indivisible edge accrues
+  // real work until it can be crossed, without a free over-budget first step.
   const from = { cellId: person.position.cellId, z: person.position.z };
+  const edgeBasis = fullPath.length > 1 ? movementWorkBasis(state.world.grid, fullPath[0], fullPath[1]) : undefined;
+  if (person.movementWork && person.movementWork.basis !== edgeBasis) delete person.movementWork;
+  const edgeCredit = edgeBasis && person.movementWork?.basis === edgeBasis ? person.movementWork.completedWork : 0;
+  const priorEdgeSources = edgeCredit > 0 ? [...person.movementWork!.sourceEventIds] : [];
+  const availableEffort = workBudget ? Math.max(0, workBudget.remainingEffort) : BASE_ACTIVITY_EPISODE_WORK_EFFORT;
+  const segment = standingPathSegmentForEffort(state.world.grid, fullPath,
+    availableEffort + edgeCredit / workCapacity, workCapacity, !workBudget);
   const to = segment.at(-1) ?? from;
   const moved = to.cellId !== from.cellId || to.z !== from.z;
   const movementCost = moved ? standingPathMovementCost(state.world.grid, segment) : 0;
-  const spent = movementCost / workCapacity;
+  let spent = Math.max(0, movementCost - (moved ? edgeCredit : 0)) / workCapacity;
+  if (workBudget) {
+    const nextEdge = fullPath[segment.length];
+    const remaining = Math.max(0, availableEffort - spent);
+    if (nextEdge && remaining > 0) {
+      const basis = movementWorkBasis(state.world.grid, to, nextEdge);
+      const completedWork = (!moved && person.movementWork?.basis === basis ? edgeCredit : 0)
+        + remaining * workCapacity;
+      person.movementWork = { basis, from: { ...to }, to: { ...nextEdge }, completedWork,
+        requiredWork: standingPathMovementCost(state.world.grid, [to, nextEdge]),
+        sourceEventIds: [...new Set([...(person.movementWork?.basis === basis ? person.movementWork.sourceEventIds : []), eventId])] };
+      spent += remaining;
+    } else if (moved || fullPath.length === 1) delete person.movementWork;
+    workBudget.remainingEffort = Math.max(0, workBudget.remainingEffort - spent);
+  }
   person.position.cellId = to.cellId;
   person.position.z = to.z;
   if (moved) person.position.lastPath.push(...segment.slice(1).map((position) => position.cellId));
@@ -739,6 +758,8 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
       : movementResult,
     diff: {
       spentWork: spent,
+      ...(moved && priorEdgeSources.length ? { workCompletionSourceEventIds: [...priorEdgeSources, eventId] } : {}),
+      ...(workBudget && person.movementWork ? { movementWork: structuredClone(person.movementWork) } : {}),
       movementCost,
       movementMetabolism,
       verticalPath: segment.map((position) => position.z),
@@ -938,6 +959,8 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       diff: {
         authorized: false,
         attempted: true,
+        materialId: action.materialId,
+        attemptedQuantity: quantity,
         resistedBy: sourcePerson.id,
         witnessedBy,
         takingContest,
@@ -2158,12 +2181,14 @@ export function executeIntentAction(
   orderInMonth: number,
   actionTick: number,
   languageBroadcast?: LanguageBroadcast,
+  workBudget?: ActivityWorkBudget,
 ): ActionFact {
   return executePrimitiveAction(state, person, intent.nextAction, atMonth, orderInMonth, {
     intentId: intent.id,
     cause: 'intent',
     actionTick,
     ...(languageBroadcast ? { languageBroadcast } : {}),
+    ...(workBudget ? { workBudget } : {}),
   });
 }
 
@@ -2287,6 +2312,7 @@ function executeWorldTransferStep(
   effect: Extract<WorldInteractionEffect, { kind: 'transfer' }>,
   atMonth: number,
   eventId: string,
+  workBudget?: ActivityWorkBudget,
 ) {
   if (!Number.isInteger(effect.quantity) || effect.quantity <= 0) return {
     status: 'blocked' as const, result: '取放物品需要明确的正整数数量', diff: {},
@@ -2340,7 +2366,7 @@ function executeWorldTransferStep(
     };
     const movement = executeMove(state, person, {
       kind: 'move', toCellId: candidates[0].position.cellId, toZ: candidates[0].position.z,
-    }, eventId, atMonth);
+    }, eventId, atMonth, workBudget);
     return { ...movement, status: movement.status === 'blocked' ? 'blocked' as const : 'progressed' as const,
       result: `${movement.result}（先到能实际取放物品的位置，尚未转移物品）`,
       diff: { ...movement.diff, worldAdjudicatedApproach: true, transferAttempted: false } };
@@ -2368,6 +2394,7 @@ function executeWorldInteraction(
   action: Extract<PrimitiveAction, { kind: 'world-interact' }>,
   atMonth: number,
   eventId: string,
+  workBudget?: ActivityWorkBudget,
 ) {
   const verdict = action.adjudication;
   if (verdict.version !== 'world-adjudicated-interaction-v1'
@@ -2432,7 +2459,7 @@ function executeWorldInteraction(
     if (movementDestination.cellId !== person.position.cellId || movementDestination.z !== person.position.z) {
       const movement = executeMove(state, person, {
         kind: 'move', toCellId: movementDestination.cellId, toZ: movementDestination.z,
-      }, eventId, atMonth);
+      }, eventId, atMonth, workBudget);
       return {
         ...movement,
         status: movement.status === 'blocked' ? movement.status : 'progressed' as const,
@@ -2442,7 +2469,7 @@ function executeWorldInteraction(
     }
   }
   const transferStep = verdict.effects.find((effect) => effect.kind === 'transfer');
-  if (transferStep && verdict.status !== 'blocked') return executeWorldTransferStep(state, person, action, transferStep, atMonth, eventId);
+  if (transferStep && verdict.status !== 'blocked') return executeWorldTransferStep(state, person, action, transferStep, atMonth, eventId, workBudget);
   const interactionCellId = person.position.cellId;
   // 人物在近身作业区（自身与邻格、以及伸手可及的再外一格）可以直接操作；
   // 搭建天然是"脚边材料 + 坡面/水面"的跨格协作，操作半径过小会扼杀建造。
@@ -2520,7 +2547,7 @@ function executeWorldInteraction(
         person,
         { kind: 'move', toCellId: approach.cellId, toZ: approach.z },
         eventId,
-        atMonth,
+        atMonth, workBudget,
       );
       return {
         ...approached,
@@ -2643,7 +2670,7 @@ function executeWorldInteraction(
           cellId: cellId(anchor.x, anchor.y), z: anchor.z,
         });
         if (!beside) return { status: 'blocked' as const, result: '身旁暂时没有可落脚的施工位置', diff: {} };
-        const movement = executeMove(state, person, { kind: 'move', toCellId: beside.cellId, toZ: beside.z }, eventId, atMonth);
+        const movement = executeMove(state, person, { kind: 'move', toCellId: beside.cellId, toZ: beside.z }, eventId, atMonth, workBudget);
         return {
           ...movement,
           status: movement.status === 'blocked' ? movement.status : 'progressed' as const,
@@ -2741,7 +2768,7 @@ function executeWorldInteraction(
           .filter((candidate) => candidate.path.length > 1)
           .sort((left, right) => left.path.length - right.path.length);
         if (places[0]) {
-          const movement = executeMove(state, person, { kind: 'move', toCellId: places[0].position.cellId, toZ: places[0].position.z }, eventId, atMonth);
+          const movement = executeMove(state, person, { kind: 'move', toCellId: places[0].position.cellId, toZ: places[0].position.z }, eventId, atMonth, workBudget);
           return { ...movement, status: movement.status === 'blocked' ? 'blocked' as const : 'progressed' as const,
             result: `${movement.result}（先让出计划中的构件布局，再继续施工）`,
             diff: { ...movement.diff, worldAdjudicatedApproach: true, assemblyPosition: work.position } };
@@ -3040,6 +3067,7 @@ export function executePrimitiveAction(
     cause: ActionFact['cause'];
     actionTick: number;
     languageBroadcast?: LanguageBroadcast;
+    workBudget?: ActivityWorkBudget;
   },
 ): ActionFact {
   const eventId = `e-${atMonth}-action-${person.id}-${orderInMonth}`;
@@ -3060,12 +3088,12 @@ export function executePrimitiveAction(
   const techniqueLearning = action.kind === 'act'
     ? validateTechniqueLearningAction(state, person, action, atMonth)
     : { kind: 'none' as const };
-  const outcome = blockedByHibernationRecovery
+  const perform = () => blockedByHibernationRecovery
     ? { status: 'blocked' as const, result: '休眠恢复完成前只能取水、取食或进行必要移动', diff: { hibernationRecoveryRestricted: true } }
     : techniqueLearning.kind === 'blocked'
     ? { status: 'blocked' as const, result: techniqueLearning.reason, diff: {} }
     : action.kind === 'move'
-      ? executeMove(state, person, action, eventId, atMonth)
+      ? executeMove(state, person, action, eventId, atMonth, meta.workBudget)
       : action.kind === 'transfer'
         ? executeTransfer(state, person, action, atMonth, eventId)
         : action.kind === 'act'
@@ -3073,10 +3101,67 @@ export function executePrimitiveAction(
           : action.kind === 'attend'
             ? executeAttend(state, person, action, atMonth, eventId, meta.intentId)
             : action.kind === 'world-interact'
-              ? executeWorldInteraction(state, person, action, atMonth, eventId)
+              ? executeWorldInteraction(state, person, action, atMonth, eventId, meta.workBudget)
             : action.kind === 'talk'
               ? executeTalk(state, person, action, atMonth, eventId, meta.languageBroadcast)
               : executeInscribe(state, person, action, atMonth, eventId);
+  const budgetAtStart = meta.workBudget?.remainingEffort;
+  const previewAction = (): ActionFact => {
+    const previewState = structuredClone(state);
+    const previewPerson = previewState.people.find((candidate) => candidate.id === person.id)!;
+    const { workBudget: _budget, ...previewMeta } = meta;
+    return executePrimitiveAction(previewState, previewPerson, action, atMonth, orderInMonth, previewMeta);
+  };
+  const transferAction = action.kind === 'transfer' || action.kind === 'world-interact'
+    && action.adjudication.effects.some((effect) => effect.kind === 'transfer');
+  let preview = meta.workBudget && transferAction && !blockedByHibernationRecovery && techniqueLearning.kind !== 'blocked'
+    ? previewAction() : undefined;
+  const transferSettlement = transferAction ? {
+    materialId: typeof preview?.diff.materialId === 'number' ? preview.diff.materialId
+      : action.kind === 'transfer' ? action.materialId : Material.Air,
+    quantity: typeof preview?.diff.quantity === 'number' ? preview.diff.quantity
+      : preview?.diff.attempted === true && typeof preview.diff.attemptedQuantity === 'number' ? preview.diff.attemptedQuantity : 0,
+  } : undefined;
+  const quote = meta.workBudget ? actionWorkQuote(state, person, action, transferSettlement) : undefined;
+  const holder = workProgressHolder(person, sourceIntent);
+  const capacity = quote?.kind === 'work' && quote.fixedEpisode ? 1 : actorWorkCapacity(person);
+  const previousWork = quote?.kind === 'work' && holder.actionWork?.basis === quote.basis ? holder.actionWork : undefined;
+  const remainingWork = quote?.kind === 'work' ? Math.max(0, quote.work - (previousWork?.completedWork ?? 0)) : 0;
+  const availableWork = Math.max(0, meta.workBudget?.remainingEffort ?? 0) * capacity;
+  let partialWork = false;
+  if (quote?.kind === 'work' && remainingWork > availableWork && !blockedByHibernationRecovery && techniqueLearning.kind !== 'blocked') {
+    // Reuse the actual executor for prerequisites before retaining unfinished
+    // labour. The isolated preview commits no output or evidence to this world.
+    preview ??= previewAction();
+    partialWork = preview.status !== 'blocked' && preview.status !== 'failed'
+      && !preview.diff.worldAdjudicatedApproach;
+  }
+  const outcome = partialWork && quote ? {
+    status: 'progressed' as const,
+    result: '继续完成这项已选操作的劳动，材料结果尚未完成',
+    diff: {} as Record<string, unknown>,
+  } : perform();
+  const outcomeDiff = outcome.diff as Record<string, unknown>;
+  if (meta.workBudget && quote?.kind === 'work' && (outcome.status !== 'blocked' || outcomeDiff.attempted === true)) {
+    const movementSpent = typeof outcomeDiff.spentWork === 'number' ? outcomeDiff.spentWork : undefined;
+    if (movementSpent !== undefined) {
+      // Existing open-effect approach paths report their actual movement cost.
+      if (meta.workBudget.remainingEffort === budgetAtStart) {
+        meta.workBudget.remainingEffort = Math.max(0, meta.workBudget.remainingEffort - movementSpent);
+      }
+    } else {
+      const spentWork = Math.min(meta.workBudget.remainingEffort, remainingWork / capacity);
+      meta.workBudget.remainingEffort = Math.max(0, meta.workBudget.remainingEffort - spentWork);
+      const completedWork = (previousWork?.completedWork ?? 0) + spentWork * capacity;
+      const sourceEventIds = [...new Set([...(previousWork?.sourceEventIds ?? []), eventId])];
+      if (partialWork) holder.actionWork = { basis: quote.basis, completedWork, requiredWork: quote.work, sourceEventIds };
+      else delete holder.actionWork;
+      Object.assign(outcome.diff, { spentWork,
+        ...(partialWork ? { actionWork: structuredClone(holder.actionWork), workIncomplete: true }
+          : previousWork ? { workCompletionSourceEventIds: sourceEventIds } : {}) });
+    }
+  }
+  if (meta.workBudget && budgetAtStart !== undefined) Object.assign(outcome.diff, { spentWork: budgetAtStart - meta.workBudget.remainingEffort });
   if (outcome.status === 'completed'
     && action.kind === 'act'
     && action.operation === 'ingest'
@@ -3095,6 +3180,7 @@ export function executePrimitiveAction(
   const supportSettlements = settleChangedBodySupports(state, bodySupportsBefore, atMonth, eventId);
   const storageChanges = reconcileWorkStorage(state, atMonth, eventId);
   if (storageChanges.length) Object.assign(outcome.diff, { workStorageChanges: storageChanges });
+  invalidateChangedMovementWork(state);
   if (supportSettlements.length) {
     Object.assign(outcome.diff, { supportSettlements });
     outcome.result += `；${supportSettlements.map((settlement) => settlement.result).join('；')}`;
@@ -3126,7 +3212,10 @@ export function executePrimitiveAction(
   };
   const workSupportReceipts = recordWorkSupportUse(state.world, fact);
   const thermalProcessingReceipts = recordWorkThermalProcessingUse(state.world, fact);
-  if (workSupportReceipts.length || thermalProcessingReceipts.length) fact.diff.workUseReceipts = [...workSupportReceipts, ...thermalProcessingReceipts];
+  const storageReceipts = recordWorkStorageUse(state.world, fact);
+  if (workSupportReceipts.length || thermalProcessingReceipts.length || storageReceipts.length) {
+    fact.diff.workUseReceipts = [...workSupportReceipts, ...thermalProcessingReceipts, ...storageReceipts];
+  }
   person.lastActionAtMonth = atMonth;
   // Keep the attempted no-change fact available to planning, without treating
   // untouched items as a delivery, social act, learned success or new source.

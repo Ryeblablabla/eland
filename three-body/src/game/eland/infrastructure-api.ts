@@ -65,6 +65,12 @@ export {
   stepOwnedSimulation as stepOwnedSimulationWithObservationProjector,
 } from './application/simulation/tick-executor';
 export {
+  createModelMonthPlanningState,
+  modelPlanningTick,
+  type ModelMonthPlanningState,
+  type ModelPlanningCycle,
+} from './application/simulation/model-month-planning';
+export {
   applyAgentMemoryCompaction,
   nextAgentMemoryCompactionBatch,
   writeLanguageMemory,

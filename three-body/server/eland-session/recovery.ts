@@ -2,6 +2,7 @@ import type {
   Decision,
   SimulationState,
   TokenUsage,
+  ModelInvocationMetadata,
 } from '../../src/game/eland/simulation';
 import type { CivilizationRequiem } from '../../src/game/civilizationRequiem';
 import type {
@@ -23,6 +24,18 @@ export interface FrozenEmbodimentDecision {
 export interface StoredEmbodimentCommandReceipt {
   fingerprint: string;
   receipt: EmbodimentCommandReceipt;
+  modelCalls?: FrozenEmbodimentModelCall[];
+}
+
+/** Normalized provider replies are immutable replay input, never requested twice on recovery. */
+export interface FrozenEmbodimentModelCall {
+  kind: 'mind' | 'plan';
+  planningTick: number;
+  personIds: string[];
+  decisions: (Decision | null)[];
+  usage: TokenUsage;
+  metadata?: ModelInvocationMetadata;
+  error?: string;
 }
 
 /** Stable, replayable boundary for one staged month. */
@@ -42,11 +55,13 @@ export interface ActiveEmbodimentSnapshot {
   completedTick: number;
   revision: number;
   frozenInitialDecisions: FrozenEmbodimentDecision[];
+  modelOwned?: boolean;
+  modelEndpointId?: string;
   decisionUsage: TokenUsage;
   decisionAttempts: ModelAttemptSummary;
   commands: StoredEmbodimentCommandReceipt[];
   /** Missing means the legacy hash payload used before observer fields were excluded. */
-  stagedStateHashVersion?: 2 | 3;
+  stagedStateHashVersion?: 2 | 3 | 4;
   stagedStateHash: string;
   createdAt: number;
   updatedAt: number;
@@ -116,7 +131,9 @@ function validateActiveEmbodimentSnapshot(
     || active.commands.length !== active.completedTick
     || (active.stagedStateHashVersion !== undefined
       && active.stagedStateHashVersion !== 2
-      && active.stagedStateHashVersion !== 3)
+      && active.stagedStateHashVersion !== 3
+      && active.stagedStateHashVersion !== 4)
+    || Boolean(active.modelOwned) !== (active.stagedStateHashVersion === 4)
     || !/^[0-9a-f]{64}$/u.test(active.stagedStateHash)
     || !Number.isFinite(active.createdAt)
     || !Number.isFinite(active.updatedAt)
@@ -144,6 +161,11 @@ function validateActiveEmbodimentSnapshot(
       || typeof receipt.command !== 'object') {
       throw new Error('实时演化会话的有限化身命令收据无效');
     }
+    if (active.modelOwned && (!Array.isArray(stored.modelCalls) || !stored.modelCalls.every((call) => (
+      (call.kind === 'mind' || call.kind === 'plan') && Number.isInteger(call.planningTick)
+      && Array.isArray(call.personIds) && call.personIds.every((id) => id !== active.actorId && isNonEmptyBoundedId(id))
+      && Array.isArray(call.decisions) && Number.isFinite(call.usage?.inputTokens) && Number.isFinite(call.usage?.outputTokens)
+    )))) throw new Error('化身模型月份缺少可重放的非玩家决定');
   });
   const duplicateCommandIds = new Set<string>();
   for (const stored of active.commands) {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -8,6 +8,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'eland-embodiment-session-'));
 const bundlePath = path.join(temporaryDirectory, 'eland-session.mjs');
+const originalFetch = globalThis.fetch;
+const originalModelConfig = process.env.THREEBODY_MODEL_CONFIG;
+const modelConfigPath = path.join(temporaryDirectory, 'models.json');
+writeFileSync(modelConfigPath, JSON.stringify({ schemaVersion: 1, evolutionMode: 'local', summaryMode: 'local', endpoints: {} }));
+process.env.THREEBODY_MODEL_CONFIG = modelConfigPath;
+globalThis.fetch = async () => { throw new Error('Local embodiment checks must not contact a model'); };
 
 function skyAt(month) {
   return {
@@ -246,8 +252,77 @@ try {
   const duplicateFinalTick = await tickFifteenRestore.stepEmbodiment(finalCommand);
   assert.equal(duplicateFinalTick.committedFrame.elapsedMonths, 2, '第 15 刻的完成收据重启后仍必须幂等');
 
+  // The real session route uses the configured model for NPCs, while all HTTP
+  // is intercepted here. Restoration replays these accepted replies offline.
+  {
+  writeFileSync(modelConfigPath, JSON.stringify({ schemaVersion: 1, evolutionMode: 'model', summaryMode: 'local',
+    endpoints: { fixture: { protocol: 'ollama-chat', url: 'http://embodiment.invalid/api/chat', model: 'fixture',
+      auth: 'none', structuredOutput: 'native-json', thinking: false } }, routes: { decision: 'fixture' } }));
+  const modeled = new ElandSession('modeled-embodiment', skyAt(0));
+  const modelInitial = modeled.begin(1, 20260824, skyAt(0));
+  const playerId = modelInitial.society.agents.find((person) => person.state === 'active').id;
+  let modelPlayerReleased = false;
+  const modelInputs = [], firstReviews = new Set();
+  globalThis.fetch = async (url, init) => {
+    assert.equal(url, 'http://embodiment.invalid/api/chat');
+    const body = JSON.parse(init.body);
+    const context = JSON.parse(body.messages.find((message) => message.role === 'user' && message.content.trimStart().startsWith('{')).content);
+    assert.equal(context.schemaVersion, 'mind-intention-context-v7');
+    if (!modelPlayerReleased) assert.notEqual(context.person.id, playerId, 'the player is excluded from every model request');
+    modelInputs.push(context);
+    const first = !firstReviews.has(context.person.id);
+    firstReviews.add(context.person.id);
+    const choice = { attempt: { kind: 'continue' },
+      ...(first ? { intentionChange: { goal: `由${context.person.name}本人保留的观察目标`, orientation: 'inquiry', horizon: 'ongoing' } } : {}),
+      ...(modelInputs.length === 1 ? { declaration: { utterance: '我先保持眼前的安排。', delivery: 'call', speechIntent: { kind: 'expression' } } } : {}),
+    };
+    return new Response(JSON.stringify({ message: { content: JSON.stringify(choice) }, prompt_eval_count: 5, eval_count: 3 }), { status: 200 });
+  };
+  const modelBegin = modeled.beginEmbodiment({ runId: 'modeled-embodiment', embodimentId: 'model-owned-player', agentId: playerId,
+    expectedAuthorityRevision: modelInitial.authorityRevision, expectedCivilizationId: modelInitial.civilizationId,
+    expectedBranchId: modelInitial.branchId, expectedElapsedMonths: modelInitial.elapsedMonths, skySample: skyAt(1) });
+  assert.equal(modelInputs.length, 0, 'begin stages the month; first NPC review happens before the first body tick');
+  assert.equal(modeled.recoverySnapshot().activeEmbodiment.frozenInitialDecisions.length, 0,
+    'model mode does not secretly install RulePlanner goals at begin');
+  const command = { runId: 'modeled-embodiment', embodimentId: modelBegin.id, commandId: 'same-player-command',
+    expectedRevision: 0, expectedTick: 1, command: { kind: 'wait' } };
+  const [modeledTick, joinedTick] = await Promise.all([modeled.stepEmbodiment(command), modeled.stepEmbodiment(command)]);
+  assert.deepEqual(modeledTick.receipt, joinedTick.receipt);
+  assert(modelInputs.length >= 2, 'both independent NPCs receive their real model contexts');
+  assert(modelInputs.every((input) => input.person.id !== playerId));
+  const callsBeforeRestore = modelInputs.length;
+  const modeledSnapshot = modeled.recoverySnapshot();
+  assert.equal(modeledSnapshot.activeEmbodiment.modelEndpointId, 'fixture');
+  assert.equal(modeledSnapshot.activeEmbodiment.stagedStateHashVersion, 4);
+  assert(modeledSnapshot.activeEmbodiment.commands[0].modelCalls.length > 0);
+  assert.equal(modeled.latest().elapsedMonths, 0, 'NPC replies do not prematurely publish the staged month');
+  const stagedModelDecisions = modeled.embodimentCoordinator.execution.prepared.events.filter((event) => event.kind === 'decision' && event.usedModel);
+  assert(stagedModelDecisions.every((event) => event.who !== playerId));
+  assert(stagedModelDecisions.some((event) => event.decision.mentalAct?.goal.includes('本人保留')));
+  const modeledRestored = ElandSession.restore(modeledSnapshot, 'modeled-embodiment');
+  assert.equal(modelInputs.length, callsBeforeRestore, 'restoring a staged month must not make another HTTP request');
+  assert.deepEqual((await modeledRestored.stepEmbodiment(command)).receipt, modeledTick.receipt);
+  assert.equal(modelInputs.length, callsBeforeRestore, 'replaying the same accepted command does not call the model or act twice');
+  assert.deepEqual(modeledRestored.embodimentCoordinator.execution.prepared.events,
+    modeled.embodimentCoordinator.execution.prepared.events, 'recovery preserves the exact NPC decisions and language facts');
+  const viewBeforeRelease = modeledRestored.embodimentView();
+  modelPlayerReleased = true;
+  const releaseRequest = { runId: 'modeled-embodiment', embodimentId: modelBegin.id, releaseId: 'model-release', expectedRevision: viewBeforeRelease.revision };
+  const releasedMonth = await modeledRestored.releaseEmbodiment(releaseRequest);
+  assert(modelInputs.slice(callsBeforeRestore).some((input) => input.person.id === playerId),
+    'release restores the former player to model-owned deliberation');
+  assert.equal(releasedMonth.committedFrame.elapsedMonths, 1);
+  assert.equal(modeledRestored.latestState.decisionBudget.ledgers.at(-1).providerRequests, modelInputs.length);
+  const afterReleaseCalls = modelInputs.length;
+  await modeledRestored.releaseEmbodiment(releaseRequest);
+  assert.equal(modelInputs.length, afterReleaseCalls, 'release retries reuse the completed month');
+  }
+
   elandSessions.close();
   console.log('limited embodiment session regression passed');
 } finally {
+  globalThis.fetch = originalFetch;
+  if (originalModelConfig === undefined) delete process.env.THREEBODY_MODEL_CONFIG;
+  else process.env.THREEBODY_MODEL_CONFIG = originalModelConfig;
   rmSync(temporaryDirectory, { recursive: true, force: true });
 }

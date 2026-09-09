@@ -1,4 +1,4 @@
-import type { PrimitiveAction } from './action';
+import type { FactPredicate, Intent, PrimitiveAction, WorldRef } from './action';
 import { Material, materialDefinition, materialHas } from './material';
 import type { DropState, SimulationState, WorldEvent } from './model';
 import {
@@ -11,6 +11,9 @@ import {
   type PersonState,
 } from './person';
 import { isInfant } from './dependent-care';
+import { canAccessContainer, containerById } from './container';
+import { distanceToPosition } from './actions/execution-helpers';
+import { intentById } from './state-index';
 import { lifePlanningStage } from './life-stage';
 import { compileBoundedWaterSearchMove, findReachableWater, moveTowardWaterAccess } from './water-access';
 import { findReachableShelter } from './shelter-access';
@@ -18,7 +21,119 @@ import { shelterGeometryAt } from './structure';
 import { observedHibernationEntryEvidence } from './hibernation-entry';
 import { findCurrentVisibleStoredMaterialAccess, retrieveStoredMaterialOrMove } from './stored-food-access';
 import { compileWildlifeThreatResponse, wildlifeThreatUrgency } from './wildlife-threat';
-import { cellsInRadius, findStandingPath, isPassable, nearestCell, neighbors4, surfaceMaterial, topPosition } from '../world/grid';
+import { cellsInRadius, findStandingPath, isPassable, nearestCell, neighbors4, surfaceMaterial, topPosition, voxelAt } from '../world/grid';
+
+export interface SelectedSurvivalAttempt {
+  need: 'hydration' | 'nutrition';
+  goal: FactPredicate;
+  target: WorldRef;
+  completionAction: PrimitiveAction;
+}
+
+/** Preserve what a selected approach is for, using the exact selected source. */
+export function selectedSurvivalAttempt(
+  state: SimulationState, person: PersonState, action: PrimitiveAction,
+): SelectedSurvivalAttempt | undefined {
+  const selected = (need: 'hydration' | 'nutrition', target: WorldRef, completionAction: PrimitiveAction): SelectedSurvivalAttempt => ({
+    need, target, completionAction,
+    goal: { kind: 'body-at-least', field: need, value: Math.min(100, person.body[need] + 1) },
+  });
+  if (action.kind === 'act' && action.operation === 'ingest' && action.targets[0]) {
+    const target = action.targets[0];
+    const materialId = target.kind === 'voxel' ? voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z)
+      : target.kind === 'inventory-stack' && target.personId === person.id
+        ? person.inventory.find((stack) => stack.id === target.stackId)?.materialId : undefined;
+    return selected(materialId !== undefined && materialHas(materialId, 'drinkable') ? 'hydration' : 'nutrition', target, action);
+  }
+  if (action.kind === 'move' && action.waterAccessBasis) {
+    const target: WorldRef = { kind: 'voxel', position: action.waterAccessBasis.waterPosition };
+    return selected('hydration', target, { kind: 'act', operation: 'ingest', targets: [target] });
+  }
+  if (action.kind === 'transfer' && action.to.kind === 'person' && action.to.personId === person.id && materialHas(action.materialId, 'edible')) {
+    const target: WorldRef | undefined = action.dropId ? { kind: 'drop', dropId: action.dropId }
+      : action.from.kind === 'container' ? { kind: 'container', containerId: action.from.containerId } : undefined;
+    return target ? selected('nutrition', target, action) : undefined;
+  }
+  if (action.kind === 'act' && action.operation === 'separate' && action.targets[0]?.kind === 'voxel') {
+    const target = action.targets[0];
+    const materialId = voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z);
+    if (materialId === Material.BerryBush || materialId === Material.CropMature) return selected('nutrition', target, action);
+  }
+  if (action.kind !== 'move' || action.wildlifeThreatBasis || action.caregiverRef || action.waterSearchBasis) return undefined;
+  const drop = reachableFood(state, person);
+  if (drop && action.toCellId === drop.cellId && action.toZ === drop.z) return selected('nutrition', { kind: 'drop', dropId: drop.id }, {
+    kind: 'transfer', materialId: drop.materialId, quantity: 1,
+    from: { kind: 'ground', cellId: drop.cellId, z: drop.z }, to: { kind: 'person', personId: person.id }, dropId: drop.id,
+  });
+  const plant = reachableFoodPlant(state, person);
+  if (plant && action.toCellId === plant.standCell) {
+    const target: WorldRef = { kind: 'voxel', position: topPosition(state.world.grid, plant.plantCell) };
+    return selected('nutrition', target, { kind: 'act', operation: 'separate', targets: [target] });
+  }
+  const stored = findCurrentVisibleStoredMaterialAccess(state, person, (stack) => materialHas(stack.materialId, 'edible'));
+  if (stored && action.toCellId === stored.accessPosition.cellId && action.toZ === stored.accessPosition.z) {
+    return selected('nutrition', { kind: 'container', containerId: stored.container.id }, {
+      kind: 'transfer', materialId: stored.stack.materialId, quantity: 1,
+      from: { kind: 'container', containerId: stored.container.id }, to: { kind: 'person', personId: person.id }, stackId: stored.stack.id,
+    });
+  }
+  return undefined;
+}
+
+/** Continue the chosen source through acquisition and actual intake, not just reaching its cell. */
+export function continuingSurvivalAttempt(
+  state: SimulationState, person: PersonState, intent: Intent | undefined,
+): PrimitiveAction | undefined {
+  if (!intent || intent.ownerId !== person.id || intent.status !== 'active'
+    || intent.interruptionKind !== 'survival-reflex' || !intent.survivalNeed
+    || !intent.completionAction || !intent.target || intent.goal.kind !== 'body-at-least'
+    || person.body[intent.survivalNeed] >= intent.goal.value) return undefined;
+  const completion = intent.completionAction;
+  const target = intent.target;
+  if (intent.survivalNeed === 'nutrition') {
+    const acquired = person.inventory.find((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'edible')
+      && stack.sourceEventIds.some((id) => intent.actionEventIds.includes(id)));
+    if (acquired) return { kind: 'act', operation: 'ingest', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: acquired.id }] };
+    const produced = state.world.drops.find((drop) => drop.quantity > 0 && materialHas(drop.materialId, 'edible')
+      && drop.sourceEventIds.some((id) => intent.actionEventIds.includes(id)));
+    if (produced) return person.position.cellId === produced.cellId && person.position.z === produced.z ? {
+      kind: 'transfer', materialId: produced.materialId, quantity: 1,
+      from: { kind: 'ground', cellId: produced.cellId, z: produced.z },
+      to: { kind: 'person', personId: person.id }, dropId: produced.id,
+    } : { kind: 'move', toCellId: produced.cellId, toZ: produced.z };
+  }
+  if (target.kind === 'inventory-stack') {
+    return target.personId === person.id && person.inventory.some((stack) => stack.id === target.stackId && stack.quantity > 0)
+      ? completion : undefined;
+  }
+  if (target.kind === 'voxel') {
+    const materialId = voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z);
+    if (intent.survivalNeed === 'hydration' ? !materialHas(materialId, 'drinkable')
+      : materialId !== Material.BerryBush && materialId !== Material.CropMature) return undefined;
+    if (distanceToPosition(person, target.position) <= 1) return completion;
+    return intent.nextAction.kind === 'move' ? intent.nextAction : undefined;
+  }
+  if (target.kind === 'drop') {
+    const drop = state.world.drops.find((candidate) => candidate.id === target.dropId && candidate.quantity > 0);
+    if (!drop) return undefined;
+    return person.position.cellId === drop.cellId && person.position.z === drop.z ? completion
+      : { kind: 'move', toCellId: drop.cellId, toZ: drop.z };
+  }
+  if (target.kind === 'container') {
+    const container = containerById(state, target.containerId);
+    if (!container || completion.kind !== 'transfer'
+      || !container.inventory.some((stack) => stack.id === completion.stackId && stack.quantity > 0)) return undefined;
+    if (canAccessContainer(person, container)) return completion;
+    return intent.nextAction.kind === 'move' ? intent.nextAction : undefined;
+  }
+  return undefined;
+}
+
+/** Actual immediate threats can interrupt a source-bound undertaking. */
+export function survivalActionIsImmediateThreat(action: PrimitiveAction | null): boolean {
+  return action?.kind === 'move' && Boolean(action.wildlifeThreatBasis || action.dependentTransportBasis || action.caregiverRef)
+    || action?.kind === 'act' && (action.operation === 'dehydrate' || action.operation === 'rehydrate');
+}
 
 function visibleRadius(person: PersonState): number {
   return 4 + Math.floor(person.baselineCapacities.perception / 25);
@@ -209,7 +324,7 @@ export function chooseFailedShelterHibernationReflex(
   };
 }
 
-export function chooseSurvivalReflex(
+function chooseNewSurvivalReflex(
   state: SimulationState,
   person: PersonState,
   options: { suppressThermalShelter?: boolean; currentMonthEvents?: readonly WorldEvent[] } = {},
@@ -287,6 +402,17 @@ export function chooseSurvivalReflex(
     if (shelter) return caregiverRendezvous ?? { kind: 'move', toCellId: shelter.position.cellId, toZ: shelter.position.z };
   }
   return caregiverRendezvous;
+}
+
+export function chooseSurvivalReflex(
+  state: SimulationState,
+  person: PersonState,
+  options: { suppressThermalShelter?: boolean; currentMonthEvents?: readonly WorldEvent[] } = {},
+): PrimitiveAction | null {
+  const incoming = chooseNewSurvivalReflex(state, person, options);
+  if (survivalActionIsImmediateThreat(incoming)) return incoming;
+  const active = person.activeIntentId ? intentById(state, person.activeIntentId) : undefined;
+  return continuingSurvivalAttempt(state, person, active) ?? incoming;
 }
 
 /** Staying under real cover is state maintenance, not a repeated decision or synthetic action. */

@@ -61,7 +61,9 @@ function memorySection(
     `# ${title}`,
     '',
     ...memories.flatMap((memory, index) => [
-      `- [m${offset + index + 1}] ${line(memory.gist)}`,
+      `- [m${offset + index + 1}] ${memory.firstExperiencedAtMonth === memory.lastExperiencedAtMonth
+        ? `第${memory.lastExperiencedAtMonth}月的记忆`
+        : `第${memory.firstExperiencedAtMonth}至${memory.lastExperiencedAtMonth}月的记忆`}：${line(memory.gist)}`,
       metadata(metadataKind, memory),
     ]),
     '',

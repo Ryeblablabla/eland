@@ -45,6 +45,7 @@ import type {
   ReleaseEmbodimentRequest,
 } from '../src/game/embodimentContract';
 import {
+  createServerLlmDecider,
   type PendingPlayerInteraction,
   type PlayerInteractionDecisionAttempt,
 } from './backend-decider';
@@ -321,17 +322,31 @@ export class ElandSession {
         ended: this.latestState?.civilization.status === 'ended',
       }),
       committedState: () => this.latestState,
+      modelPolicy: () => {
+        const modelOwned = readEvolutionMode() === 'model';
+        const endpoint = modelOwned && hasExplicitModelRoute('decision') ? modelEndpointStatus('decision') : undefined;
+        return { modelOwned, ...(endpoint?.configured && endpoint.endpointId ? { endpointId: endpoint.endpointId } : {}) };
+      },
+      createModelDecider: (endpointId) => endpointId ? createServerLlmDecider(endpointId, {
+        priorSpeechLines: collectSpeechLinesThroughMonth(this.inheritedFrames(this.activeTimeline()), this.latestState?.clock.elapsedMonths ?? 0),
+      }) : {
+        ownsVoluntarySocialChoices: true,
+        decideAll: async (contexts) => contexts.map(() => null),
+        continuePlans: async (contexts) => contexts.map(() => null),
+      },
       prepareExecution: ({
         state,
         actorId,
         skySample,
         frozenInitialDecisions,
+        modelOwned,
       }) => {
         const climate = ERA_TO_ENV[skySample.fate];
         return preparePlayerEmbodimentMonth({
           state,
           controlledPersonId: actorId,
           climate,
+          ...(modelOwned ? { modelOwned: true } : {}),
           ...(frozenInitialDecisions ? { frozenInitialDecisions } : {}),
         });
       },

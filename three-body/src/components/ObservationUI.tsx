@@ -491,6 +491,7 @@ export function FocusInspector({
   const structure = renderedTarget.kind === 'structure'
     ? society?.structures.find((item) => item.id === renderedTarget.id)
     : undefined;
+  const structureStorage = structure ? society?.containers.filter((container) => container.workId === (structure.workId ?? structure.id)) ?? [] : [];
   const latestEvent = events[0];
   const activeIntent = agent
     ? society?.intents.find((intent) => intent.ownerId === agent.id && intent.status === 'active')
@@ -517,7 +518,9 @@ export function FocusInspector({
   } else if (structure) {
     eyebrow = '结构';
     name = structure.name;
-    activity = structureActivity(structure);
+    activity = structureStorage.length
+      ? `储存空腔内现有 ${structureStorage.reduce((sum, storage) => sum + storage.usedCapacity, 0)} 份物资`
+      : structureActivity(structure);
     status = `${structure.complete ? '完整结构' : '未完成结构'} · 占据 ${structure.occupiedCells.length} 格 · ${structure.componentCount} 个构件`;
   }
 
@@ -538,7 +541,7 @@ export function FocusInspector({
         structure.effects.thermalInsulation > 0 ? `隔热 ${Math.round(structure.effects.thermalInsulation)}` : '',
         structure.effects.capacity > 0 ? `容量 ${structure.effects.capacity}` : '',
       ].filter(Boolean).join(' · ')
-    : '尚未形成有效防护';
+    : structureStorage.length ? '实际空腔可存放物资' : '尚未形成有效防护';
   const onPersonTabsKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
@@ -750,6 +753,15 @@ export function FocusInspector({
             {structure && (
               <div className="structure-inspector__details">
                 <section><h3>结构效果</h3><p>{structureEffectText}</p></section>
+                {structureStorage.length > 0 && <section>
+                  <h3>储存</h3>
+                  {structureStorage.map((storage, index) => <p key={storage.id}>
+                    {structureStorage.length > 1 ? `空腔 ${index + 1} · ` : ''}
+                    已用 {storage.usedCapacity} / {storage.capacity} 份 · {storage.accessible === false ? '已封闭' : '开口可取用'}
+                    {storage.retainsWater ? ' · 可留水' : ' · 不留水'}<br />
+                    {storage.contents.length ? storage.contents.map((item) => `${item.name} × ${item.quantity}`).join(' · ') : '空'}
+                  </p>)}
+                </section>}
                 <section><h3>构件</h3><p>{materialSummary || '暂无材质信息'}</p></section>
                 <section><h3>最近记录</h3>{latestEvent ? <p className="focus-inspector__event"><time>{monthLabel(latestEvent.month)}</time>{latestEvent.text}</p> : <p>暂无关联事件</p>}</section>
               </div>

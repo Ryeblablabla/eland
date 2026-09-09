@@ -13,7 +13,9 @@ import type { ClimateKind, EpochKind, SimulationState, TerminalCatastropheKind, 
 import { Material, materialDefinition } from './domain/material';
 import { ageMonths, isAlive, isDormantDehydratedHibernating, type PersonState } from './domain/person';
 import { personalityScore } from './domain/personality';
-import { CONTAINER_CAPACITY } from './domain/container';
+import { CONTAINER_CAPACITY, containerById, type ContainerState } from './domain/container';
+import { workStorageSpaces } from './domain/work-storage';
+import { workOccupiedVoxels } from './domain/work-layout';
 import { animalAgeMonths, animalSpecies, isAnimalAlive, type AnimalState } from './domain/animal';
 import type { PrimitiveAction, WorldRef } from './domain/action';
 import { actionActivityIndex } from './domain/event-index';
@@ -161,7 +163,10 @@ function materialForTarget(state: SimulationState, lookup: StateLookup, target: 
     return lookup.inventoryByPersonId.get(target.personId)?.get(target.stackId)?.materialId;
   }
   if (target.kind === 'drop') return lookup.dropsById.get(target.dropId)?.materialId;
-  if (target.kind === 'container') return Material.Container;
+  if (target.kind === 'container') {
+    const container = lookup.containersById.get(target.containerId);
+    return container?.carrier ? workById(state.world, container.carrier.workId)?.anchorMaterialId : Material.Container;
+  }
   if (target.kind === 'work') return workById(state.world, target.workId)?.anchorMaterialId;
   if (target.kind === 'voxel') {
     const { x, y, z } = target.position;
@@ -286,7 +291,7 @@ function actionVisual(
       .filter((materialId): materialId is number => materialId !== undefined);
     const diffSourceMaterialId = action.operation === 'separate'
       ? Number(fact?.diff.sourceMaterialId ?? fact?.diff.materialId)
-      : Number.NaN;
+      : action.operation === 'ingest' ? Number(fact?.diff.materialId) : Number.NaN;
     const sourceMaterialId = Number.isInteger(diffSourceMaterialId)
       ? diffSourceMaterialId
       : undefined;
@@ -400,7 +405,7 @@ function historyWorldRefLabel(state: SimulationState, lookup: StateLookup, targe
   if (target.kind === 'container') {
     const container = lookup.containersById.get(target.containerId);
     const cellId = container ? container.position.x + container.position.y * state.world.grid.width : -1;
-    return container ? `${materialDefinition(Material.Container).name} · ${historyCellLabel(state, cellId, container.position.z)}` : '未知容器';
+    return container ? `${containerPlayerName(state, container)} · ${historyCellLabel(state, cellId, container.position.z)}` : '未知容器';
   }
   if (target.kind === 'remains') {
     const remains = state.world.remains?.find((candidate) => candidate.id === target.remainsId);
@@ -417,7 +422,15 @@ function historyHolderLabel(state: SimulationState, lookup: StateLookup, holder:
   if (holder.kind === 'person') return lookup.peopleById.get(holder.personId)?.name ?? '未知人物';
   const container = lookup.containersById.get(holder.containerId);
   const cellId = container ? container.position.x + container.position.y * state.world.grid.width : -1;
-  return container ? `${materialDefinition(Material.Container).name} · ${historyCellLabel(state, cellId, container.position.z)}` : '未知容器';
+  return container ? `${containerPlayerName(state, container)} · ${historyCellLabel(state, cellId, container.position.z)}` : '未知容器';
+}
+
+function containerPlayerName(state: SimulationState, container: ContainerState): string {
+  if (container.carrier) {
+    const work = workById(state.world, container.carrier.workId);
+    return work ? `${work.summary}的储存空腔` : '造物储存空腔';
+  }
+  return materialDefinition(voxelAt(state.world.grid, container.position.x, container.position.y, container.position.z)).name;
 }
 
 function actionHistoryDetail(state: SimulationState, lookup: StateLookup, event: ActionEvent): string {
@@ -726,12 +739,18 @@ export function toSocietyState(state: SimulationState): SocietyState {
         quantity: drop.quantity,
       };
     }),
-    containers: state.containers.map((container) => {
-      const materialId = voxelAt(state.world.grid, container.position.x, container.position.y, container.position.z);
+    containers: state.containers.filter((container) => containerById(state, container.id)).map((container) => {
+      const work = container.carrier ? workById(state.world, container.carrier.workId) : undefined;
+      const cavityPoint = container.carrier?.cavityPoint;
+      const space = work && cavityPoint ? workStorageSpaces(state.world, work).find((candidate) => candidate.cells.some((position) =>
+        position.x === cavityPoint.x && position.y === cavityPoint.y && position.z === cavityPoint.z)) : undefined;
+      const materialId = work?.anchorMaterialId ?? voxelAt(state.world.grid, container.position.x, container.position.y, container.position.z);
       return {
         id: container.id,
         materialId,
-        name: materialDefinition(materialId).name,
+        name: containerPlayerName(state, container),
+        ...(work ? { workId: work.id, accessible: container.accessible !== false, retainsWater: container.retainsWater === true,
+          cavityPositions: space?.cells.map((position) => ({ cellId: position.x + position.y * grid.width, z: position.z })) ?? [] } : {}),
         cellId: container.position.x + container.position.y * grid.width,
         z: container.position.z,
         capacity: container.capacity ?? CONTAINER_CAPACITY,
@@ -764,7 +783,22 @@ export function toSocietyState(state: SimulationState): SocietyState {
       effects: { weatherProtection: structure.weatherProtection, thermalInsulation: structure.thermalInsulation, capacity: structure.capacity },
       sourceEventIds: [...structure.sourceEventIds],
       materialIds: [...structure.materialIds],
-    })), ...projectWorkStructures(state)],
+    })), ...projectWorkStructures(state).map((structure) => {
+      const work = workById(state.world, structure.id)!;
+      const workVoxels = workOccupiedVoxels(work).filter(({ position, materialId }) =>
+        voxelAt(state.world.grid, position.x, position.y, position.z) === materialId)
+        .map(({ position, materialId }) => ({ cellId: position.x + position.y * grid.width, z: position.z, materialId }));
+      const bottomByCell = new Map<number, number>();
+      for (const voxel of workVoxels) bottomByCell.set(voxel.cellId, Math.min(bottomByCell.get(voxel.cellId) ?? Infinity, voxel.z));
+      const workGroundPositions = [...bottomByCell].map(([cellId, bottom]) => {
+        let z = bottom - 1;
+        while (z >= 0 && voxelAt(state.world.grid, cellId % grid.width, Math.floor(cellId / grid.width), z) === Material.Air) z--;
+        return { cellId, z: z + 1 };
+      });
+      return { ...structure, workId: structure.id, workVoxels, workGroundPositions,
+        sourceEventIds: [...new Set([...structure.sourceEventIds, ...(work.useReceipts ?? []).map((receipt) => receipt.sourceEventId)])],
+      };
+    })],
     ...(electricalPower ? { electricalPower } : {}),
     intents: state.intents.filter((intent) => intent.status === 'active').map((intent) => {
       const person = lookup.peopleById.get(intent.ownerId);

@@ -6,11 +6,15 @@ import {
   executePlanningTick,
   finishMonthExecution,
   resolvePlayerEmbodimentCommand,
+  createModelMonthPlanningState,
+  modelPlanningTick,
+  type ModelMonthPlanningState,
+  type ModelPlanningCycle,
   type MonthExecution,
   type PlayerEmbodimentCommandFailure,
   type TickExecutionResult,
 } from '../../src/game/eland/infrastructure-api';
-import type { SimulationState, WorldEvent } from '../../src/game/eland/simulation';
+import type { BatchDecider, SimulationState, WorldEvent } from '../../src/game/eland/simulation';
 import { PLANNING_TICKS_PER_MONTH } from '../../src/game/eland/domain/calendar';
 import { isAlive } from '../../src/game/eland/domain/person';
 import { personById } from '../../src/game/eland/domain/state-index';
@@ -31,6 +35,7 @@ import type {
   ActiveEmbodimentSnapshot,
   CompletedEmbodimentSnapshot,
   FrozenEmbodimentDecision,
+  FrozenEmbodimentModelCall,
   StoredEmbodimentCommandReceipt,
 } from './recovery';
 import { logPerf, perfElapsed, perfNow } from '../perf';
@@ -76,6 +81,8 @@ export interface EmbodimentCoordinatorHost {
     ended: boolean;
   };
   committedState(): SimulationState | null;
+  modelPolicy?(): { modelOwned: boolean; endpointId?: string };
+  createModelDecider?(endpointId?: string): BatchDecider;
   /**
    * Build an isolated staged month. During restore, the supplied decisions are
    * authoritative replay input and this callback must not invoke a model.
@@ -86,6 +93,7 @@ export interface EmbodimentCoordinatorHost {
     skySample: SkySample;
     cosmosSnapshot?: CosmosSnapshot;
     frozenInitialDecisions?: FrozenEmbodimentDecision[];
+    modelOwned?: boolean;
   }): EmbodimentExecutionPreparation;
   /** Adopt and project a fully finished month exactly once. */
   commitMonth(input: {
@@ -180,7 +188,7 @@ function cloneExecution(execution: MonthExecution): MonthExecution {
     },
   });
   prepared.state.world.past = committedPast;
-  return {
+  const cloned = {
     ...execution,
     prepared,
     usage: structuredClone(execution.usage),
@@ -191,6 +199,14 @@ function cloneExecution(execution: MonthExecution): MonthExecution {
     ordinaryReplanPermits: new Set(execution.ordinaryReplanPermits),
     participantIds: [...execution.participantIds],
   };
+  // Includes plannedAtTicks and per-actor work budgets. Their values can be
+  // mutable objects; copying only the Map shell leaks speculative changes.
+  for (const [key, value] of Object.entries(execution)) {
+    if (value instanceof Map || value instanceof Set) {
+      (cloned as unknown as Record<string, unknown>)[key] = structuredClone(value);
+    }
+  }
+  return cloned;
 }
 
 function detachPastForFinish(execution: MonthExecution): void {
@@ -348,6 +364,86 @@ function executionHash(execution: MonthExecution, mode: ExecutionHashMode = 'v3'
   return canonicalHash(executionHashPayload(execution, mode));
 }
 
+function replayableCollections(value: unknown): unknown {
+  if (value instanceof Map) return [...value].sort(([left], [right]) => String(left).localeCompare(String(right)))
+    .map(([key, item]) => [key, replayableCollections(item)]);
+  if (value instanceof Set) return [...value].sort().map(replayableCollections);
+  if (Array.isArray(value)) return value.map(replayableCollections);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)
+    .map(([key, item]) => [key, replayableCollections(item)]));
+  return value;
+}
+
+function modelExecutionHash(execution: MonthExecution, planning: ModelMonthPlanningState): string {
+  return canonicalHash({ execution: executionHashPayload(execution, 'v3'),
+    planning: replayableCollections(planning),
+    executionCollections: replayableCollections(Object.fromEntries(Object.entries(execution)
+      .filter(([, value]) => value instanceof Map || value instanceof Set))),
+  });
+}
+
+const unavailableModelDecider: BatchDecider = {
+  ownsVoluntarySocialChoices: true,
+  decideAll: async (contexts) => contexts.map(() => null),
+  continuePlans: async (contexts) => contexts.map(() => null),
+};
+
+function addModelUsage(execution: MonthExecution, calls: readonly FrozenEmbodimentModelCall[]): void {
+  for (const call of calls) {
+    execution.usage.inputTokens += call.usage.inputTokens;
+    execution.usage.outputTokens += call.usage.outputTokens;
+    for (const key of ['cacheHitInputTokens', 'cacheMissInputTokens'] as const) {
+      if (call.usage[key] !== undefined) execution.usage[key] = (execution.usage[key] ?? 0) + call.usage[key]!;
+    }
+  }
+}
+
+function replayModelCycle(cycle: ModelPlanningCycle, calls: readonly FrozenEmbodimentModelCall[]): TickExecutionResult {
+  let next = cycle.next(), index = 0;
+  while (!next.done) {
+    const request = next.value, frozen = calls[index++];
+    if (!frozen || frozen.kind !== request.kind || frozen.planningTick !== request.planningTick
+      || JSON.stringify(frozen.personIds) !== JSON.stringify(request.contexts.map((context) => context.person.id))) {
+      throw new Error('化身模型决定与本刻真实思考对象不匹配，恢复不得重新请求模型');
+    }
+    next = frozen.error ? cycle.throw(new Error(frozen.error)) : cycle.next(structuredClone(frozen.decisions));
+  }
+  if (index !== calls.length) throw new Error('化身恢复中存在未使用的模型决定');
+  return next.value;
+}
+
+async function executeModelCycle(cycle: ModelPlanningCycle, batch: BatchDecider): Promise<{
+  tick: TickExecutionResult; calls: FrozenEmbodimentModelCall[];
+}> {
+  const calls: FrozenEmbodimentModelCall[] = [];
+  let next = cycle.next();
+  while (!next.done) {
+    const request = next.value;
+    const call: FrozenEmbodimentModelCall = { kind: request.kind, planningTick: request.planningTick,
+      personIds: request.contexts.map((context) => context.person.id), decisions: [], usage: { inputTokens: 0, outputTokens: 0 } };
+    try {
+      const response = request.kind === 'plan' ? await batch.continuePlans!(request.contexts) : await batch.decideAll(request.contexts);
+      call.decisions = Array.isArray(response) ? structuredClone(response) : [];
+    } catch (error) { call.error = error instanceof Error ? error.message : String(error); }
+    call.usage = batch.takeUsage?.() ?? call.usage;
+    const metadata = batch.takeMetadata?.();
+    if (metadata) call.metadata = metadata;
+    calls.push(call);
+    next = call.error ? cycle.throw(new Error(call.error)) : cycle.next(structuredClone(call.decisions));
+  }
+  return { tick: next.value, calls };
+}
+
+function applyModelLedger(state: SimulationState, calls: readonly FrozenEmbodimentModelCall[]): void {
+  const ledger = state.decisionBudget.ledgers.at(-1);
+  const metadata = [...calls].reverse().find((call) => call.metadata)?.metadata;
+  if (!ledger || !metadata) return;
+  ledger.modelEndpointId = metadata.endpointId;
+  ledger.modelProtocol = metadata.protocol;
+  ledger.modelName = metadata.model;
+  ledger.providerRequests = calls.reduce((sum, call) => sum + (call.metadata?.providerRequests ?? 0), 0);
+}
+
 /** Server-internal compatibility seam for persisted staged-month fixtures. */
 export function stagedExecutionHashForRecoveryVersion(
   execution: MonthExecution,
@@ -422,46 +518,61 @@ function validatePreparation(
   }
 }
 
-function executeCommand(
-  execution: MonthExecution,
-  command: EmbodimentCommand,
-): {
+interface CommandExecutionResult {
   execution: MonthExecution;
   tick: TickExecutionResult;
   cloneMs: number;
   tickMs: number;
   failure?: PlayerEmbodimentCommandFailure;
   remappedOptionId?: string;
-} {
-  const cloneStartedAt = perfNow();
+  planning?: ModelMonthPlanningState;
+  modelCalls?: FrozenEmbodimentModelCall[];
+}
+
+function commandCandidate(execution: MonthExecution, command: EmbodimentCommand) {
+  const startedAt = perfNow();
   const candidate = cloneExecution(execution);
-  const cloneMs = perfElapsed(cloneStartedAt);
-  let failure: PlayerEmbodimentCommandFailure | undefined;
-  let remappedOptionId: string | undefined;
-  const tickStartedAt = perfNow();
-  const tick = executePlanningTick(candidate, ({ state, person, atMonth }) => {
-    const resolution = resolvePlayerEmbodimentCommand(state, person, atMonth, command);
-    if (!resolution.ok) {
-      failure = resolution.failure;
-      return undefined;
-    }
-    remappedOptionId = resolution.remappedOptionId;
+  const state: { failure?: PlayerEmbodimentCommandFailure; remappedOptionId?: string } = {};
+  const actorController: NonNullable<Parameters<typeof executePlanningTick>[1]> = ({ state: world, person, atMonth }) => {
+    const resolution = resolvePlayerEmbodimentCommand(world, person, atMonth, command);
+    if (!resolution.ok) { state.failure = resolution.failure; return undefined; }
+    state.remappedOptionId = resolution.remappedOptionId;
     return resolution.control;
-  });
-  const tickMs = perfElapsed(tickStartedAt);
-  return {
-    execution: candidate,
-    tick,
-    cloneMs,
-    tickMs,
-    ...(failure ? { failure } : {}),
-    ...(remappedOptionId ? { remappedOptionId } : {}),
   };
+  return { candidate, actorController, state, cloneMs: perfElapsed(startedAt) };
+}
+
+function executeCommand(
+  execution: MonthExecution, command: EmbodimentCommand,
+  replay?: { planning: ModelMonthPlanningState; batch: BatchDecider; calls: readonly FrozenEmbodimentModelCall[] },
+): CommandExecutionResult {
+  const prepared = commandCandidate(execution, command);
+  const startedAt = perfNow();
+  const planning = replay ? structuredClone(replay.planning) : undefined;
+  const tick = replay && planning
+    ? replayModelCycle(modelPlanningTick(prepared.candidate, planning, replay.batch, prepared.actorController), replay.calls)
+    : executePlanningTick(prepared.candidate, prepared.actorController);
+  if (replay) addModelUsage(prepared.candidate, replay.calls);
+  return { execution: prepared.candidate, tick, cloneMs: prepared.cloneMs, tickMs: perfElapsed(startedAt),
+    ...prepared.state, ...(planning ? { planning, modelCalls: structuredClone(replay!.calls) as FrozenEmbodimentModelCall[] } : {}) };
+}
+
+async function executeModelCommand(
+  execution: MonthExecution, planningState: ModelMonthPlanningState, command: EmbodimentCommand, batch: BatchDecider,
+): Promise<CommandExecutionResult> {
+  const prepared = commandCandidate(execution, command);
+  const planning = structuredClone(planningState);
+  const startedAt = perfNow();
+  const result = await executeModelCycle(modelPlanningTick(prepared.candidate, planning, batch, prepared.actorController), batch);
+  addModelUsage(prepared.candidate, result.calls);
+  return { execution: prepared.candidate, tick: result.tick, cloneMs: prepared.cloneMs,
+    tickMs: perfElapsed(startedAt), ...prepared.state, planning, modelCalls: result.calls };
 }
 
 /** Coordinates one staged month. It owns no domain rule and no persistence. */
 export class EmbodimentCoordinator {
   private execution: MonthExecution;
+  private planning: ModelMonthPlanningState | undefined;
   private durable: ActiveEmbodimentSnapshot;
   private status: EmbodimentView['status'] = 'awaiting-command';
   private tickEvents: WorldEvent[] = [];
@@ -476,6 +587,7 @@ export class EmbodimentCoordinator {
   ) {
     this.durable = snapshot;
     this.execution = execution;
+    this.planning = snapshot.modelOwned ? createModelMonthPlanningState() : undefined;
   }
 
   static begin(
@@ -503,17 +615,20 @@ export class EmbodimentCoordinator {
       throw new EmbodimentConflictError('只能进入当前分支中仍然在世的人物');
     }
     const prepareStartedAt = perfNow();
+    const policy = host.modelPolicy?.() ?? { modelOwned: false };
     const preparation = host.prepareExecution({
       state: committedState,
       actorId: input.agentId,
       skySample: input.skySample,
       ...(input.cosmosSnapshot ? { cosmosSnapshot: input.cosmosSnapshot } : {}),
+      ...(policy.modelOwned ? { modelOwned: true } : {}),
     });
     const prepareMs = perfElapsed(prepareStartedAt);
     validatePreparation(preparation, committedState, input.agentId, authority.elapsedMonths);
     const now = host.now?.() ?? Date.now();
     const hashStartedAt = perfNow();
-    const stagedStateHash = executionHash(preparation.execution);
+    const stagedStateHash = policy.modelOwned
+      ? modelExecutionHash(preparation.execution, createModelMonthPlanningState()) : executionHash(preparation.execution);
     const hashMs = perfElapsed(hashStartedAt);
     const durable: ActiveEmbodimentSnapshot = {
       schemaVersion: 1,
@@ -531,10 +646,11 @@ export class EmbodimentCoordinator {
       completedTick: 0,
       revision: 0,
       frozenInitialDecisions: structuredClone(preparation.frozenInitialDecisions),
+      ...(policy.modelOwned ? { modelOwned: true, ...(policy.endpointId ? { modelEndpointId: policy.endpointId } : {}) } : {}),
       decisionUsage: structuredClone(preparation.execution.usage),
       decisionAttempts: structuredClone(preparation.execution.attempted),
       commands: [],
-      stagedStateHashVersion: 3,
+      stagedStateHashVersion: policy.modelOwned ? 4 : 3,
       stagedStateHash,
       createdAt: now,
       updatedAt: now,
@@ -574,6 +690,7 @@ export class EmbodimentCoordinator {
     const replayAgainst = (baseState: SimulationState): {
       execution: MonthExecution;
       receipts: StoredEmbodimentCommandReceipt[];
+      planning?: ModelMonthPlanningState;
     } => {
       const preparation = host.prepareExecution({
         state: baseState,
@@ -581,22 +698,26 @@ export class EmbodimentCoordinator {
         skySample: snapshot.skySample,
         ...(snapshot.cosmosSnapshot ? { cosmosSnapshot: snapshot.cosmosSnapshot } : {}),
         frozenInitialDecisions: structuredClone(snapshot.frozenInitialDecisions),
+        ...(snapshot.modelOwned ? { modelOwned: true } : {}),
       });
       validatePreparation(preparation, baseState, snapshot.actorId, snapshot.baseElapsedMonths);
       // The host can deterministically rebuild rule decisions, but model usage
       // is accounting input rather than a consequence of those decisions.
       let execution: MonthExecution = {
         ...preparation.execution,
-        usage: structuredClone(snapshot.decisionUsage),
-        attempted: structuredClone(snapshot.decisionAttempts),
+        ...(!snapshot.modelOwned ? { usage: structuredClone(snapshot.decisionUsage), attempted: structuredClone(snapshot.decisionAttempts) } : {}),
       };
+      let planning = snapshot.modelOwned ? createModelMonthPlanningState() : undefined;
+      const replayBatch = snapshot.modelOwned ? host.createModelDecider?.(snapshot.modelEndpointId) ?? unavailableModelDecider : undefined;
       const receipts: StoredEmbodimentCommandReceipt[] = [];
       for (const stored of snapshot.commands) {
-        const replay = executeCommand(execution, stored.receipt.command);
+        const replay = executeCommand(execution, stored.receipt.command, planning && replayBatch
+          ? { planning, batch: replayBatch, calls: stored.modelCalls ?? [] } : undefined);
         if (replay.tick.controlRequested && replay.failure) {
           throw new Error(`有限化身命令 ${stored.receipt.commandId} 无法确定性重放`);
         }
         execution = replay.execution;
+        planning = replay.planning;
         const generatedReceipt: EmbodimentCommandReceipt = {
           commandId: stored.receipt.commandId,
           embodimentId: snapshot.id,
@@ -613,13 +734,14 @@ export class EmbodimentCoordinator {
           || generatedReceipt.remappedOptionId !== stored.receipt.remappedOptionId) {
           throw new Error(`有限化身命令 ${stored.receipt.commandId} 的重放收据不一致`);
         }
-        receipts.push({ fingerprint: stored.fingerprint, receipt: generatedReceipt });
+        receipts.push({ fingerprint: stored.fingerprint, receipt: generatedReceipt,
+          ...(stored.modelCalls ? { modelCalls: structuredClone(stored.modelCalls) } : {}) });
       }
       if (execution.completedTick !== snapshot.completedTick
         || receipts.length !== snapshot.commands.length) {
         throw new Error('有限化身暂存月份重放进度不一致');
       }
-      return { execution, receipts };
+      return { execution, receipts, ...(planning ? { planning } : {}) };
     };
 
     // Verify and release the legacy execution before building the current one.
@@ -648,6 +770,7 @@ export class EmbodimentCoordinator {
     // successful restore is then migrated to the cadence-aware v3 payload.
     const currentReplay = replayAgainst(committedState);
     const currentStateHashV3 = executionHash(currentReplay.execution, 'v3');
+    const currentModelHash = currentReplay.planning ? modelExecutionHash(currentReplay.execution, currentReplay.planning) : undefined;
     if (snapshot.stagedStateHashVersion === 2) {
       const currentStateHashV2 = executionHash(currentReplay.execution, 'v2');
       if (currentStateHashV2 !== snapshot.stagedStateHash) {
@@ -656,6 +779,10 @@ export class EmbodimentCoordinator {
     } else if (snapshot.stagedStateHashVersion === 3) {
       if (currentStateHashV3 !== snapshot.stagedStateHash) {
         throw new EmbodimentReplayMismatchError(snapshot.stagedStateHash, currentStateHashV3);
+      }
+    } else if (snapshot.stagedStateHashVersion === 4) {
+      if (!currentModelHash || currentModelHash !== snapshot.stagedStateHash) {
+        throw new EmbodimentReplayMismatchError(snapshot.stagedStateHash, currentModelHash ?? 'missing-model-planning');
       }
     } else {
       const currentPartHashes = migrationPartHashes(currentReplay.execution);
@@ -675,13 +802,14 @@ export class EmbodimentCoordinator {
       commands: currentReplay.receipts,
       // A strictly verified legacy replay migrates to the independently rebuilt
       // current execution, not merely to a new label on the legacy execution.
-      stagedStateHashVersion: 3,
-      stagedStateHash: currentStateHashV3,
+      stagedStateHashVersion: currentReplay.planning ? 4 : 3,
+      stagedStateHash: currentModelHash ?? currentStateHashV3,
       // Runtime authority revisions rotate on process/session restore. The
       // original value remains in beginFingerprint and persisted audit data;
       // new views derive their revision from host.authority().
       baseAuthorityRevision: authority.revision,
     }, currentReplay.execution);
+    restored.planning = currentReplay.planning;
     return restored;
   }
 
@@ -818,7 +946,10 @@ export class EmbodimentCoordinator {
     let outcome = 'failed';
     this.status = 'executing-tick';
     try {
-      const result = executeCommand(this.execution, input.command);
+      const result = this.planning
+        ? await executeModelCommand(this.execution, this.planning, input.command,
+          this.host.createModelDecider?.(this.durable.modelEndpointId) ?? unavailableModelDecider)
+        : executeCommand(this.execution, input.command);
       cloneMs = result.cloneMs;
       tickMs = result.tickMs;
       if (result.tick.controlRequested && result.failure) {
@@ -837,19 +968,23 @@ export class EmbodimentCoordinator {
         ...(result.remappedOptionId ? { remappedOptionId: result.remappedOptionId } : {}),
       };
       const now = this.host.now?.() ?? Date.now();
-      const stored = { fingerprint, receipt } satisfies StoredEmbodimentCommandReceipt;
+      const stored = { fingerprint, receipt,
+        ...(result.modelCalls ? { modelCalls: structuredClone(result.modelCalls) } : {}) } satisfies StoredEmbodimentCommandReceipt;
       this.tickEvents = result.tick.events;
 
       if (result.execution.completedTick < PLANNING_TICKS_PER_MONTH) {
         const hashStartedAt = perfNow();
-        const stagedStateHash = executionHash(result.execution);
+        const stagedStateHash = result.planning ? modelExecutionHash(result.execution, result.planning) : executionHash(result.execution);
         hashMs = perfElapsed(hashStartedAt);
         this.execution = result.execution;
+        this.planning = result.planning;
         this.durable = {
           ...this.durable,
           completedTick: result.execution.completedTick,
           revision,
           commands: [...this.durable.commands, stored],
+          decisionUsage: structuredClone(result.execution.usage),
+          decisionAttempts: structuredClone(result.execution.attempted),
           stagedStateHash,
           updatedAt: now,
         };
@@ -867,6 +1002,7 @@ export class EmbodimentCoordinator {
       detachPastForFinish(result.execution);
       const finishStartedAt = perfNow();
       const state = finishMonthExecution(result.execution);
+      if (this.durable.modelOwned) applyModelLedger(state, [...this.durable.commands, stored].flatMap((command) => command.modelCalls ?? []));
       finishMs = perfElapsed(finishStartedAt);
       const commitStartedAt = perfNow();
       let frame: GameFrame;
@@ -880,6 +1016,7 @@ export class EmbodimentCoordinator {
         commitMs = perfElapsed(commitStartedAt);
       }
       this.execution = result.execution;
+      this.planning = result.planning;
       this.durable = {
         ...this.durable,
         completedTick: result.execution.completedTick,
@@ -977,11 +1114,22 @@ export class EmbodimentCoordinator {
     try {
       const cloneStartedAt = perfNow();
       const candidate = cloneExecution(this.execution);
+      const planning = this.planning ? structuredClone(this.planning) : undefined;
+      const batch = planning ? this.host.createModelDecider?.(this.durable.modelEndpointId) ?? unavailableModelDecider : undefined;
+      const releaseModelCalls: FrozenEmbodimentModelCall[] = [];
+      // The former player now participates in the same autonomous reviews.
+      if (planning) delete candidate.controlledPersonId;
       cloneMs = perfElapsed(cloneStartedAt);
       let lastTickEvents: WorldEvent[] = [];
       const tickStartedAt = perfNow();
       while (candidate.completedTick < PLANNING_TICKS_PER_MONTH) {
-        lastTickEvents = executePlanningTick(candidate).events;
+        if (planning && batch) {
+          const result = await executeModelCycle(modelPlanningTick(candidate, planning, batch, undefined,
+            autonomousTicks === 0 ? this.durable.actorId : undefined), batch);
+          addModelUsage(candidate, result.calls);
+          releaseModelCalls.push(...result.calls);
+          lastTickEvents = result.tick.events;
+        } else lastTickEvents = executePlanningTick(candidate).events;
         autonomousTicks += 1;
       }
       tickMs = perfElapsed(tickStartedAt);
@@ -989,6 +1137,7 @@ export class EmbodimentCoordinator {
       detachPastForFinish(candidate);
       const finishStartedAt = perfNow();
       const state = finishMonthExecution(candidate);
+      if (planning) applyModelLedger(state, [...this.durable.commands.flatMap((command) => command.modelCalls ?? []), ...releaseModelCalls]);
       finishMs = perfElapsed(finishStartedAt);
       const commitStartedAt = perfNow();
       let frame: GameFrame;
@@ -1010,6 +1159,7 @@ export class EmbodimentCoordinator {
         committedElapsedMonths: frame.elapsedMonths,
       } as const;
       this.execution = candidate;
+      this.planning = planning;
       this.tickEvents = lastTickEvents;
       const completed: CompletedEmbodimentSnapshot = {
         schemaVersion: 1,

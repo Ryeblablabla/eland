@@ -4,7 +4,7 @@ import { Material, materialDefinition } from './material';
 import type { SimulationState } from './model';
 import type { PersonState } from './person';
 import { productionToolMultiplier } from './production-tool';
-import { voxelAt } from '../world/grid';
+import { isStandingPosition, standingPathMovementCost, voxelAt, type StandingPosition, type VoxelWorld } from '../world/grid';
 
 /** Shared by every physical step performed by one actor in this episode. */
 export interface ActivityWorkBudget {
@@ -19,6 +19,26 @@ export interface ActionWorkProgress {
   sourceEventIds: string[];
 }
 
+/** Movement belongs to the body's actual unfinished edge, not a thought/Intent identity. */
+export interface MovementWorkProgress extends ActionWorkProgress {
+  from: StandingPosition;
+  to: StandingPosition;
+}
+
+export function movementWorkBasis(grid: VoxelWorld, from: StandingPosition, to: StandingPosition): string {
+  return JSON.stringify({ moveEdge: [from, to], requiredWork: standingPathMovementCost(grid, [from, to]),
+    standable: [isStandingPosition(grid, from), isStandingPosition(grid, to)] });
+}
+
+/** Displacement and changed physical premises invalidate credit; changing one's mind does not. */
+export function invalidateChangedMovementWork(state: SimulationState): void {
+  for (const person of state.people) {
+    const progress = person.movementWork;
+    if (progress && (person.position.cellId !== progress.from.cellId || person.position.z !== progress.from.z
+      || movementWorkBasis(state.world.grid, progress.from, progress.to) !== progress.basis)) delete person.movementWork;
+  }
+}
+
 export function createActivityWorkBudget(): ActivityWorkBudget {
   return { remainingEffort: BASE_ACTIVITY_EPISODE_WORK_EFFORT };
 }
@@ -26,6 +46,11 @@ export function createActivityWorkBudget(): ActivityWorkBudget {
 export function actorWorkCapacity(person: PersonState): number {
   return physicalWorkCapacityMultiplier({ locomotion: person.baselineCapacities.locomotion,
     ...person.body, conditions: person.conditions });
+}
+
+export function actionWorkKind(action: PrimitiveAction): 'instant' | 'movement' | 'work' {
+  return action.kind === 'talk' || action.kind === 'act' && action.operation === 'ingest'
+    ? 'instant' : action.kind === 'move' ? 'movement' : 'work';
 }
 
 function referencedMaterial(state: SimulationState, person: PersonState, ref: WorldRef) {
@@ -51,10 +76,15 @@ function referencedMaterial(state: SimulationState, person: PersonState, ref: Wo
  * uses existing hardness and tool throughput. Unspecified complex capabilities
  * retain their prior one-episode workload instead of becoming free.
  */
-export function actionWorkQuote(state: SimulationState, person: PersonState, action: PrimitiveAction) {
-  const instant = action.kind === 'talk' || action.kind === 'act' && action.operation === 'ingest';
-  if (instant) return { kind: 'instant' as const, work: 0, basis: JSON.stringify(action) };
-  if (action.kind === 'move') return { kind: 'movement' as const, work: 0, basis: JSON.stringify(action) };
+export function actionWorkQuote(
+  state: SimulationState,
+  person: PersonState,
+  action: PrimitiveAction,
+  transferSettlement?: { materialId: number; quantity: number },
+) {
+  const kind = actionWorkKind(action);
+  if (kind === 'instant') return { kind, work: 0, basis: JSON.stringify(action) };
+  if (kind === 'movement') return { kind, work: 0, basis: JSON.stringify(action) };
   let work = BASE_ACTIVITY_EPISODE_WORK_EFFORT as number;
   const materials: Array<{ materialId: number; quantity: number }> = [];
   const materialWork = (materialId: number, quantity: number, process: boolean): number => {
@@ -62,7 +92,11 @@ export function actionWorkQuote(state: SimulationState, person: PersonState, act
     materials.push({ materialId, quantity });
     return material.mass * quantity * (process ? Math.max(1, material.hardness) : 1);
   };
-  if (action.kind === 'transfer') work = materialWork(action.materialId, action.quantity, false);
+  // Transfer quantities come from the executor's real source/capacity/contact
+  // settlement, including zero-change and actually resisted attempts. Merely
+  // requesting a larger quantity does not create additional physical labour.
+  if (transferSettlement) work = materialWork(transferSettlement.materialId, transferSettlement.quantity, false);
+  else if (action.kind === 'transfer') work = materialWork(action.materialId, 0, false);
   else if (action.kind === 'act' && action.operation === 'separate') {
     const target = action.targets[0];
     const material = target ? referencedMaterial(state, person, target) : undefined;
@@ -80,7 +114,8 @@ export function actionWorkQuote(state: SimulationState, person: PersonState, act
   const tool = action.kind === 'act' && action.toolStackId
     ? person.inventory.find((stack) => stack.id === action.toolStackId && stack.quantity > 0) : undefined;
   const throughput = productionToolMultiplier(tool?.materialId);
-  return { kind: 'work' as const, work: work / throughput,
+  return { kind: 'work' as const, work: materials.length ? work / throughput : BASE_ACTIVITY_EPISODE_WORK_EFFORT,
+    fixedEpisode: materials.length === 0,
     basis: JSON.stringify({ action, materials, tool: tool ? { id: tool.id, materialId: tool.materialId } : undefined }) };
 }
 

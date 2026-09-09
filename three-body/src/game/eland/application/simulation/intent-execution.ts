@@ -1,3 +1,5 @@
+import { continuingSurvivalAttempt, selectedSurvivalAttempt, survivalActionIsImmediateThreat } from '../../domain/survival-reflex';
+import type { ActivityWorkBudget } from '../../domain/action-work';
 import {
   actionSatisfiesRecordReplicationReceipt,
   executeIntentAction,
@@ -1588,6 +1590,7 @@ export function executeActiveIntent(
   orderInMonth: number,
   actionTick: number,
   currentMonthEvents: WorldEvent[] = [],
+  workBudget?: ActivityWorkBudget,
 ): WorldEvent | null {
   const intent = activeIntent(state, person);
   if (!intent) return null;
@@ -1901,6 +1904,7 @@ export function executeActiveIntent(
     orderInMonth,
     actionTick,
     decisionLanguage,
+    workBudget,
   ));
   let recordReplicationReceiptCompleted = false;
   let recordReplicationReceiptCandidate = false;
@@ -2313,6 +2317,7 @@ export function executeProtectiveInterruption(
   atMonth: number,
   actionTick: number,
   events: WorldEvent[],
+  workBudget?: ActivityWorkBudget,
 ): ActionFact {
   let child = activeIntent(state, person);
   if (child?.status !== 'active'
@@ -2334,6 +2339,10 @@ export function executeProtectiveInterruption(
     );
     delete person.activeIntentId;
   }
+  const continuation = kind === 'survival-reflex' && !survivalActionIsImmediateThreat(action)
+    ? continuingSurvivalAttempt(state, person, child) : undefined;
+  const selectedAttempt = kind === 'survival-reflex' && !continuation
+    ? selectedSurvivalAttempt(state, person, action) : undefined;
   const parent = activeIntent(state, person);
   const mayInterrupt = Boolean(parent
     && (kind === 'survival-reflex' || isResumableIntent(parent)));
@@ -2342,8 +2351,9 @@ export function executeProtectiveInterruption(
       id: `${kind}:${atMonth}:${actionTick}:${person.id}`,
       summary: kind === 'dependent-care' ? '先处理身边未成年人的紧急照护' : '先处理本人迫近的生存危险',
       reason: kind === 'dependent-care' ? '未成年人的风险高于本人当前风险' : '本人当前生存风险最高',
-      goal: protectiveGoal(state, person, action, kind),
+      goal: selectedAttempt?.goal ?? protectiveGoal(state, person, action, kind),
       nextAction: structuredClone(action),
+      ...(selectedAttempt ? { completionAction: structuredClone(selectedAttempt.completionAction), target: structuredClone(selectedAttempt.target) } : {}),
       estimatedDuration: 'one-month',
       sourceFactIds: person.conditions.flatMap((condition) => condition.sourceEventIds),
       domain: 'strategic',
@@ -2370,16 +2380,27 @@ export function executeProtectiveInterruption(
     child = activeIntent(state, person);
     if (child && !parent) child.interruptionKind = kind;
   }
-  const effectiveAction = structuredClone(continuousProtectiveAction(
+  const effectiveAction = structuredClone(continuation ?? (selectedAttempt ? action : continuousProtectiveAction(
     state,
     person,
     child,
     action,
     kind,
     atMonth,
-  ));
+  )));
   if (child && child.interruptionKind === kind) {
-    child.goal = protectiveGoal(state, person, effectiveAction, kind);
+    if (!continuation) {
+      child.goal = selectedAttempt?.goal ?? protectiveGoal(state, person, effectiveAction, kind);
+      if (selectedAttempt) {
+        child.survivalNeed = selectedAttempt.need;
+        child.completionAction = structuredClone(selectedAttempt.completionAction);
+        child.target = structuredClone(selectedAttempt.target);
+      } else {
+        delete child.survivalNeed;
+        delete child.completionAction;
+        delete child.target;
+      }
+    }
     child.nextAction = structuredClone(effectiveAction);
     child.lastProgressAtMonth = atMonth;
     delete child.blockedReason;
@@ -2388,6 +2409,7 @@ export function executeProtectiveInterruption(
     ...(child ? { intentId: child.id } : {}),
     cause: 'survival-reflex',
     actionTick,
+    ...(workBudget ? { workBudget } : {}),
   });
   if (child && child.interruptionKind === kind) {
     child.actionEventIds.push(fact.id);
@@ -2482,6 +2504,7 @@ export function executeDependentCareReflex(
   atMonth: number,
   actionTick: number,
   events: WorldEvent[],
+  workBudget?: ActivityWorkBudget,
 ): ActionFact {
   const recoveryTarget = action.kind === 'act' && action.operation === 'rehydrate'
     ? action.targets.find((target) => target.kind === 'person')
@@ -2491,11 +2514,12 @@ export function executeDependentCareReflex(
       && isRecoveringFromDehydratedHibernation(candidate))
     : undefined;
   if (!rehydratedDependent) {
-    return executeProtectiveInterruption(state, person, action, 'dependent-care', atMonth, actionTick, events);
+    return executeProtectiveInterruption(state, person, action, 'dependent-care', atMonth, actionTick, events, workBudget);
   }
   const fact = executePrimitiveAction(state, person, action, atMonth, events.length, {
     cause: 'survival-reflex',
     actionTick,
+    ...(workBudget ? { workBudget } : {}),
   });
   events.push(fact);
   return fact;

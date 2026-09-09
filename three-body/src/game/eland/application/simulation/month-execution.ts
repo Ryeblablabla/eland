@@ -1,3 +1,4 @@
+import { actionWorkKind, createActivityWorkBudget, type ActivityWorkBudget } from '../../domain/action-work';
 import { executePrimitiveAction } from '../../domain/action-executor';
 import { synchronizeAgreementResponseDeadlineSuspensions } from '../../domain/agreement';
 import { PLANNING_TICKS_PER_MONTH } from '../../domain/calendar';
@@ -103,6 +104,7 @@ export interface MonthExecution {
   plannedAtTickOne: Set<PersonId>;
   plannedAtTicks: Map<PersonId, number>;
   participantIds: PersonId[];
+  activityWorkBudgets: Map<PersonId, ActivityWorkBudget>;
   completedTick: number;
   finished: boolean;
 }
@@ -191,6 +193,7 @@ export function createMonthExecution(input: {
     plannedAtTickOne,
     plannedAtTicks,
     participantIds: livingPeople(prepared.state).map((person) => person.id),
+    activityWorkBudgets: new Map(),
     completedTick: alreadyEnded ? PLANNING_TICKS_PER_MONTH : 0,
     finished: alreadyEnded,
   };
@@ -311,24 +314,31 @@ function executeIntentStep(
   fallbackRoot?: RootIntentTrace,
 ): WorldEvent | null {
   const { state, events, atMonth } = execution.prepared;
+  const budget = execution.activityWorkBudgets.get(person.id);
   const rootBeforeStep = rootIntentForPerson(state, person) ?? fallbackRoot;
-  const fact = executeActiveIntent(state, person, atMonth, events.length, actionTick, events);
-  if (fact) events.push(fact);
-  drainInterruptedIntentReturns(state, person, atMonth);
-  const spoke = fact?.kind === 'action'
-    && fact.status === 'completed'
-    && fact.action.kind === 'talk';
-  const resumed = spoke ? activeIntent(state, person) : undefined;
-  const compatibleBodyAction = resumed?.nextAction.kind !== 'talk'
-    && !(resumed?.nextAction.kind === 'act'
-      && ['hunt', 'dehydrate', 'rehydrate', 'reproduce'].includes(resumed.nextAction.operation));
-  if (spoke && resumed && compatibleBodyAction) {
-    const bodyFact = executeActiveIntent(state, person, atMonth, events.length, actionTick, events);
-    if (bodyFact) events.push(bodyFact);
+  let firstFact: WorldEvent | null = null;
+  while (isAlive(person)) {
+    const before = activeIntent(state, person);
+    if (!before || budget && budget.remainingEffort <= 0
+      && actionWorkKind(before.nextAction) !== 'instant') break;
+    const bodyBefore = { ...person.body };
+    const fact = executeActiveIntent(state, person, atMonth, events.length, actionTick, events, budget);
+    if (fact) events.push(fact);
+    firstFact ??= fact;
     drainInterruptedIntentReturns(state, person, atMonth);
+    if (!fact || fact.kind !== 'action' || fact.status === 'blocked' || fact.status === 'failed') break;
+    const resumed = activeIntent(state, person);
+    if (!resumed || resumed.ownerId !== person.id || resumed.nextAction.kind === 'talk'
+      || resumed.id !== before.id && resumed.id !== before.returnToIntentId) break;
+    const spoke = fact.status === 'completed' && fact.action.kind === 'talk';
+    const improvedReserves = person.body.hydration > bodyBefore.hydration || person.body.nutrition > bodyBefore.nutrition;
+    if (!spoke && !improvedReserves && !(Number(fact.diff.spentWork) > 0)) break;
+    if (spoke && resumed.nextAction.kind === 'act'
+      && ['hunt', 'dehydrate', 'rehydrate', 'reproduce'].includes(resumed.nextAction.operation)) break;
+    if (!budget) break;
   }
   grantTerminalReplanPermit(execution, person, rootBeforeStep);
-  return fact;
+  return firstFact;
 }
 
 function executeActorControl(
@@ -347,6 +357,7 @@ function executeActorControl(
     const fact = executePrimitiveAction(state, person, control.action, atMonth, events.length, {
       cause: 'player-embodiment',
       actionTick,
+      workBudget: execution.activityWorkBudgets.get(person.id),
     });
     events.push(fact);
     person.currentActionText = fact.result || control.text || '完成本刻行动';
@@ -408,6 +419,8 @@ export function executePlanningTick(
         || a.id.localeCompare(b.id));
 
     for (const person of order) {
+      const workBudget = createActivityWorkBudget();
+      execution.activityWorkBudgets.set(person.id, workBudget);
       if (isDormantDehydratedHibernating(person)) {
         person.currentActionText = '处于脱水休眠，以极低代谢等待环境稳定';
         continue;
@@ -417,7 +430,7 @@ export function executePlanningTick(
         if (recovery) {
           const fact = executePrimitiveAction(state, person, recovery, atMonth, events.length, {
             cause: 'survival-reflex',
-            actionTick,
+            actionTick, workBudget,
           });
           events.push(fact);
           person.currentActionText = fact.result;
@@ -490,7 +503,7 @@ export function executePlanningTick(
           || dependentCareUrgency(state, person) > survivalReflexUrgency(state, person));
       if (careIsMoreUrgent && dependentCare) {
         const rootBeforeInterruption = rootIntentForPerson(state, person);
-        const fact = executeDependentCareReflex(state, person, dependentCare, atMonth, actionTick, events);
+        const fact = executeDependentCareReflex(state, person, dependentCare, atMonth, actionTick, events, workBudget);
         person.currentActionText = fact.result;
         drainInterruptedIntentReturns(state, person, atMonth);
         grantTerminalReplanPermit(execution, person, rootBeforeInterruption);
@@ -538,29 +551,31 @@ export function executePlanningTick(
         }
         const rootBeforeInterruption = rootIntentForPerson(state, person);
         let intakeStart = { cellId: person.position.cellId, z: person.position.z, ...person.body };
-        let fact = executeProtectiveInterruption(state, person, reflex, 'survival-reflex', atMonth, actionTick, events);
+        let fact = executeProtectiveInterruption(state, person, reflex, 'survival-reflex', atMonth, actionTick, events, workBudget);
         person.currentActionText = fact.result;
         drainInterruptedIntentReturns(state, person, atMonth);
-        // The existing reflex can finish several immediate drinks/meals in
-        // the same activity interval. It still chooses each actual action;
-        // searches, travel and other work never enter this short intake loop.
+        // Continue the already selected source-bound undertaking with the
+        // actor's remaining effort. Arrival, collection and intake are steps
+        // of that undertaking, not separate two-day decisions.
         let immediateIntake = false;
-        while (fact.status === 'completed' && fact.action.kind === 'act' && fact.action.operation === 'ingest'
-          && person.position.cellId === intakeStart.cellId && person.position.z === intakeStart.z
-          && person.body.hydration >= intakeStart.hydration && person.body.nutrition >= intakeStart.nutrition
-          && (person.body.hydration > intakeStart.hydration || person.body.nutrition > intakeStart.nutrition)
-          && isAlive(person) && !isDormantDehydratedHibernating(person) && !isRecoveringFromDehydratedHibernation(person)) {
-          immediateIntake = true;
+        while (fact.status !== 'blocked' && fact.status !== 'failed' && isAlive(person)
+          && !isDormantDehydratedHibernating(person) && !isRecoveringFromDehydratedHibernation(person)) {
+          const improvedReserves = person.body.hydration >= intakeStart.hydration && person.body.nutrition >= intakeStart.nutrition
+            && (person.body.hydration > intakeStart.hydration || person.body.nutrition > intakeStart.nutrition);
+          immediateIntake = fact.status === 'completed' && fact.action.kind === 'act' && fact.action.operation === 'ingest'
+            && person.position.cellId === intakeStart.cellId && person.position.z === intakeStart.z && improvedReserves;
+          if (!immediateIntake && !(Number(fact.diff.spentWork) > 0)) break;
           const nextReflex = chooseSurvivalReflex(state, person, {
             suppressThermalShelter: causalShelterWork, currentMonthEvents: events,
           });
-          if (nextReflex?.kind !== 'act' || nextReflex.operation !== 'ingest') break;
+          if (!nextReflex || workBudget.remainingEffort <= 0
+            && actionWorkKind(nextReflex) !== 'instant') break;
           const nextCare = dependentChild ? null : chooseDependentCareReflex(state, person, {
             suppressThermalShelter: causalShelterWork, currentMonthEvents: events,
           });
           if (nextCare && dependentCareUrgency(state, person) > survivalReflexUrgency(state, person)) break;
           intakeStart = { cellId: person.position.cellId, z: person.position.z, ...person.body };
-          fact = executeProtectiveInterruption(state, person, nextReflex, 'survival-reflex', atMonth, actionTick, events);
+          fact = executeProtectiveInterruption(state, person, nextReflex, 'survival-reflex', atMonth, actionTick, events, workBudget);
           person.currentActionText = fact.result;
           drainInterruptedIntentReturns(state, person, atMonth);
           immediateIntake = false;
@@ -606,7 +621,7 @@ export function executePlanningTick(
       }
       if (dependentCare) {
         const rootBeforeInterruption = rootIntentForPerson(state, person);
-        const fact = executeDependentCareReflex(state, person, dependentCare, atMonth, actionTick, events);
+        const fact = executeDependentCareReflex(state, person, dependentCare, atMonth, actionTick, events, workBudget);
         person.currentActionText = fact.result;
         drainInterruptedIntentReturns(state, person, atMonth);
         grantTerminalReplanPermit(execution, person, rootBeforeInterruption);

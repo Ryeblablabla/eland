@@ -491,6 +491,21 @@ try {
     { goal: '处理自己已有物资', nextAttempt: '整理手中物资', utterance: '', delivery: 'normal' });
   assert.deepEqual(experienceWorld.current.recentActions, recentExperiences,
     'World and Mind share the same known results rather than disagreeing about whether a receipt occurred');
+  const handedOut = { ...transferEvent('experience-handed-out', receiver.id, giver.id, 24, {}),
+    action: { kind: 'transfer', from: { kind: 'person', personId: receiver.id },
+      to: { kind: 'person', personId: giver.id }, materialId: receivedStack.materialId, quantity: 8 },
+    diff: { quantity: 1, materialId: receivedStack.materialId,
+      from: { kind: 'person', personId: receiver.id }, to: { kind: 'person', personId: giver.id } } };
+  const ownTransferReceipt = decisionContext.buildDecisionRequestContext({ ...experienceContext,
+    planningTick: 25, currentMonthEvents: [handedOut] }).recentExperiences.find((entry) => entry.sourceEventId === handedOut.id);
+  assert(ownTransferReceipt.actualResult.includes(`× 1，从${receiver.name}的持物转移到${giver.name}的持物`),
+    'one actually given portion must not read like a receipt of eight requested portions or an unspecified possession change');
+  const unperformedTransfer = { ...handedOut, id: 'experience-transfer-not-started', status: 'blocked',
+    result: '本次取物尚未开始', diff: {} };
+  assert.equal(decisionContext.buildDecisionRequestContext({ ...experienceContext,
+    planningTick: 25, currentMonthEvents: [unperformedTransfer] }).recentExperiences
+      .find((entry) => entry.sourceEventId === unperformedTransfer.id).actualResult, unperformedTransfer.result,
+    'a requested transfer is never narrated as a physical possession change');
   assert.match(mindRequest.personalityPreset.type, /^[IE][NS][FT][JP]$/u,
     'every person should receive one derived MBTI writing type');
   assert.equal('speechExamples' in mindRequest.personalityPreset, false,

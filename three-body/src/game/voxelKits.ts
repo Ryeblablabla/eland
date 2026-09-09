@@ -2321,11 +2321,23 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
   // 结构投影会把谷仓、窑炉等固体设施也识别成 structure；这些格子已有专用设施模型，
   // 不能再叠一层通用房屋或施工架，否则会在视觉上显得又大又密。
   const renderedStructures = society.structures.filter((structure) => (
-    !(structure.materialIds ?? []).some((materialId) => (
+    !structure.workId && !(structure.materialIds ?? []).some((materialId) => (
       FUNCTIONAL_MODEL_KEYS.has(w.palette[materialId]?.key ?? '')
     ))
   ));
   const constructionCells = new Set(renderedStructures.flatMap((structure) => structure.occupiedCells));
+  for (const structure of society.structures) for (const voxel of structure.workVoxels ?? []) {
+    const material = w.palette[voxel.materialId];
+    if (!material) continue;
+    out.push({ b: material.tags.includes('metal') ? 'dark' : material.key === 'wood' || material.key === 'plank' ? 'wood'
+      : material.key === 'stone' ? 'stone' : 'plaster',
+      x: voxel.cellId % w.width - w.width / 2 + 0.5,
+      y: (voxel.z + 0.5) * CELL_H,
+      z: Math.floor(voxel.cellId / w.width) - w.height / 2 + 0.5,
+      sx: 1, sy: CELL_H, sz: 1,
+      c: (material.color[0] << 16) | (material.color[1] << 8) | material.color[2],
+      part: 'work-voxel', entityId: structure.workId });
+  }
   const drought = society.weather?.kind === 'drought';
   const facilityCellsByMaterial = new Map<number, number[]>();
   const functionalCells = new Set<number>();
@@ -2734,6 +2746,29 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
     });
   }
   for (const c of society.containers) {
+    if (c.workId) {
+      // The Work's real walls/floor already exist in terrain. Only its actual
+      // contents receive small markers within the actual cavity, never a box.
+      if (c.accessible === false) continue;
+      const positions = c.cavityPositions ?? [];
+      let portion = 0;
+      for (const content of c.contents) {
+        const material = w.palette[content.materialId];
+        if (!material || content.quantity <= 0) continue;
+        const liquid = material.tags.includes('liquid');
+        const color = (material.color[0] << 16) | (material.color[1] << 8) | material.color[2];
+        for (let index = 0; index < content.quantity && portion < positions.length; index++, portion++) {
+          const position = positions[portion];
+          out.push({ b: liquid ? 'accent' : 'plaster',
+            x: position.cellId % w.width - w.width / 2 + 0.5,
+            y: position.z * CELL_H + (liquid ? CELL_H * 0.38 : 0.12),
+            z: Math.floor(position.cellId / w.width) - w.height / 2 + 0.5,
+            sx: liquid ? 0.78 : 0.38, sy: liquid ? 0.055 : 0.2, sz: liquid ? 0.78 : 0.38,
+            c: color, part: 'stored-content', entityId: `work-storage:${c.id}` });
+        }
+      }
+      continue;
+    }
     if (w.palette[c.materialId]?.key === 'granary') continue;
     const dominant = (c.contents ?? []).filter((item) => item.quantity > 0)
       .reduce<(typeof c.contents)[number] | undefined>((best, item) => !best

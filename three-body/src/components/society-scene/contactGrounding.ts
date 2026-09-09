@@ -134,6 +134,7 @@ diffuseColor.a *= vContactStrength * (1.0 - smoothstep(${FADE_START.toFixed(1)},
     const completeFloors = new Map<number, number>();
     const housingCells = new Set<number>();
     for (const structure of society.structures) {
+      if (structure.workId) continue;
       const functional = (structure.materialIds ?? []).some((id) => FUNCTIONAL_MODEL_KEYS.has(world.palette[id]?.key ?? ''));
       if (!functional) for (const id of structure.occupiedCells) constructionCells.add(id);
       if (!structure.complete || !structure.interiorPositions.length) continue;
@@ -190,6 +191,7 @@ diffuseColor.a *= vContactStrength * (1.0 - smoothstep(${FADE_START.toFixed(1)},
     };
     for (const drop of society.drops) if (drop.quantity > 0) addSupply(drop.cellId, drop.z, drop.quantity);
     for (const container of society.containers) {
+      if (container.workId) continue; // Contained matter belongs to existing Work voxels, not a ground pile.
       if (world.palette[container.materialId]?.key === 'granary') continue; // The renderer uses the facility model, not a pile here.
       addSupply(container.cellId, container.z, Math.max(1, container.usedCapacity));
     }

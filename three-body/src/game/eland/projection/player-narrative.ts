@@ -4,6 +4,7 @@ import type { GroundedConversationRef, GroundedConversationTopic, HolderRef } fr
 import { animalSpecies, type AnimalSpeciesId } from '../domain/animal';
 import { Material, materialDefinition } from '../domain/material';
 import { languageInterpreterIds } from '../domain/language-perception';
+import type { WorkStorageChange } from '../domain/work-storage';
 
 type ActionEvent = Extract<WorldEvent, { kind: 'action' }>;
 type DecisionEvent = Extract<WorldEvent, { kind: 'decision' }>;
@@ -937,10 +938,16 @@ function agreementCandidate(state: SimulationState, event: AgreementEvent): Narr
 
 function standaloneCandidate(state: SimulationState, event: ActionEvent | DecisionEvent): NarrativeCandidate {
   const actorId = event.who;
+  const storageChanges = event.kind === 'action' && Array.isArray(event.diff.workStorageChanges)
+    ? event.diff.workStorageChanges as WorkStorageChange[] : [];
+  const storageLosses = storageChanges.flatMap((change) => change.change === 'contents-spilled' ? change.contents ?? [] : []);
+  const storageText = storageLosses.length ? `储存的${storageLosses.map((item) =>
+    `${displayNumber(item.quantity)}份${materialDefinition(item.materialId).name}${item.lost ? '流失了' : '散落在地上'}`).join('，')}` : '';
+  const actionOrDecision = event.kind === 'action' ? actionText(state, event) : decisionText(state, event);
   return {
     id: `narrative:${event.id}`,
     month: event.atMonth,
-    text: finishSentence(event.kind === 'action' ? actionText(state, event) : decisionText(state, event)),
+    text: finishSentence([stripSentenceEnd(actionOrDecision), storageText].filter(Boolean).join('；')),
     detail: event.kind === 'action' ? communicationHistoryDetail(event) : event.result,
     tone: event.kind === 'action' ? actionTone(event) : 'plain',
     kind: event.kind,

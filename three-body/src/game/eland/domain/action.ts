@@ -732,6 +732,8 @@ export interface Intent {
   operationAuthorship?: 'mind';
   completionAction?: PrimitiveAction;
   actionWork?: ActionWorkProgress;
+  /** Source-bound self-care ends with actual reserve recovery, not arrival. */
+  survivalNeed?: 'hydration' | 'nutrition';
   target?: WorldRef;
   status: IntentStatus;
   createdAtMonth: number;

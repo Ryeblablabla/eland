@@ -235,6 +235,11 @@ export interface ContainerView {
   capacity: number;
   usedCapacity: number;
   contents: { materialId: number; name: string; quantity: number }[];
+  /** Existing Work geometry contains these contents; do not draw a second box. */
+  workId?: string;
+  accessible?: boolean;
+  retainsWater?: boolean;
+  cavityPositions?: Array<{ cellId: number; z: number }>;
 }
 
 export interface GraveView {
@@ -262,6 +267,10 @@ export interface StructureView {
   sourceEventIds: string[];
   /** 权威构件材质；用于完成建筑的材质变体，而不是从建筑名称猜测。 */
   materialIds?: number[];
+  /** This structure is already rendered by its exact constructed voxels. */
+  workId?: string;
+  workVoxels?: Array<{ cellId: number; z: number; materialId: number }>;
+  workGroundPositions?: Array<{ cellId: number; z: number }>;
 }
 
 /** 电力世界的只读装饰投影；计划路径用于还原三维接线，不参与领域判定。 */

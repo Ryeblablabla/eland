@@ -1,4 +1,4 @@
-import type { ActionWorkProgress } from './action-work';
+import type { ActionWorkProgress, MovementWorkProgress } from './action-work';
 import type { BiologicalSex } from '../population';
 import type { NamingTradition } from '../naming';
 import type { CharacterAgendaState } from './character-agenda';
@@ -330,6 +330,8 @@ export interface PersonState {
   body: { health: number; hydration: number; nutrition: number };
   /** Unfinished directly controlled work; Intent-owned work stays on that Intent. */
   actionWork?: ActionWorkProgress;
+  /** Actual unfinished locomotion survives equivalent new or resumed intentions. */
+  movementWork?: MovementWorkProgress;
   baselineCapacities: {
     locomotion: number;
     manipulation: number;

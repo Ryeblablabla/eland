@@ -871,6 +871,13 @@ export default function SocietyScene3D({
       // 未完成结构由 featureDepth 裁回原地面，再由装饰层绘制施工阶段模型。
       const completeStructureBaseByCell = new Map<number, number>();
       for (const structure of s.structures) {
+        if (structure.workId) {
+          for (const position of structure.workGroundPositions ?? []) {
+            const current = completeStructureBaseByCell.get(position.cellId);
+            if (current === undefined || position.z < current) completeStructureBaseByCell.set(position.cellId, position.z);
+          }
+          continue;
+        }
         if (!structure.complete || structure.interiorPositions.length === 0) continue;
         const structureBaseZ = Math.min(...structure.interiorPositions.map((position) => position.z));
         const baseByInteriorCell = new Map<number, number>();

@@ -19,6 +19,7 @@ try {
     review: 'src/game/eland/application/simulation/model-review.ts',
     grid: 'src/game/eland/world/grid.ts',
     socialSpace: 'src/game/eland/domain/social-space.ts',
+    memory: 'src/game/eland/domain/agent-memory.ts',
   };
   for (const [name, entry] of Object.entries(entries)) {
     execFileSync(path.resolve('node_modules/.bin/esbuild'), [
@@ -48,6 +49,7 @@ try {
   const { recordRelationshipEpisode } = await import(
     `${pathToFileURL(path.join(temporaryDirectory, 'episode.mjs')).href}?test=${cacheBust}`
   );
+  const { retrieveAgentMemories } = await import(pathToFileURL(path.join(temporaryDirectory, 'memory.mjs')).href);
   const { toSocietyState } = await import(
     `${pathToFileURL(path.join(temporaryDirectory, 'adapter.mjs')).href}?test=${cacheBust}`
   );
@@ -84,6 +86,10 @@ try {
   observerRelation.trust = -80;
   observerRelation.bond = -80;
   observerRelation.fear = 95;
+  const rememberedViews = (person) => retrieveAgentMemories(state, person,
+    { atMonth, lanes: ['social'], personIds: [person.id === observer.id ? partner.id : observer.id], limit: 20 });
+  assert(!rememberedViews(observer).some((memory) => memory.id.startsWith('social:')),
+    'numeric relation caches must not invent an autobiographical feeling');
 
   const initialBasis = buildRelationshipCausalBasis(
     state,
@@ -136,6 +142,10 @@ try {
   });
   assert.equal(partner.relationshipEpisodes?.length ?? 0, partnerEpisodeCount,
     'one observer appraisal must not install a reciprocal feeling on the other person');
+  assert(rememberedViews(observer).some((memory) => memory.gist.includes('他在我体力不支时留下来帮我')),
+    'the observer can recall their own sourced interpretation');
+  assert(!rememberedViews(partner).some((memory) => memory.gist.includes('他在我体力不支时留下来帮我')),
+    'the other person does not inherit that interpretation');
   assert.equal(observerRelation.trust, -80,
     'a subjective episode must not directly rewrite the relation score cache');
   const projectedRelation = toSocietyState(state).agents

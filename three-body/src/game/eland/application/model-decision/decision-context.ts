@@ -125,6 +125,30 @@ function experiencedExecution(event: ActionFact, recorded?: string): string {
     : event.status === 'blocked' ? 'not-started' : event.status);
 }
 
+function ownActionResult(state: DecisionContext['state'], event: ActionFact): string {
+  // The request names an intended transfer; only the settled diff proves what
+  // moved. Preserve direction and actual quantity in a person's own receipt.
+  if (event.action.kind !== 'transfer' || event.status !== 'completed'
+    || !(typeof event.diff.quantity === 'number' && event.diff.quantity > 0)
+    || typeof event.diff.materialId !== 'number') return event.result;
+  const holder = (value: unknown): string | undefined => {
+    if (!value || typeof value !== 'object') return undefined;
+    const ref = value as Record<string, unknown>;
+    if (ref.kind === 'person' && typeof ref.personId === 'string') {
+      return `${state.people.find((person) => person.id === ref.personId)?.name ?? ref.personId}的持物`;
+    }
+    if (ref.kind === 'ground' && typeof ref.cellId === 'number' && typeof ref.z === 'number') {
+      return `地面（${ref.cellId % state.world.grid.width}, ${Math.floor(ref.cellId / state.world.grid.width)}, ${ref.z}）`;
+    }
+    if (ref.kind === 'container' && typeof ref.containerId === 'string') {
+      return `储存处（${ref.containerId}）`;
+    }
+    return undefined;
+  };
+  const from = holder(event.diff.from), to = holder(event.diff.to);
+  return from && to ? `${materialDefinition(event.diff.materialId).name} × ${event.diff.quantity}，从${from}转移到${to}` : event.result;
+}
+
 function recentExperiencesForDecision(context: DecisionContext, recalled: RecalledMemory[]): RecentExperience[] {
   const { state, person } = context;
   const atMonth = context.decisionMonth ?? state.clock.elapsedMonths + 1;
@@ -175,7 +199,7 @@ function recentExperiencesForDecision(context: DecisionContext, recalled: Recall
       execution: experiencedExecution(event),
       // Others' compound actions may contain private effects. Reuse the
       // observer's existing scoped receipt instead of exposing the whole diff.
-      actualResult: own ? event.result : remembered.get(event.id)!,
+      actualResult: own ? ownActionResult(state, event) : remembered.get(event.id)!,
     }];
   }).slice(-6);
 }
@@ -803,7 +827,7 @@ export function buildDecisionRequestContext(
       execution: event?.kind === 'action' ? experiencedExecution(event, receipt.execution) : receipt.execution,
       goalProgress: receipt.goalProgress, evidence: receipt.evidence, atMonth: receipt.atMonth,
       overallGoalAssessment: receipt.planAssessment?.goal ?? 'unverified',
-      ...(event?.kind === 'action' && event.who === person.id ? { actualResult: event.result,
+      ...(event?.kind === 'action' && event.who === person.id ? { actualResult: ownActionResult(state, event),
         operation: event.action.kind === 'act' ? `act:${event.action.operation}` : event.action.kind } : {}),
     };
   };
@@ -863,12 +887,12 @@ export function buildDecisionRequestContext(
       continuingPlan: {
         ...structuredClone(context.continuingPlan),
         initialAttemptPerformed,
-        recentResults: recentPlanActions.map(({ event }) => event.result),
+        recentResults: recentPlanActions.map(({ event }) => ownActionResult(state, event)),
         recentActions: recentPlanActions.map(({ event, receipt }) => ({
           atMonth: event.atMonth,
           operation: event.action.kind === 'act' ? `act:${event.action.operation}` : event.action.kind,
           target: recentActionTarget(event),
-          actualResult: event.result,
+          actualResult: ownActionResult(state, event),
           localGoalProgress: receipt.goalProgress,
           overallGoalAssessment: receipt.planAssessment?.goal ?? 'unverified',
         })),
@@ -1229,6 +1253,7 @@ export function buildDecisionRequestContext(
     })),
     visibleContainers: state.containers
       .filter((container) => context.visibleCells.includes(container.position.x + container.position.y * state.world.grid.width)
+        && (!container.carrier || container.accessible !== false)
         && containerById(state, container.id))
       .slice(0, 4)
       .map((container) => ({

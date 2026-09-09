@@ -16,6 +16,8 @@ export interface ContainerState {
   /** An actual open cavity in a Work, separate from legacy container voxels. */
   carrier?: { kind: 'work'; workId: string; cavityPoint: { x: number; y: number; z: number } };
   retainsWater?: boolean;
+  /** A covered cavity retains contents but cannot be reached until opened. */
+  accessible?: boolean;
 }
 
 export const CONTAINER_CAPACITY = 24;
@@ -56,6 +58,7 @@ export function containerCell(container: ContainerState): number {
 }
 
 export function canAccessContainerFrom(position: { cellId: number; z: number }, container: ContainerState): boolean {
+  if (container.carrier && container.accessible === false) return false;
   const horizontal = Math.abs(cellX(position.cellId) - container.position.x)
     + Math.abs(cellY(position.cellId) - container.position.y);
   return horizontal <= 1 && Math.abs(position.z - container.position.z) <= 2;

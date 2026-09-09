@@ -369,6 +369,35 @@ export function recordWorkThermalProcessingUse(world: { works?: WorkState[] }, e
   })] : [];
 }
 
+function storageUseEvidence(event: ReplayableWorkUseAction): Array<{ workId: string; functionKey: string; path: string }> {
+  const action = event.action as PrimitiveStorageAction | undefined;
+  if (event.status !== 'completed' || !Array.isArray(event.diff.workStorageUse)
+    || typeof event.diff.quantity !== 'number' || event.diff.quantity <= 0) return [];
+  return event.diff.workStorageUse.flatMap((value, index) => {
+    if (!value || typeof value !== 'object') return [];
+    const use = value as { workId?: string; containerId?: string; operation?: string; materialId?: number; quantity?: number };
+    const bound = action?.kind === 'transfer'
+      ? use.operation === 'store' ? action.to?.kind === 'container' && action.to.containerId === use.containerId
+        : use.operation === 'take' && action.from?.kind === 'container' && action.from.containerId === use.containerId
+      : action?.kind === 'act' && action.operation === 'ingest' && use.operation === 'drink'
+        && use.materialId === Material.Water && event.diff.materialId === Material.Water;
+    return bound && typeof use.workId === 'string' && typeof use.containerId === 'string'
+      && use.quantity === event.diff.quantity ? [{ workId: use.workId,
+        functionKey: use.operation === 'drink' ? 'stored-water-consumption' : 'material-storage', path: `diff.workStorageUse.${index}` }] : [];
+  });
+}
+
+type PrimitiveStorageAction = { kind: string; operation?: string;
+  from?: { kind: string; containerId?: string }; to?: { kind: string; containerId?: string } };
+
+/** A real transfer or measured consumption, never an empty container's name. */
+export function recordWorkStorageUse(world: { works?: WorkState[] }, event: ActionFact): WorkUseReceipt[] {
+  return storageUseEvidence(event).flatMap((use) => workById(world, use.workId) ? [recordWorkUse(world, {
+    workId: use.workId, kind: 'use', functionKey: use.functionKey, actorId: event.who,
+    atMonth: event.atMonth, sourceEventId: event.id, cause: event.cause, evidencePaths: [use.path, 'diff.quantity'],
+  })] : []);
+}
+
 /**
  * 从权威事件回放造物的采用情况。失败行为、建造行为本身、纯文本断言、
  * 无法在来源事件中核对的见证者，都不会被算成使用或传播。
@@ -410,6 +439,8 @@ export function observeWorkAdoption(
         && fire.cover.position.y === processing.fire.cover!.position.y && fire.cover.position.z === processing.fire.cover!.position.z);
       if (matched) return [{ ...receipt, witnessIds: [] }];
     }
+    if (storageUseEvidence(event).some((use) => use.workId === work.id && use.functionKey === receipt.functionKey
+      && receipt.evidencePaths.includes(use.path))) return [{ ...receipt, witnessIds: [] }];
     // Existing ActionFact receipts from earlier versions used co-occurrence,
     // references or proximity as evidence. They do not prove causal use and
     // must not survive replay merely because the cached receipt still exists.

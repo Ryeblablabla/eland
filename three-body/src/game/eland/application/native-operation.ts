@@ -733,6 +733,10 @@ export function compileNativeOperation(
         && !option.completionAction.stackId) {
         option.completionAction.stackId = context.person.inventory.find((stack) => stack.materialId === completion.materialId && stack.quantity > 0)?.id;
       }
+      if (completion.from.kind === 'container' && !completion.stackId) {
+        completion.stackId = containerById(context.state, completion.from.containerId)?.inventory
+          .find((stack) => stack.materialId === completion.materialId && stack.quantity > 0)?.id;
+      }
       const next = resolveNativeTransferAction(context.state, context.person, option.completionAction);
       if (!next) return { ok: false, problem: {
         code: 'missing-evidence', message: nativeTransferBlockedReason(context.state, context.person, option.completionAction), fields: ['source', 'destination'],

@@ -8,6 +8,7 @@ import type {
   PersonState,
 } from './person';
 import { memoryDurationMultiplier } from './trait';
+import { isStructurallyValidRelationshipEpisode } from './relationship-episode';
 import {
   languageBroadcastFromDiff,
   languageInterpreterIds,
@@ -988,16 +989,6 @@ export function writePlayerInteractionMemory(
 
 type AgentMemoryReadState = Pick<SimulationState, 'memoryStore' | 'people' | 'clock' | 'projects'>;
 
-function relationGist(state: AgentMemoryReadState, personId: string, trust: number, bond: number, fear: number): string {
-  const name = state.people.find((candidate) => candidate.id === personId)?.name ?? '某个人';
-  const tone = fear >= 40 ? '对其保持戒惧'
-    : trust >= 55 && bond >= 45 ? '把对方视为亲近且可信的人'
-      : trust >= 30 ? '大体愿意相信对方'
-        : bond >= 30 ? '对对方感到熟悉'
-          : '只知道彼此有过来往';
-  return `对${name}的印象：${tone}`;
-}
-
 function materialNameInCognitiveKey(key: string): string | undefined {
   const materialId = /material-(\d+)/u.exec(key)?.[1];
   return materialId === undefined ? undefined : materialDefinition(Number(materialId)).name;
@@ -1230,23 +1221,30 @@ function dynamicMemories(state: AgentMemoryReadState, person: PersonState): Reca
       lastRecalledAtMonth: place.lastConfirmedAtMonth,
     })),
   ];
-  const social = person.relations.filter((relation) => relation.sourceEventIds.length > 0
-    && Math.max(relation.trust, relation.bond, relation.fear) >= 25).map((relation): RecalledMemory => ({
-    id: `social:${person.id}:${relation.personId}`,
-    lane: 'social',
-    gist: relationGist(state, relation.personId, relation.trust, relation.bond, relation.fear),
-    precision: 'general',
-    confidence: clamp(45 + Math.max(relation.trust, relation.bond, relation.fear) * 0.5),
-    salience: clamp(35 + Math.max(relation.trust, relation.bond, relation.fear) * 0.6),
-    emotionalValence: clamp((relation.trust + relation.bond - relation.fear * 1.5) / 200, -1, 1),
-    personIds: [relation.personId],
-    topicKeys: ['social:relationship'],
-    sourceEventIds: uniqueStrings(relation.sourceEventIds),
-    unresolved: relation.fear >= 40,
-    firstExperiencedAtMonth: 0,
-    lastExperiencedAtMonth: state.clock.elapsedMonths,
-    lastRecalledAtMonth: state.clock.elapsedMonths,
-  }));
+  // Relation scores summarize interactions for legacy rules. They cannot
+  // author a person's feelings or become fabricated autobiographical views.
+  // Recall only this observer's own sourced interpretation, as a past view.
+  const social = (person.relationshipEpisodes ?? [])
+    .filter((episode) => episode.observerId === person.id && isStructurallyValidRelationshipEpisode(episode))
+    .map((episode): RecalledMemory => {
+      const name = state.people.find((candidate) => candidate.id === episode.otherPersonId)?.name ?? '那个人';
+      return {
+        id: `social-appraisal:${episode.id}`,
+        lane: 'social',
+        gist: `我当时对${name}的看法：${episode.appraisal.interpretation}`,
+        precision: 'specific',
+        confidence: 100,
+        salience: 55,
+        emotionalValence: 0,
+        personIds: [episode.otherPersonId],
+        topicKeys: ['social:relationship'],
+        sourceEventIds: uniqueStrings(episode.sourceFactIds),
+        unresolved: Boolean(episode.appraisal.unresolvedExpectation),
+        firstExperiencedAtMonth: episode.experiencedAtMonth,
+        lastExperiencedAtMonth: episode.experiencedAtMonth,
+        lastRecalledAtMonth: episode.experiencedAtMonth,
+      };
+    });
   const procedural = proceduralMemories(person);
   const resolvedNeeds = resolvedNeedMemories(state, person);
   const prospective = (person.characterAgenda?.items ?? []).map((agenda): RecalledMemory => ({

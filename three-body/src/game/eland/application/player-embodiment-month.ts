@@ -12,6 +12,7 @@ import {
 } from './simulation/month-execution';
 import type { ObservationProjector } from './simulation/observation-projector';
 import { copyState } from './simulation/state-utils';
+import { modelOwnedExecutionPlanner } from './simulation/model-month-planning';
 
 export interface FrozenPlayerEmbodimentDecision {
   personId: PersonId;
@@ -23,6 +24,8 @@ export interface PlayerEmbodimentMonthInput {
   state: SimulationState;
   controlledPersonId: PersonId;
   climate: ExternalClimateInput;
+  /** NPC model review is performed before the first body tick, not by RulePlanner. */
+  modelOwned?: boolean;
   /** Authoritative replay input. When present, local planning must not run again. */
   frozenInitialDecisions?: readonly FrozenPlayerEmbodimentDecision[];
 }
@@ -55,7 +58,7 @@ export function preparePlayerEmbodimentMonth(
       });
       frozenInitialDecisions.push(structuredClone(item));
     }
-  } else {
+  } else if (!input.modelOwned) {
     const planner = new RulePlanner();
     for (const context of prepared.candidates) {
       if (context.person.id === input.controlledPersonId) continue;
@@ -80,6 +83,7 @@ export function preparePlayerEmbodimentMonth(
       usage: { inputTokens: 0, outputTokens: 0 },
       attempted: { total: 0, ordinary: 0, exempt: 0 },
       controlledPersonId: input.controlledPersonId,
+      ...(input.modelOwned ? { tickPlanner: modelOwnedExecutionPlanner } : {}),
       projectionCadence: 'monthly',
     }),
     frozenInitialDecisions,

@@ -15,6 +15,7 @@ try {
     '--sourcefile=body-time-test.ts', `--outfile=${bundle}`, '--log-level=error',
   ], { input: `export { createInitialState } from './src/game/eland/simulation';
     export { settleBodyMetabolism, BASE_DAILY_HYDRATION_COST, BASE_DAILY_NUTRITION_COST } from './src/game/eland/domain/body-metabolism';
+    export { createActivityWorkBudget } from './src/game/eland/domain/action-work';
     export { advanceBodyTime, advanceBodies } from './src/game/eland/domain/monthly-processes';
     export { executePrimitiveAction } from './src/game/eland/domain/action-executor';
     export { commitDecision } from './src/game/eland/application/simulation/intent-execution';
@@ -136,6 +137,145 @@ try {
   assert.equal(working.person.inventory.length, 0, 'both meal and construction consume their real supplied material');
   near(working.person.body.nutrition, 88 - 2 * api.BASE_DAILY_NUTRITION_COST, 'one elapsed-time charge after intake and work');
   near(working.person.body.hydration, 100 - 2 * api.BASE_DAILY_HYDRATION_COST, 'both intakes precede one two-day hydration charge');
+
+  // The natural-04 failure was a real one-cell trip to a berry bush: the
+  // move's small water cost crossed the thirst threshold before harvesting.
+  const foraging = fixture();
+  foraging.state.world.drops = [];
+  for (let x = 9; x <= 23; x++) for (let y = 9; y <= 17; y++) {
+    for (let z = 0; z < foraging.state.world.grid.levels; z++) api.setVoxel(foraging.state.world.grid, x, y, z,
+      z === 0 ? api.Material.Stone : api.Material.Air);
+  }
+  foraging.person.position = { ...foraging.person.position, cellId: api.cellId(12, 12), z: 1 };
+  foraging.person.body.hydration = 58;
+  foraging.person.body.nutrition = 0;
+  api.setVoxel(foraging.state.world.grid, 11, 12, 0, api.Material.Water);
+  api.setVoxel(foraging.state.world.grid, 11, 13, 0, api.Material.BerryBush);
+  const forageMonth = executionFor(foraging);
+  api.executePlanningTick(forageMonth);
+  const forageActions = forageMonth.prepared.events.filter((fact) => fact.kind === 'action');
+  const harvest = forageActions.find((fact) => fact.action.kind === 'act' && fact.action.operation === 'separate');
+  const eating = forageActions.filter((fact) => fact.action.kind === 'act' && fact.action.operation === 'ingest'
+    && fact.diff.materialId === api.Material.Food);
+  assert(harvest?.status === 'completed', 'the chosen trip must continue to the actual berry harvest');
+  assert(eating.length > 0 && eating.every((fact) => fact.actionTick === 1 && fact.status === 'completed'),
+    'actually acquired food must reach the mouth within the available activity effort: ' + JSON.stringify(forageActions.map((fact) => ({action:fact.action,status:fact.status,diff:fact.diff}))) );
+  assert.equal(forageActions[0].action.kind, 'move');
+  assert.equal(harvest.intentId, forageActions[0].intentId, 'reaching a cell does not replace the selected self-care attempt');
+  assert(eating[0].diff.consumedSourceEventIds.includes(harvest.id));
+  const totalForageWork = forageActions.reduce((sum, fact) => sum + Number(fact.diff.spentWork ?? 0), 0);
+  assert(totalForageWork <= 8, 'approach, acquisition and intake share one activity effort allowance');
+  near(forageMonth.activityWorkBudgets.get(foraging.person.id).remainingEffort, 8 - totalForageWork, 'remaining actor effort');
+  assert.equal(forageMonth.prepared.events.filter((fact) => fact.diff?.metabolicProfile).length, 1);
+  assert(foraging.person.body.nutrition > 0 && foraging.person.body.health > 0);
+  assert.equal(api.voxelAt(foraging.state.world.grid, 11, 13, 0), api.Material.Shrub);
+
+  const walker = structuredClone(foraging);
+  walker.person = walker.state.people[0];
+  walker.person.body = { health: 100, hydration: 50, nutrition: 50 };
+  walker.person.baselineCapacities.locomotion = 50;
+  walker.person.position.cellId = api.cellId(12, 15);
+  walker.person.position.z = 1;
+  delete walker.person.actionWork;
+  const shared = api.createActivityWorkBudget();
+  const firstWalk = api.executePrimitiveAction(walker.state, walker.person, { kind: 'move', toCellId: api.cellId(13, 15), toZ: 1 },
+    1, 1000, { cause: 'intent', actionTick: 1, workBudget: shared });
+  const secondWalk = api.executePrimitiveAction(walker.state, walker.person, { kind: 'move', toCellId: api.cellId(21, 15), toZ: 1 },
+    1, 1001, { cause: 'intent', actionTick: 1, workBudget: shared });
+  near(firstWalk.diff.spentWork, 2, 'first short route work');
+  near(secondWalk.diff.spentWork, 6, 'second route uses only the remaining work');
+  near(shared.remainingEffort, 0, 'no fresh budget for a second movement');
+  assert.equal(walker.person.position.cellId, api.cellId(16, 15));
+
+  walker.person.inventory = [{ id: 'slow-timber', materialId: api.Material.Wood, quantity: 1, sourceEventIds: ['controlled-slow-timber'] }];
+  const slowTarget = { x: 17, y: 15, z: 1 };
+  const installation = { kind: 'act', operation: 'combine', targets: [
+    { kind: 'inventory-stack', personId: walker.person.id, stackId: 'slow-timber' },
+    { kind: 'voxel', position: slowTarget },
+  ] };
+  const unfinished = api.executePrimitiveAction(walker.state, walker.person, installation, 1, 1002,
+    { cause: 'intent', actionTick: 1, workBudget: { remainingEffort: 1 } });
+  assert.equal(unfinished.status, 'progressed');
+  assert.equal(walker.person.inventory[0].quantity, 1, 'unfinished work has not consumed its input');
+  assert.equal(api.voxelAt(walker.state.world.grid, 17, 15, 1), api.Material.Air, 'unfinished work has no premature product');
+  const finished = api.executePrimitiveAction(walker.state, walker.person, installation, 1, 1003,
+    { cause: 'intent', actionTick: 2, workBudget: api.createActivityWorkBudget() });
+  assert.equal(finished.status, 'completed');
+  near(unfinished.diff.spentWork + finished.diff.spentWork, 4, 'previous labour is retained, not charged again');
+  assert(finished.diff.workCompletionSourceEventIds.includes(unfinished.id));
+  assert.equal(walker.person.inventory.length, 0);
+  assert.equal(api.voxelAt(walker.state.world.grid, 17, 15, 1), api.Material.Plank);
+
+  const transfers = structuredClone(walker.state);
+  const giver = transfers.people[0];
+  giver.body = { health: 100, hydration: 50, nutrition: 50 };
+  giver.baselineCapacities.locomotion = 50;
+  giver.inventory = [{ id: 'one-timber', materialId: api.Material.Wood, quantity: 1, sourceEventIds: ['controlled-transfer-input'] }];
+  const receiver = structuredClone(giver);
+  receiver.id = 'controlled-receiver';
+  receiver.name = '受控接收者';
+  receiver.body = { health: 100, hydration: 100, nutrition: 100 };
+  receiver.position.cellId = api.cellId(16, 16);
+  receiver.inventory = [];
+  delete receiver.activeIntentId;
+  transfers.people.push(receiver);
+  const requestMany = { kind: 'transfer', materialId: api.Material.Wood, quantity: 50,
+    from: { kind: 'person', personId: giver.id }, to: { kind: 'person', personId: receiver.id }, stackId: 'one-timber' };
+  const limitedStock = api.executePrimitiveAction(transfers, giver, requestMany, 1, 1010,
+    { cause: 'intent', actionTick: 3, workBudget: { remainingEffort: 2 } });
+  assert.equal(limitedStock.status, 'completed', 'requesting fifty cannot manufacture fifty portions of labour when only one exists');
+  assert.equal(limitedStock.diff.quantity, 1);
+  near(limitedStock.diff.spentWork, 1, 'one actual available portion of handling');
+  assert.equal(giver.inventory.length, 0);
+  assert.equal(receiver.inventory[0].quantity, 1);
+
+  giver.inventory = [{ id: 'four-timbers', materialId: api.Material.Wood, quantity: 4, sourceEventIds: ['controlled-capacity-input'] }];
+  const noChangeBudget = { remainingEffort: 0.5 };
+  const noChange = api.executePrimitiveAction(transfers, giver, { ...requestMany,
+    stackId: 'four-timbers', to: { kind: 'person', personId: giver.id } }, 1, 1011,
+  { cause: 'intent', actionTick: 3, workBudget: noChangeBudget });
+  assert.equal(noChange.status, 'completed');
+  assert.equal(noChange.diff.transferNoChange, true);
+  assert.equal(noChange.diff.quantity, 0);
+  near(noChange.diff.spentWork, 0, 'same-holder transfer performs no labour');
+  near(noChangeBudget.remainingEffort, 0.5, 'no phantom unfinished work for a zero transfer');
+  assert.equal(giver.actionWork, undefined);
+  assert.equal(giver.inventory[0].quantity, 4);
+
+  api.setVoxel(transfers.world.grid, 17, 15, 1, api.Material.Container);
+  transfers.containers.push({ id: 'controlled-one-capacity', position: { x: 17, y: 15, z: 1 },
+    capacity: 1, inventory: [], createdAtMonth: 0, sourceEventIds: ['controlled-container'] });
+  const limitedCapacity = api.executePrimitiveAction(transfers, giver, { ...requestMany, stackId: 'four-timbers',
+    to: { kind: 'container', containerId: 'controlled-one-capacity' } }, 1, 1012,
+  { cause: 'intent', actionTick: 3, workBudget: { remainingEffort: 2 } });
+  assert.equal(limitedCapacity.status, 'completed');
+  assert.equal(limitedCapacity.diff.quantity, 1);
+  near(limitedCapacity.diff.spentWork, 1, 'handling is limited by the actual receiving capacity');
+  assert.equal(giver.inventory[0].quantity, 3);
+
+  giver.baselineCapacities.manipulation = 1;
+  receiver.baselineCapacities.manipulation = 100;
+  receiver.baselineCapacities.perception = 100;
+  const taking = { kind: 'transfer', materialId: api.Material.Wood, quantity: 50,
+    from: { kind: 'person', personId: receiver.id }, to: { kind: 'person', personId: giver.id }, stackId: receiver.inventory[0].id };
+  const resistedBudget = { remainingEffort: 2 };
+  const resisted = api.executePrimitiveAction(transfers, giver, taking, 1, 1013,
+    { cause: 'intent', actionTick: 3, workBudget: resistedBudget });
+  assert.equal(resisted.status, 'blocked');
+  assert.equal(resisted.diff.attempted, true);
+  assert.equal(resisted.diff.attemptedQuantity, 1);
+  assert(resisted.diff.takingContest, 'the owner actually resisted a physical taking attempt');
+  near(resisted.diff.spentWork, 1, 'a real resisted attempt is not a free preflight rejection');
+  near(resistedBudget.remainingEffort, 1, 'the attempted available portion consumed effort');
+  assert.equal(receiver.inventory[0].quantity, 1, 'resistance prevents the transfer');
+  receiver.position.cellId = api.cellId(50, 45);
+  const unreachableBudget = { remainingEffort: 2 };
+  const unreachable = api.executePrimitiveAction(transfers, giver, taking, 1, 1014,
+    { cause: 'intent', actionTick: 3, workBudget: unreachableBudget });
+  assert.equal(unreachable.status, 'blocked');
+  assert.notEqual(unreachable.diff.attempted, true);
+  near(unreachable.diff.spentWork, 0, 'a physically unstarted transfer does not incur taking labour');
+  near(unreachableBudget.remainingEffort, 2, 'unstarted preflight leaves available work intact');
 
   const sleeper = fixture();
   sleeper.person.conditions.push({ id: 'controlled-sleep', kind: 'dehydrated-hibernation', stage: 1,

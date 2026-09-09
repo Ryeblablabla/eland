@@ -311,6 +311,7 @@ export function standingPathSegmentForEffort(
   path: readonly StandingPosition[],
   availableWorkEffort = STANDING_MOVEMENT_WORK_BUDGET_PER_EPISODE,
   workCapacityMultiplier = 1,
+  allowIndivisibleOverrun = true,
 ): StandingPosition[] {
   if (path.length <= 1) return path.map((position) => ({ ...position }));
   const segment = [{ ...path[0] }];
@@ -320,7 +321,7 @@ export function standingPathSegmentForEffort(
   for (let index = 1; index < path.length; index += 1) {
     const edgeCost = standingMovementCost(world, path[index - 1], path[index]);
     // 高成本地形仍允许人物至少跨过一条相邻边，不能因预算不足永久卡死。
-    if (segment.length > 1 && spent + edgeCost > movementBudget) break;
+    if ((!allowIndivisibleOverrun || segment.length > 1) && spent + edgeCost > movementBudget) break;
     segment.push({ ...path[index] });
     spent += edgeCost;
   }

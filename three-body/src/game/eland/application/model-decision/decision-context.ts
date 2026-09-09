@@ -31,7 +31,7 @@ import type { MentalAct } from '../../domain/mental-act';
 import type { IntentOutcomeReceipt, RepresentationInput } from '../../domain/action';
 import type { ActionFact } from '../../domain/model';
 import { actionFactsForPerson, compareWorldEventsInCanonicalOrder, worldEventById } from '../../domain/event-index';
-import { cellX, cellY, isStandingPosition, surfaceMaterial, topPosition, voxelAt } from '../../world/grid';
+import { cellX, cellY, isStandingPosition, voxelAt } from '../../world/grid';
 import { shelterGeometryAt } from '../../domain/structure';
 import {
   decisionCounterpartIds,
@@ -49,6 +49,7 @@ import { describeNativeOperations } from '../native-operation';
 import type { NativeOperationDescriptor } from '../../domain/native-operation';
 import { nativeReferenceEntities, type NativeReferenceKind } from './native-operation-context';
 import { knownProjectCapabilities } from '../known-project-capabilities';
+import { projectVisibleStaticSurfaces } from '../visible-static-surfaces';
 
 function perceivedProperties(profile: PerceivedPhysicalMaterialProfile): string[] {
   return [...new Set([
@@ -683,26 +684,7 @@ export function buildDecisionRequestContext(
   options: DecisionRequestProjectionOptions = {},
 ): DecisionRequestContext {
   const { person, state } = context;
-  const visibleVoxels = [...context.visibleCells]
-    .sort((left, right) => {
-      const leftDistance = Math.abs(cellX(left) - cellX(person.position.cellId))
-        + Math.abs(cellY(left) - cellY(person.position.cellId));
-      const rightDistance = Math.abs(cellX(right) - cellX(person.position.cellId))
-        + Math.abs(cellY(right) - cellY(person.position.cellId));
-      return leftDistance - rightDistance || left - right;
-    })
-    .map((visibleCellId) => {
-      const materialId = surfaceMaterial(state.world.grid, visibleCellId);
-      const perception = perceiveMaterial(materialId, 'visible');
-      return {
-        materialId,
-        position: topPosition(state.world.grid, visibleCellId),
-        name: materialDefinition(materialId).name,
-        properties: perceivedProperties(perception),
-      };
-    })
-    .filter((candidate, index, all) => all.findIndex((other) => other.materialId === candidate.materialId) === index)
-    .slice(0, 12)
+  const visibleVoxels = projectVisibleStaticSurfaces(state, person, context.visibleCells)
     .map(({ position, name, properties }) => ({ position, name, properties }));
   // Material examples cannot describe free space: several adjacent positions
   // may contain the same air while supporting different physical layouts.

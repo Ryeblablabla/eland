@@ -1,3 +1,4 @@
+import { recordVisibleStaticPlaceDiscoveries } from '../static-scene-awareness';
 import { actionWorkKind, createActivityWorkBudget, type ActivityWorkBudget } from '../../domain/action-work';
 import { executePrimitiveAction } from '../../domain/action-executor';
 import { synchronizeAgreementResponseDeadlineSuspensions } from '../../domain/agreement';
@@ -672,6 +673,7 @@ export function executePlanningTick(
     }
     events.push(...advanceBodyTime(state, atMonth, actionTick,
       BODY_DAYS_PER_MONTH / PLANNING_TICKS_PER_MONTH, events.length));
+    events.push(...recordVisibleStaticPlaceDiscoveries(state, atMonth, actionTick, events));
   }
 
   for (const personId of execution.participantIds) {

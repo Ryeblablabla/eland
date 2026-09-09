@@ -17,6 +17,7 @@ const personMindBundle = path.join(temporaryDirectory, 'person-mind.mjs');
 const spokenMeaningBundle = path.join(temporaryDirectory, 'spoken-meaning.mjs');
 const speechIntentBundle = path.join(temporaryDirectory, 'speech-intent.mjs');
 const capabilityHandlesBundle = path.join(temporaryDirectory, 'capability-handles.mjs');
+const staticSceneBundle = path.join(temporaryDirectory, 'static-scene.mjs');
 const esbuild = path.resolve('node_modules/.bin/esbuild');
 
 function bundle(entry, outfile) {
@@ -51,6 +52,9 @@ try {
   bundle('src/game/eland/domain/spoken-meaning.ts', spokenMeaningBundle);
   bundle('src/game/eland/application/model-decision/speech-intent.ts', speechIntentBundle);
   bundle('src/game/eland/application/model-decision/capability-handles.ts', capabilityHandlesBundle);
+  execFileSync(esbuild, ['--bundle', '--platform=node', '--format=esm', '--loader=ts', '--sourcefile=static-scene-test.ts', `--outfile=${staticSceneBundle}`],
+    { stdio: 'pipe', input: `export { recordVisibleStaticPlaceDiscoveries } from './src/game/eland/application/static-scene-awareness';
+      export { executePlanningTick } from './src/game/eland/application/simulation/month-execution';` });
 
   const simulation = await import(`${pathToFileURL(simulationBundle).href}?test=${Date.now()}`);
   const decisionContext = await import(`${pathToFileURL(decisionContextBundle).href}?test=${Date.now()}`);
@@ -63,6 +67,63 @@ try {
   const spokenMeaning = await import(`${pathToFileURL(spokenMeaningBundle).href}?test=${Date.now()}`);
   const speechIntent = await import(`${pathToFileURL(speechIntentBundle).href}?test=${Date.now()}`);
   const capabilityHandles = await import(pathToFileURL(capabilityHandlesBundle).href);
+  const staticScene = await import(pathToFileURL(staticSceneBundle).href);
+  {
+    const initialScene = simulation.createInitialState(31, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+    const observer = initialScene.people.find((person) => person.id === 'jingwei');
+    const atFruit = (position) => position.x === 27 && position.y === 26 && position.z === 5;
+    const beforeContext = simulation.buildDecisionContexts(initialScene, 1).find((context) => context.person.id === observer.id);
+    const beforeRequest = decisionContext.buildDecisionRequestContext(beforeContext);
+    assert(beforeRequest.visibleVoxels.some((surface) => atFruit(surface.position) && surface.name === '结果灌木'));
+    assert.equal(observer.knownPlaces.length, 0, 'reading a visible model context must not mutate spatial memory');
+    const preparedScene = simulation.preparePlayerEmbodimentMonth({ state: initialScene, controlledPersonId: observer.id,
+      modelOwned: true, climate: { epoch: 'stable', kind: 'temperate', severity: 0 } });
+    const execution = preparedScene.execution;
+    const staged = execution.prepared.state;
+    const stagedObserver = staged.people.find((person) => person.id === observer.id);
+    const rememberedFruit = stagedObserver.knownPlaces.find((place) => atFruit(place.position));
+    assert(rememberedFruit, 'the actual initial perception must become a sourced personal place at the month boundary');
+    const discovery = execution.prepared.events.find((event) => event.id === rememberedFruit.sourceEventIds[0]);
+    assert.equal(discovery.who, observer.id);
+    assert.equal(discovery.planningTick, 0);
+    assert.equal(discovery.atMonth, 1);
+    assert(discovery.diff.observations.some((surface) => atFruit(surface.position) && surface.name === '结果灌木'));
+    const personalDiscoveries = execution.prepared.events.filter((event) => event.kind === 'environment'
+      && event.who === observer.id && event.diff.staticPlaceObservation);
+    assert(personalDiscoveries.length > 1);
+    assert(personalDiscoveries.every((event) => event.diff.observations.length === 1),
+      'distinct places have independent source facts so existing memory compaction cannot collapse them as one experience');
+    assert.equal(stagedObserver.knowledge.length, observer.knowledge.length, 'seeing a location grants no technique or learned physical rule');
+    assert.equal(stagedObserver.knownPlaces.some((place) => place.position.x === 27 && place.position.y === 26 && place.position.z === 4), false,
+      'the material hidden below the displayed fruit surface is not observed');
+    const unseenOther = simulation.buildDecisionContexts(staged, 1).find((context) => context.person.id !== observer.id
+      && !decisionContext.buildDecisionRequestContext(context).visibleVoxels.some((surface) => atFruit(surface.position)));
+    assert(unseenOther);
+    assert.equal(unseenOther.person.knownPlaces.some((place) => atFruit(place.position)), false, 'another person does not inherit this sighting');
+    assert.deepEqual(staticScene.recordVisibleStaticPlaceDiscoveries(staged, 1, 1, execution.prepared.events), [],
+      'the unchanged displayed surfaces do not create another discovery');
+    const moved = staticScene.executePlanningTick(execution, () => ({ kind: 'direct-action',
+      action: { kind: 'move', toCellId: 19 + 26 * staged.world.grid.width, toZ: 5 } }));
+    assert(moved.controlApplied);
+    assert.equal(stagedObserver.position.cellId, 19 + 26 * staged.world.grid.width);
+    const afterContext = simulation.buildDecisionContexts(staged, 1).find((context) => context.person.id === observer.id);
+    const afterRequest = decisionContext.buildDecisionRequestContext({ ...afterContext, currentMonthEvents: execution.prepared.events });
+    assert.equal(afterRequest.visibleVoxels.some((surface) => atFruit(surface.position)), false, 'the old fruit location is now outside actual sight');
+    assert(stagedObserver.knownPlaces.some((place) => atFruit(place.position) && place.lastConfirmedAtMonth === 1
+      && place.sourceEventIds.includes(discovery.id)));
+    const rememberedProtocol = gateway.buildDecisionModelRequestProtocol(afterRequest);
+    const rememberedHandle = rememberedProtocol.handles.voxels.find((voxel) => atFruit(voxel.position));
+    assert(rememberedHandle, 'the observer can address a remembered location without declaring its current contents');
+    const rememberedSurface = rememberedProtocol.mindContext.visible.surfaces.find((surface) => surface.ref === rememberedHandle.handle);
+    assert.equal(rememberedSurface.name, '本人可指认的位置');
+    assert.equal(rememberedSurface.perceivedAs, '');
+    const recalledPlaces = Object.values(rememberedProtocol.mindContext.mind).flat()
+      .filter((entry) => entry.includes('记得在位置'));
+    assert(recalledPlaces.length > 1, 'independent observed places remain available to the existing bounded memory projection');
+    assert(recalledPlaces.every((entry) => /位置（\d+, \d+, \d+）.*最后在第1月确认.*仍需亲自确认/.test(entry)),
+      'a selected place memory carries its coordinates, observation time, and need to recheck');
+    assert.equal(observer.knownPlaces.length, 0, 'all observations and movement stay on the staged copy');
+  }
   const state = simulation.createInitialState(9_732, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   assert.equal(state.people.length, 3, 'a new civilization should begin with exactly three founders');
   const founder = state.people[0];

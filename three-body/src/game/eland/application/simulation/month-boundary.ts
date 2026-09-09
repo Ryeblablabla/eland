@@ -47,7 +47,7 @@ import {
 import { copyState } from './state-utils';
 import { buildDecisionContexts } from './tick-planner';
 import { reconcileCharacterAgendasForMonth } from '../character-agenda';
-import { recordVisibleFacilityDiscoveries } from '../facility-awareness';
+import { recordVisibleStaticPlaceDiscoveries } from '../facility-awareness';
 
 export interface PreparedMonth {
   state: SimulationState;
@@ -118,7 +118,7 @@ export function prepareMonth(
   events.push(...synchronizeAgreementResponseDeadlineSuspensions(state, atMonth, events.length, events));
   events.push(...advanceAgreementLifecycle(state, atMonth, events.length));
   events.push(...advancePermissionLifecycle(state, atMonth, events.length));
-  events.push(...recordVisibleFacilityDiscoveries(state, atMonth, events.length));
+  events.push(...recordVisibleStaticPlaceDiscoveries(state, atMonth, 0, events));
   maintainDueMemories(state, atMonth);
   maintainAgentMemoryStore(state, atMonth);
   const exitedHibernationPersonIds = new Set(hibernationPhaseEvents
